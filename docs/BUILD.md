@@ -6,13 +6,24 @@
 
 ```sh
 sudo apt-get update
-sudo apt-get install -y build-essential flex bison gawk gcc-multilib \
-  libc6-dev libc6-dev-i386 gettext git libncurses-dev libssl-dev libelf-dev \
-  pkg-config python3 python3-setuptools rsync swig unzip zlib1g-dev file \
-  wget xz-utils bc device-tree-compiler bzip2 cpio e2fsprogs
+sudo apt-get install -y bc bison build-essential bzip2 ca-certificates \
+  device-tree-compiler e2fsprogs file flex gawk gettext git \
+  libncurses-dev perl python3 python3-setuptools rsync unzip wget \
+  xz-utils zlib1g-dev
 ```
 
-`make init` 会在下载前检查 Linux x86_64、必要命令，并实际编译/链接小型探针，确认 native libc、C++、32-bit libc、ncurses、OpenSSL、zlib、libelf、Python setuptools 和 Perl 模块可用；`swig` 与 `dtc` 也会执行版本探测。检查失败时会列出缺项和 Debian/Ubuntu 安装命令，不会等到长时间构建后才报错。默认目录：
+`make init` 会在下载前检查 Linux x86_64、必要命令，并实际编译/链接小型探针，确认 native libc、C++、ncurses、zlib、Python setuptools 和 OpenWrt 要求的 Perl 核心模块可用；同时执行 `dtc` 版本探测。检查失败时会列出缺项和 Debian/Ubuntu 安装命令，不会等到长时间构建后才报错。
+
+该清单只针对当前固定的 TB-RK3399ProD 构建路径，不是通用 OpenWrt 开发机的全量套件集。复核后的依据如下：
+
+- 工程直接使用 `e2fsprogs` 生成并校验 `boot_linux.img`。
+- 固定的厂商 U-Boot 路径使用 `bc`，需要 flex/bison 构建 Kconfig/DTC，且其 `CONFIG_MKIMAGE_DTC_PATH="dtc"` 要求 host `dtc`。
+- OpenWrt 25.12.5 的 host 前置检查要求 GNU 工具、Git、Perl、Python、rsync、ncurses、zlib 及归档/下载工具；HTTPS 获取依赖 `ca-certificates`。
+- OpenWrt 会自行构建 bc、bison、cpio、elfutils、flex、LibreSSL、pkgconf、xz 和 zlib 等 staged host tools，但其中少数工具在完成自举之前仍需要系统命令或开发库，因此保留上述最小集。
+
+已删除当前路径不使用的 `gcc-multilib`、`libc6-dev-i386`、`libssl-dev`、`libelf-dev`、`pkg-config`、`swig` 和系统 `cpio`；`libc6-dev` 由 `build-essential` 依赖引入，不再重复列出。若以后启用 U-Boot `PYLIBFDT`、FIT 签名或其他 OpenWrt profile，再按新的实际构建图增加 `swig`、OpenSSL 开发库等依赖。
+
+默认目录：
 
 ```text
 .work/  上游源码、feeds、工具链和编译树

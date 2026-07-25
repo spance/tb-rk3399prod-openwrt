@@ -9,11 +9,10 @@ print_debian_hint() {
 	cat >&2 <<'EOF'
 Debian/Ubuntu 可执行：
   sudo apt-get update
-  sudo apt-get install -y build-essential flex bison gawk gcc-multilib \
-    libc6-dev libc6-dev-i386 gettext git libncurses-dev libssl-dev \
-    libelf-dev pkg-config python3 python3-setuptools rsync swig unzip \
-    zlib1g-dev file wget xz-utils bc device-tree-compiler bzip2 cpio \
-    e2fsprogs
+  sudo apt-get install -y bc bison build-essential bzip2 ca-certificates \
+    device-tree-compiler e2fsprogs file flex gawk gettext git \
+    libncurses-dev perl python3 python3-setuptools rsync unzip wget \
+    xz-utils zlib1g-dev
 EOF
 }
 
@@ -21,10 +20,11 @@ EOF
 [ "$(uname -m)" = x86_64 ] || fail "the supported build host is Linux x86_64"
 
 missing=()
-for command in git make gcc g++ python3 bc bison flex swig openssl dtc \
-	gawk gettext perl rsync unzip file wget tar xz bzip2 gzip cpio \
+for command in git make gcc g++ python3 bc bison flex dtc gawk gettext \
+	perl rsync unzip file wget tar xz bzip2 gzip \
 	sha256sum readlink realpath stat nproc find xargs patch diff cmp \
-	pkg-config which getopt grep sed awk od tr wc install truncate touch mke2fs e2fsck debugfs; do
+	which getopt grep sed awk od tr wc install truncate touch \
+	mke2fs e2fsck debugfs; do
 	command -v "$command" >/dev/null 2>&1 || missing+=("$command")
 done
 
@@ -52,11 +52,6 @@ if ! g++ "$probe_dir/libstdcxx.cc" -o "$probe_dir/libstdcxx" \
 	failures+=("C++ compiler or libstdc++ development files (g++)")
 fi
 
-if ! gcc -m32 "$probe_dir/libc.c" -o "$probe_dir/libc32" \
-	>"$probe_dir/libc32.log" 2>&1; then
-	failures+=("32-bit compiler/libc support (gcc-multilib/libc6-dev-i386)")
-fi
-
 printf '%s\n' '#include <ncurses.h>' \
 	'int main(void) { initscr(); endwin(); return 0; }' > "$probe_dir/ncurses.c"
 if ! gcc "$probe_dir/ncurses.c" -lncursesw -o "$probe_dir/ncurses" \
@@ -66,14 +61,6 @@ if ! gcc "$probe_dir/ncurses.c" -lncursesw -o "$probe_dir/ncurses" \
 	failures+=("ncurses headers/library (libncurses-dev)")
 fi
 
-printf '%s\n' '#include <openssl/ssl.h>' \
-	'int main(void) { SSL_CTX *c = SSL_CTX_new(TLS_method()); SSL_CTX_free(c); return 0; }' \
-	> "$probe_dir/openssl.c"
-if ! gcc "$probe_dir/openssl.c" -lssl -lcrypto -o "$probe_dir/openssl" \
-	>"$probe_dir/openssl.log" 2>&1; then
-	failures+=("OpenSSL headers/libraries (libssl-dev)")
-fi
-
 printf '%s\n' '#include <zlib.h>' \
 	'int main(void) { return zlibVersion() == 0; }' > "$probe_dir/zlib.c"
 if ! gcc "$probe_dir/zlib.c" -lz -o "$probe_dir/zlib" \
@@ -81,25 +68,14 @@ if ! gcc "$probe_dir/zlib.c" -lz -o "$probe_dir/zlib" \
 	failures+=("zlib headers/library (zlib1g-dev)")
 fi
 
-printf '%s\n' '#include <libelf.h>' \
-	'int main(void) { return elf_version(EV_CURRENT) == EV_NONE; }' \
-	> "$probe_dir/libelf.c"
-if ! gcc "$probe_dir/libelf.c" -lelf -o "$probe_dir/libelf" \
-	>"$probe_dir/libelf.log" 2>&1; then
-	failures+=("ELF development headers/library (libelf-dev)")
-fi
-
 if ! python3 -c 'import setuptools' >"$probe_dir/python.log" 2>&1; then
 	failures+=("Python setuptools module (python3-setuptools)")
 fi
 
-if ! perl -MFindBin -MFile::Copy -MFile::Compare -MThread::Queue -e 1 \
+if ! perl -MData::Dumper -MFindBin -MFile::Copy -MFile::Compare \
+	-MIPC::Cmd -MThread::Queue -e 1 \
 	>"$probe_dir/perl.log" 2>&1; then
 	failures+=("required Perl core modules")
-fi
-
-if ! swig -version >"$probe_dir/swig.log" 2>&1; then
-	failures+=("working SWIG executable (swig)")
 fi
 
 if ! dtc -v >"$probe_dir/dtc.log" 2>&1; then
