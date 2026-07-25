@@ -7,11 +7,13 @@
 在原生 Linux x86_64 主机执行：
 
 ```sh
+make check
 make init
 make all
 make package
 ```
 
+- `make check`：执行离线项目结构、脚本语法、唯一来源和关键不变量检查；已有初始化工作树时还会核对上游 commit、补丁和同步文件。
 - `make init`：下载固定版本的 Toybrick U-Boot、rkbin、官方交叉工具链和 OpenWrt，应用本板补丁，并同步唯一的板级 DTS 源文件。
 - `make all`：构建 U-Boot、正常/恢复 FIT、`boot_linux.img`，以及带自动持久化 overlay 的 `rootfs.img`。
 - `make package`：校验并打包 `out/` 中的固件到 `dist/`。
@@ -21,7 +23,7 @@ make package
 ## 目录
 
 ```text
-configs/          唯一的 OpenWrt 最小配置
+configs/          OpenWrt 最小配置和精确锁定的 feeds
 boot/             eMMC boot_linux 分区使用的 U-Boot 启动脚本
 docs/             构建、硬件状态、启动内存和 eMMC 安装说明
 dts/              TB-RK3399ProD 唯一权威 DTS/DTSI

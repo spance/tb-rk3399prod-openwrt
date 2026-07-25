@@ -16,6 +16,8 @@ TOOLCHAIN_COMMIT=32505a8032d04e9320dbdb817b08bf67bdfb5a0c
 OPENWRT_URL=https://git.openwrt.org/openwrt/openwrt.git
 OPENWRT_TAG=v25.12.5
 OPENWRT_COMMIT=f0a60eee2fe051741c643ea6118718aae1ef17fb
+OPENWRT_VERSION=${OPENWRT_TAG#v}
+LINUX_VERSION=6.12.94
 
 fail() { echo "ERROR: $*" >&2; exit 1; }
 
@@ -75,22 +77,27 @@ ensure_checkout()
 		fail "unexpected commit in $dest"
 }
 
-apply_patch_set()
+ensure_patches_applied()
 {
 	dest=$1
-	marker=$2
-	shift 2
+	shift
 
-	if [ -f "$dest/$marker" ]; then
-		git -C "$dest" apply --reverse --check "$@" || \
-			fail "patch marker exists but patch state is inconsistent: $dest"
-		return
-	fi
+	for patch in "$@"; do
+		[ -f "$patch" ] || fail "patch file not found: $patch"
+		if git -C "$dest" apply --reverse --check "$patch" \
+			>/dev/null 2>&1; then
+			continue
+		fi
+		git -C "$dest" apply --check "$patch" || \
+			fail "patch does not apply cleanly: $patch"
+		git -C "$dest" apply "$patch"
+	done
 
-	git -C "$dest" apply --check "$@"
-	git -C "$dest" apply "$@"
 	git -C "$dest" diff --check
-	: > "$dest/$marker"
+	for patch in "$@"; do
+		git -C "$dest" apply --reverse --check "$patch" || \
+			fail "applied patch cannot be verified: $patch"
+	done
 }
 
 reset_generated_dir()

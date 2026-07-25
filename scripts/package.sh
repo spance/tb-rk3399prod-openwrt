@@ -29,14 +29,14 @@ printf '%s\n' \
 	"rkbin: $RKBIN_COMMIT" \
 	"toolchain: $TOOLCHAIN_COMMIT" \
 	"OpenWrt: $OPENWRT_TAG ($OPENWRT_COMMIT)" \
-	"Linux: 6.12.94" > "$stage/BUILD-METADATA.txt"
+	"Linux: $LINUX_VERSION" > "$stage/BUILD-METADATA.txt"
 
 (
 	cd "$stage"
 	find firmware -type f -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS
 )
 
-archive="$DIST_DIR/tb-rk3399prod-openwrt-25.12.5.tar.gz"
+archive="$DIST_DIR/tb-rk3399prod-openwrt-$OPENWRT_VERSION.tar.gz"
 tar --sort=name --mtime="@${SOURCE_DATE_EPOCH:-0}" \
 	--owner=0 --group=0 --numeric-owner -C "$stage" -czf "$archive.tmp" .
 mv -f "$archive.tmp" "$archive"

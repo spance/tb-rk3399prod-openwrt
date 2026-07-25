@@ -5,9 +5,10 @@
 - OpenWrt：`v25.12.5`，commit `f0a60eee2fe051741c643ea6118718aae1ef17fb`。
 - Linux：OpenWrt 官方 `6.12.94`。
 - target/subtarget：`rockchip/armv8`。
-- `configs/openwrt.config`：唯一正式配置，PCIe host/PHY/供电默认启用。
+- `configs/openwrt.config`：唯一正式目标配置，PCIe host/PHY/供电默认启用。
+- `configs/feeds.conf`：五个 OpenWrt feed 均锁定到 25.12.5 官方发布使用的精确 commit。
 
-此前无 PCIe 的 base profile 仅用于开发调试，现已删除。板级 profile、持久化镜像规则、DTB Makefile 和必要的内核 binding 修改统一由 `patches/openwrt/0001-tb-rk3399prod-board-support.patch` 加入。完整板级设备树不再嵌入补丁；`dts/` 是唯一权威来源，`make init` 调用 `scripts/sync-openwrt-dts.sh`，从 Rockchip target 的 `KERNEL_PATCHVER` 自动确定 `files-<版本>` 目录并逐文件覆写。修改 DTS 后只需重新执行初始化或构建，不需要手工刷新一份重复补丁。
+板级 profile、持久化镜像规则、DTB Makefile 和必要的内核 binding 修改统一由 `patches/openwrt/0001-tb-rk3399prod-board-support.patch` 加入。完整板级设备树不嵌入补丁；`dts/` 是唯一权威来源，`make init` 调用 `scripts/sync-openwrt-dts.sh`，从 Rockchip target 的 `KERNEL_PATCHVER` 自动确定 `files-<版本>` 目录并逐文件覆写。修改 DTS 后只需重新执行初始化或构建，不需要手工刷新一份重复补丁。
 
 ## 硬件范围
 

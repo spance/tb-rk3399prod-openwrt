@@ -1,6 +1,6 @@
 # 文档索引
 
-- `BUILD.md`：Linux x86_64 初始化、构建、打包及刷写边界。
+- `BUILD.md`：Linux x86_64 项目检查、初始化、构建、打包及刷写边界。
 - `U-BOOT.md`：厂商 U-Boot 版本选择、补丁和启动地址。
 - `OPENWRT.md`：OpenWrt profile、硬件范围、持久化 overlay 和恢复启动。
 - `HARDWARE-REFERENCE.md`：板级硬件、关键电气/总线参数和升级回归基线。

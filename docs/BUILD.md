@@ -49,20 +49,34 @@ make init
 | OpenWrt | `v25.12.5` / `f0a60eee2fe051741c643ea6118718aae1ef17fb` |
 | Linux | OpenWrt 官方 `6.12.94` |
 
-OpenWrt 只使用一个工作树和一个正式配置，PCIe host 默认启用。此前用于开发调试的无 PCIe base profile 已移除。
+OpenWrt 只使用一个工作树和一个正式配置，PCIe host 默认启用。
 
-初始化是幂等的。网络 fetch 会自动重试三次；中断后再次执行可以继续未完成的初始 checkout。脚本会核对 commit 和补丁状态，不会静默切换到新版上游。
+初始化是幂等的。网络 fetch 会自动重试三次；中断后再次执行可以继续未完成的初始 checkout。补丁状态只由 Git 判断，不写额外状态文件；每个补丁必须是“可应用”或“已完整应用”，其他状态立即失败。所有上游仓库固定到精确 commit，`configs/feeds.conf` 也固定到 OpenWrt 25.12.5 官方发布所使用的五个 feed commit，不会因远端分支变化而漂移。
+
+工作树只接受当前基线的精确状态。调整任一上游基线、补丁模型或目录模型后，应使用一个空的 `TB_WORK_DIR` 重新初始化；这使代码路径保持单一，也避免把无法证明正确的状态带入固件。
 
 `dts/rk3399pro-toybrick-prod.dts` 和 `.dtsi` 是板级设备树的唯一权威文件。每次初始化都会读取 OpenWrt Rockchip target 的 `KERNEL_PATCHVER`，将这两个文件覆写到对应的 `target/linux/rockchip/files-<版本>/arch/arm64/boot/dts/rockchip/`，然后逐字节校验。OpenWrt 补丁不再保存 DTS 副本；更新设备树后直接重新运行 `make init` 或任意 `make openwrt/all` 即可同步。
 
-如果 `.work/openwrt` 来自本工程较早版本，初始化会用 `patches/openwrt/migrations/` 中的小型 profile 迁移补丁就地升级，再核对合并后的正式补丁状态；它不删除既有 OpenWrt 编译树，也不包含 DTS 副本。全新初始化不会应用迁移补丁。
+## 2. 项目检查
 
-## 2. 构建
+```sh
+make check
+```
+
+该目标不下载也不编译源码。它检查 Shell 语法、Git whitespace、目录约束、正式补丁可解析性、DTS 唯一来源、OpenWrt 关键配置、feeds 的 40 位 commit 锁定以及启动地址/根分区参数。若 `.work/` 已初始化，还会验证上游 HEAD、补丁反向校验、feeds 和 DTS 同步结果。`make init` 完成前也会自动执行同一套检查。
+
+## 3. 构建
 
 构建全部目标：
 
 ```sh
 make all
+```
+
+OpenWrt 并行数可通过 Make 变量设置；8 GiB 内存的主机建议从 2～4 开始：
+
+```sh
+make all JOBS=4
 ```
 
 也可以单独执行：
@@ -72,13 +86,13 @@ make uboot
 make openwrt
 ```
 
-直接调用脚本时可指定并行数：
+直接调用脚本时也可指定并行数：
 
 ```sh
 bash scripts/build.sh all 16
 ```
 
-U-Boot 使用厂商命令 `./make.sh rk3399pro`。OpenWrt 会更新/安装 feeds、执行 `make defconfig`、下载源码并构建；并行构建失败时自动以 `-j1 V=s` 重试，保留完整错误位置。OpenWrt 构建完成后，脚本使用其 host `mkimage` 和 `e2fsprogs` 生成 64 MiB `boot_linux.img`，并校验、规范命名 128 MiB SquashFS `rootfs.img`。
+U-Boot 使用厂商命令 `./make.sh rk3399pro`。OpenWrt 会按 `configs/feeds.conf` 的精确 commit 更新/安装 feeds，执行 `make defconfig`、下载源码并构建；并行构建失败时自动以 `-j1 V=s` 重试，保留完整错误位置。OpenWrt 构建完成后，脚本使用其 host `mkimage` 和 `e2fsprogs` 生成 64 MiB `boot_linux.img`，并校验、规范命名 128 MiB SquashFS `rootfs.img`。
 
 关键 OpenWrt 输出为：
 
@@ -91,7 +105,7 @@ out/openwrt/rootfs.img
 
 第一项是 eMMC 正常启动 FIT，第二项仅用于恢复。`boot_linux.img` 包含正常 FIT 和 `boot.scr`；`rootfs.img` 写入 grow `rootfs` 分区后，首次启动会自动用其剩余空间建立 ext4 `/overlay`。
 
-## 3. 打包
+## 4. 打包
 
 ```sh
 make package

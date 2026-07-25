@@ -9,5 +9,6 @@
 - [OpenWrt v25.12.5 e2fsprogs package](https://github.com/openwrt/openwrt/blob/f0a60eee2fe051741c643ea6118718aae1ef17fb/package/utils/e2fsprogs/Makefile)
 - [OpenWrt v25.12.5 Rockchip armv8 kernel configuration](https://github.com/openwrt/openwrt/blob/f0a60eee2fe051741c643ea6118718aae1ef17fb/target/linux/rockchip/armv8/config-6.12)
 - [OpenWrt v25.12.5 generic Linux configuration](https://github.com/openwrt/openwrt/blob/f0a60eee2fe051741c643ea6118718aae1ef17fb/target/linux/generic/config-6.12)
+- [OpenWrt v25.12.5 official release feed commits](https://downloads.openwrt.org/releases/25.12.5/targets/rockchip/armv8/feeds.buildinfo)
 
 本工程只保留上游固定 commit 的页面链接，不提交抓取的网页副本，避免过期内容和无关示例数据进入版本库。

@@ -15,34 +15,27 @@ ensure_checkout "$RKBIN_URL" "$RKBIN_COMMIT" "$RKBIN_COMMIT" \
 ensure_checkout "$TOOLCHAIN_URL" "$TOOLCHAIN_COMMIT" "$TOOLCHAIN_COMMIT" \
 	"$WORK_DIR/prebuilts/gcc"
 
-apply_patch_set "$WORK_DIR/u-boot" .tb-rk3399prod-patches-applied \
+ensure_patches_applied "$WORK_DIR/u-boot" \
 	"$PROJECT_DIR/patches/u-boot/0001-modern-linux-host-build-compat.patch" \
 	"$PROJECT_DIR/patches/u-boot/0002-tb-rk3399prod-dwmmc-tf-reliability.patch"
 
 ensure_checkout "$OPENWRT_URL" "refs/tags/$OPENWRT_TAG" "$OPENWRT_COMMIT" \
 	"$WORK_DIR/openwrt"
 openwrt_patch="$PROJECT_DIR/patches/openwrt/0001-tb-rk3399prod-board-support.patch"
-openwrt_marker="$WORK_DIR/openwrt/.tb-rk3399prod-patch-applied"
-if [ -f "$openwrt_marker" ] && \
-	! git -C "$WORK_DIR/openwrt" apply --reverse --check "$openwrt_patch" \
-		>/dev/null 2>&1; then
-	migration_patch="$PROJECT_DIR/patches/openwrt/migrations/0001-v1-profile-to-persistent-rootfs.patch"
-	if git -C "$WORK_DIR/openwrt" apply --check "$migration_patch"; then
-		git -C "$WORK_DIR/openwrt" apply "$migration_patch"
-		git -C "$WORK_DIR/openwrt" diff --check
-		git -C "$WORK_DIR/openwrt" apply --reverse --check "$openwrt_patch" || \
-			fail "OpenWrt worktree migration did not reach the expected patch state"
-		echo "Migrated existing OpenWrt worktree to the consolidated board profile"
-	fi
-fi
-apply_patch_set "$WORK_DIR/openwrt" .tb-rk3399prod-patch-applied \
-	"$openwrt_patch"
+ensure_patches_applied "$WORK_DIR/openwrt" "$openwrt_patch"
 bash "$SCRIPT_DIR/sync-openwrt-dts.sh" "$WORK_DIR/openwrt"
+install -m 0644 "$PROJECT_DIR/configs/feeds.conf" \
+	"$WORK_DIR/openwrt/feeds.conf"
+cmp -s "$PROJECT_DIR/configs/feeds.conf" "$WORK_DIR/openwrt/feeds.conf" || \
+	fail "OpenWrt feeds configuration synchronization failed"
 
 printf '%s\n' \
 	"U-Boot=$UBOOT_COMMIT" \
 	"rkbin=$RKBIN_COMMIT" \
 	"toolchain=$TOOLCHAIN_COMMIT" \
-	"OpenWrt=$OPENWRT_COMMIT" > "$WORK_DIR/BASELINES"
+	"OpenWrt=$OPENWRT_COMMIT" \
+	"Linux=$LINUX_VERSION" > "$WORK_DIR/BASELINES"
+sed 's/^/feed=/' "$PROJECT_DIR/configs/feeds.conf" >> "$WORK_DIR/BASELINES"
 
+bash "$SCRIPT_DIR/check.sh"
 echo "Initialization complete: $WORK_DIR"

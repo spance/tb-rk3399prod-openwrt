@@ -2,7 +2,6 @@
 /out/
 /dist/
 /docs/reference/
-/docs/HISTORY.md
 
 # Build products and debug captures
 *.bin
