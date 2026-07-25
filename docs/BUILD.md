@@ -57,7 +57,7 @@ OpenWrt 只使用一个工作树和一个正式配置，PCIe host、RTL8822CE �
 
 `dts/rk3399pro-toybrick-prod.dts` 和 `.dtsi` 是板级设备树的唯一权威文件。每次初始化都会读取 OpenWrt Rockchip target 的 `KERNEL_PATCHVER`，将这两个文件覆写到对应的 `target/linux/rockchip/files-<版本>/arch/arm64/boot/dts/rockchip/`，然后逐字节校验。OpenWrt 补丁不再保存 DTS 副本；更新设备树后必须先重新运行 `make init`，再执行构建。
 
-`make init` 随后验证 feed 仓库的 origin、HEAD、索引、干净状态和仓库数量；精确匹配时不访问 feed 远端，不匹配时才执行更新。OpenWrt 的 `src-git` feed 获取本身使用 `--depth 1`，不会同步完整 Git 历史。之后安装 package 索引、写入唯一的 `configs/openwrt.config`、执行 `make defconfig` 和 `make download`。因此成功返回表示编译所需源码已经准备完成；可用 `make init JOBS=4` 控制源包并行下载数。
+`make init` 随后验证 feed 仓库的 origin、HEAD、索引、干净状态和仓库数量；精确匹配时不访问 feed 远端，不匹配时才执行更新。OpenWrt 的 `src-git` feed 获取本身使用 `--depth 1`，不会同步完整 Git 历史。之后安装 package 索引、写入唯一的 `configs/openwrt.config`、执行 `make defconfig` 和 `make download`。因此成功返回表示编译所需源码已经准备完成；可用 `make init J=4` 控制源包并行下载数。
 
 ## 2. 项目检查
 
@@ -78,7 +78,7 @@ make all
 OpenWrt 并行数可通过 Make 变量设置；8 GiB 内存的主机建议从 2～4 开始：
 
 ```sh
-make all JOBS=4
+make all J=4
 ```
 
 也可以单独执行：
@@ -121,6 +121,31 @@ dist/tb-rk3399prod-openwrt-25.12.5.tar.gz.sha256
 ```
 
 包内包含固件、逐文件 `SHA256SUMS` 和固定上游版本信息。OpenWrt 输出目录另外保留官方 `sha256sums`，工程生成的目录级清单使用 `TB-SHA256SUMS`，避免在 NTFS 上发生大小写文件名碰撞。`boot_linux.img` 是原厂 `boot_linux` 分区使用的 ext2 镜像，内部包含正常 FIT 和安全加载地址为 `0x10000000` 的 `boot.scr`；`rootfs.img` 提供只读 SquashFS 和首次启动自动创建的持久化 ext4 overlay。二者都不是 Rockchip `update.img`。
+
+## 5. 清理与工作树恢复
+
+```sh
+make clean
+```
+
+`make clean` 只删除可重建的 `out/` 和 `dist/`，绝不调用 Git，也不修改 `.work/`。自定义 `TB_OUT_DIR` 或 `TB_DIST_DIR` 时，仅允许删除已由本工程构建脚本写入隐藏标记的目录，并显式拒绝根目录、工程根目录、home 和 `TB_WORK_DIR`。
+
+如果 `.work/` 因中断的补丁、手工调试或更新后的旧补丁状态而无法再次初始化，执行：
+
+```sh
+make reset-work
+make init J=2
+```
+
+`reset-work` 是显式的破坏性操作：它先校验每个上游仓库位于 `TB_WORK_DIR` 之下、origin 与工程固定 URL 完全一致、固定 commit 已在本地存在，然后才对 U-Boot、rkbin、工具链、OpenWrt 和 feeds 执行 `git reset --hard` 与 `git clean -fd`。因此 `.work` 内未提交的源码和未跟踪文件会丢失。它不使用 `git clean -fdx`，所以 OpenWrt 下载包、构建缓存等 ignored 数据会保留，随后 `make init` 重新应用补丁、DTS、feed 和正式配置。
+
+便捷写法：
+
+```sh
+make reinit J=2
+```
+
+该目标严格等价于先 `reset-work` 再 `init`，不会删除 `out/` 或 `dist/`。
 
 ## 后续：部署
 

@@ -27,6 +27,7 @@ bash "$SCRIPT_DIR/check-env.sh"
 [ -f "$WORK_DIR/BASELINES" ] || \
 	fail "initialization baseline record is missing; run make init first"
 bash "$SCRIPT_DIR/check.sh"
+mark_managed_dir "$OUT_DIR" out
 
 build_uboot()
 {

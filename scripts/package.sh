@@ -15,7 +15,7 @@ for required in \
 	[ -e "$required" ] || fail "missing build output: $required; run make all first"
 done
 
-mkdir -p "$DIST_DIR"
+mark_managed_dir "$DIST_DIR" dist
 stage=$(mktemp -d "$DIST_DIR/.stage.XXXXXX")
 trap 'rm -rf -- "$stage"' EXIT
 

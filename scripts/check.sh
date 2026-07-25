@@ -43,8 +43,37 @@ assert_file "$PROJECT_DIR/dts/rk3399pro-toybrick-prod.dtsi"
 assert_file "$PROJECT_DIR/configs/openwrt.config"
 assert_file "$PROJECT_DIR/configs/feeds.conf"
 assert_file "$PROJECT_DIR/boot/boot.cmd"
+assert_file "$PROJECT_DIR/scripts/clean.sh"
+assert_file "$PROJECT_DIR/scripts/reset-work.sh"
 assert_file "$PROJECT_DIR/docs/BOOT-CHAIN.md"
 assert_file "$PROJECT_DIR/docs/HDMI-CONSOLE.md"
+
+grep -Fq 'J ?= $(shell nproc)' "$PROJECT_DIR/Makefile" || \
+	fail "Makefile must expose the concise J parallelism variable"
+for file in "$PROJECT_DIR/Makefile" "$PROJECT_DIR/README.md" \
+	"$PROJECT_DIR/docs/BUILD.md"; do
+	if grep -Fq 'JOBS=' "$file"; then
+		fail "obsolete JOBS variable remains in $file"
+	fi
+done
+grep -Fq 'bash scripts/clean.sh' "$PROJECT_DIR/Makefile" || \
+	fail "Makefile clean target is missing"
+grep -Fq 'bash scripts/reset-work.sh' "$PROJECT_DIR/Makefile" || \
+	fail "Makefile reset-work target is missing"
+grep -Fq 'mark_managed_dir "$OUT_DIR" out' "$PROJECT_DIR/scripts/build.sh" || \
+	fail "custom output directories are not marked as project-managed"
+grep -Fq 'mark_managed_dir "$DIST_DIR" dist' \
+	"$PROJECT_DIR/scripts/package.sh" || \
+	fail "custom distribution directories are not marked as project-managed"
+if grep -Eq 'git[[:space:]].*(reset|clean)' "$PROJECT_DIR/scripts/clean.sh"; then
+	fail "ordinary clean must not mutate Git worktrees"
+fi
+grep -Fq 'git -C "$repo" reset --hard "$expected_commit"' \
+	"$PROJECT_DIR/scripts/reset-work.sh" || \
+	fail "reset-work does not reset verified repositories"
+grep -Fq 'git -C "$repo" clean -fd' \
+	"$PROJECT_DIR/scripts/reset-work.sh" || \
+	fail "reset-work does not remove untracked source changes"
 
 [ "$(find "$PROJECT_DIR/patches/openwrt" -mindepth 1 -maxdepth 1 \
 	-type d | wc -l)" -eq 0 ] || \

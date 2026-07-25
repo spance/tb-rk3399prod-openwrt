@@ -148,3 +148,13 @@ reset_generated_dir()
 	rm -rf -- "$dir"
 	mkdir -p "$dir"
 }
+
+mark_managed_dir()
+{
+	local dir kind
+	dir=$(readlink -m "$1")
+	kind=$2
+	mkdir -p "$dir"
+	printf 'tb-rk3399prod:%s\n' "$kind" > \
+		"$dir/.tb-rk3399prod-managed"
+}
