@@ -128,16 +128,33 @@ grep -Fq 'kmod-usb-hid' "$openwrt_patch" || \
 for config in \
 	'CONFIG_DRM=y' \
 	'CONFIG_DRM_FBDEV_EMULATION=y' \
-	'CONFIG_DRM_KMS_FB_HELPER=y' \
 	'CONFIG_DRM_ROCKCHIP=y' \
-	'CONFIG_FB=y' \
-	'CONFIG_FONT_8x16=y' \
 	'CONFIG_FRAMEBUFFER_CONSOLE=y' \
 	'CONFIG_FRAMEBUFFER_CONSOLE_DETECT_PRIMARY=y' \
+	'# CONFIG_FRAMEBUFFER_CONSOLE_ROTATION is not set' \
 	'CONFIG_PHY_ROCKCHIP_INNO_HDMI=y' \
-	'CONFIG_ROCKCHIP_DW_HDMI=y'; do
+	'# CONFIG_ROCKCHIP_ANALOGIX_DP is not set' \
+	'# CONFIG_ROCKCHIP_CDN_DP is not set' \
+	'CONFIG_ROCKCHIP_DW_HDMI=y' \
+	'# CONFIG_ROCKCHIP_DW_MIPI_DSI is not set' \
+	'# CONFIG_ROCKCHIP_INNO_HDMI is not set' \
+	'# CONFIG_ROCKCHIP_LVDS is not set' \
+	'# CONFIG_ROCKCHIP_RGB is not set' \
+	'# CONFIG_ROCKCHIP_RK3066_HDMI is not set' \
+	'CONFIG_ROCKCHIP_VOP=y' \
+	'# CONFIG_ROCKCHIP_VOP2 is not set'; do
 	grep -Fq "$config" "$openwrt_patch" || \
 		fail "HDMI console kernel setting is missing: $config"
+done
+for obsolete_config in \
+	'CONFIG_DRM_KMS_FB_HELPER' \
+	'CONFIG_FB=y' \
+	'CONFIG_FB_CORE=y' \
+	'CONFIG_FB_DEVICE=y' \
+	'CONFIG_FONTS=y'; do
+	if grep -Fq "$obsolete_config" "$openwrt_patch"; then
+		fail "obsolete or unnecessary HDMI kernel setting remains: $obsolete_config"
+	fi
 done
 grep -Fq 'tty1::askfirst:/usr/libexec/login.sh' "$openwrt_patch" || \
 	fail "HDMI tty1 login entry is missing"

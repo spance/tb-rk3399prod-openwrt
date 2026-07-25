@@ -105,7 +105,7 @@ make openwrt
 bash scripts/build.sh all 16
 ```
 
-`make all` 不调用初始化，只检查主机依赖、工作树、固定基线、补丁、feed、`.config` 和 DTS 状态；任一输入未准备好便要求先执行 `make init`。U-Boot 使用厂商命令 `./make.sh rk3399pro`。OpenWrt 构建阶段不执行 `feeds update/install`、`defconfig` 或 `make download`，只执行编译；并行构建失败时自动以 `-j1 V=s` 重试，保留完整错误位置。构建完成后，脚本使用 OpenWrt host `mkimage` 和 `e2fsprogs` 生成 64 MiB `boot_linux.img`，并校验、规范命名 128 MiB SquashFS `rootfs.img`。
+`make all` 不调用初始化，只检查主机依赖、工作树、固定基线、补丁、feed、`.config` 和 DTS 状态；任一输入未准备好便要求先执行 `make init`。U-Boot 使用厂商命令 `./make.sh rk3399pro`。OpenWrt 构建阶段不执行 `feeds update/install`、`defconfig` 或 `make download`，只执行编译；并行构建失败时自动关闭标准输入并以 `-j1 V=sc` 重试，既保留命令和完整错误上下文，也确保遗漏的 Kconfig 项直接失败而不会进入交互式配置。构建完成后，脚本使用 OpenWrt host `mkimage` 和 `e2fsprogs` 生成 64 MiB `boot_linux.img`，并校验、规范命名 128 MiB SquashFS `rootfs.img`。
 
 关键 OpenWrt 输出为：
 

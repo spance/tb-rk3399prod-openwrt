@@ -53,7 +53,10 @@ build_openwrt()
 
 	(
 		cd "$source"
-		make -j"$jobs" || make -j1 V=s
+		if ! make -j"$jobs" </dev/null; then
+			echo "Parallel OpenWrt build failed; retrying non-interactively with -j1 V=sc" >&2
+			make -j1 V=sc </dev/null
+		fi
 	)
 
 	target_dir="$source/bin/targets/rockchip/armv8"
