@@ -23,6 +23,8 @@ ensure_checkout "$OPENWRT_URL" "refs/tags/$OPENWRT_TAG" "$OPENWRT_COMMIT" \
 	"$WORK_DIR/openwrt"
 apply_patch_set "$WORK_DIR/openwrt" .tb-rk3399prod-patch-applied \
 	"$PROJECT_DIR/patches/openwrt/0001-tb-rk3399prod-board-support.patch"
+apply_patch_set "$WORK_DIR/openwrt" .tb-rk3399prod-overlay-patch-applied \
+	"$PROJECT_DIR/patches/openwrt/0002-tb-rk3399prod-persistent-overlay.patch"
 
 printf '%s\n' \
 	"U-Boot=$UBOOT_COMMIT" \

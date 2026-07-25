@@ -74,7 +74,18 @@ make openwrt
 bash scripts/build.sh all 16
 ```
 
-U-Boot 使用厂商命令 `./make.sh rk3399pro`。OpenWrt 会更新/安装 feeds、执行 `make defconfig`、下载源码并构建；并行构建失败时自动以 `-j1 V=s` 重试，保留完整错误位置。OpenWrt 构建完成后，脚本使用其 host `mkimage` 和 `e2fsprogs` 生成 64 MiB `boot_linux.img`。
+U-Boot 使用厂商命令 `./make.sh rk3399pro`。OpenWrt 会更新/安装 feeds、执行 `make defconfig`、下载源码并构建；并行构建失败时自动以 `-j1 V=s` 重试，保留完整错误位置。OpenWrt 构建完成后，脚本使用其 host `mkimage` 和 `e2fsprogs` 生成 64 MiB `boot_linux.img`，并校验、规范命名 128 MiB SquashFS `rootfs.img`。
+
+关键 OpenWrt 输出为：
+
+```text
+out/openwrt/openwrt-...-toybrick_tb-rk3399prod-kernel.bin
+out/openwrt/openwrt-...-toybrick_tb-rk3399prod-initramfs-kernel.bin
+out/openwrt/boot_linux.img
+out/openwrt/rootfs.img
+```
+
+第一项是 eMMC 正常启动 FIT，第二项仅用于恢复。`boot_linux.img` 包含正常 FIT 和 `boot.scr`；`rootfs.img` 写入 grow `rootfs` 分区后，首次启动会自动用其剩余空间建立 ext4 `/overlay`。
 
 ## 3. 打包
 
@@ -89,8 +100,8 @@ dist/tb-rk3399prod-openwrt-25.12.5.tar.gz
 dist/tb-rk3399prod-openwrt-25.12.5.tar.gz.sha256
 ```
 
-包内包含固件、逐文件 `SHA256SUMS` 和固定上游版本信息。OpenWrt 输出目录另外保留官方 `sha256sums`，工程生成的目录级清单使用 `TB-SHA256SUMS`，避免在 NTFS 上发生大小写文件名碰撞。`boot_linux.img` 是原厂 `boot_linux` 分区使用的 ext2 镜像，内部包含 initramfs FIT 和安全加载地址为 `0x10000000` 的 `boot.scr`；它不是 Rockchip `update.img`，也不提供持久化 rootfs。
+包内包含固件、逐文件 `SHA256SUMS` 和固定上游版本信息。OpenWrt 输出目录另外保留官方 `sha256sums`，工程生成的目录级清单使用 `TB-SHA256SUMS`，避免在 NTFS 上发生大小写文件名碰撞。`boot_linux.img` 是原厂 `boot_linux` 分区使用的 ext2 镜像，内部包含正常 FIT 和安全加载地址为 `0x10000000` 的 `boot.scr`；`rootfs.img` 提供只读 SquashFS 和首次启动自动创建的持久化 ext4 overlay。二者都不是 Rockchip `update.img`。
 
 ## 刷写边界
 
-使用 Rockchip 官方 RKDevTool/rkdeveloptool 和本板官方 loader、parameter/分区表。`uboot.img` 只对应 `uboot@0x2000`，`boot_linux.img` 只对应 `boot_linux@0x6000`；不得覆盖 `trust@0x4000`。详细边界见 `EMMC-INSTALL.md`，本工程不提供自动刷机命令。
+使用 Rockchip 官方 RKDevTool/rkdeveloptool 和本板官方 loader、parameter/分区表。`uboot.img` 只对应 `uboot@0x2000`，`boot_linux.img` 只对应 `boot_linux@0x6000`，`rootfs.img` 只对应 `rootfs@0x36000`；不得覆盖 `trust@0x4000`。正常系统必须成对更新 `boot_linux.img` 与 `rootfs.img`。详细边界见 `EMMC-INSTALL.md`，本工程不提供自动刷机命令。

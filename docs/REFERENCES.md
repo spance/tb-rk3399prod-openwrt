@@ -3,5 +3,11 @@
 - [TB-RK3399ProD Board Guide](https://t.rock-chips.com/en/wiki.php?filename=Board_Guide/TB-RK3399ProD)
 - [Toybrick Kernel Guide](https://t.rock-chips.com/en/wiki.php?filename=Software_Development/Kernel)
 - [Toybrick U-Boot Guide](https://t.rock-chips.com/en/wiki.php?filename=Software_Development/U-Boot)
+- [OpenWrt v25.12.5 rootdisk overlay implementation](https://github.com/openwrt/fstools/blob/16718b6e3c0fc7db7be6ae5848db0eae88ac8a8b/libfstools/rootdisk.c)
+- [OpenWrt v25.12.5 first-boot ext4 formatting](https://github.com/openwrt/fstools/blob/16718b6e3c0fc7db7be6ae5848db0eae88ac8a8b/libfstools/common.c)
+- [OpenWrt v25.12.5 preinit root mount hook](https://github.com/openwrt/openwrt/blob/f0a60eee2fe051741c643ea6118718aae1ef17fb/package/base-files/files/lib/preinit/80_mount_root)
+- [OpenWrt v25.12.5 e2fsprogs package](https://github.com/openwrt/openwrt/blob/f0a60eee2fe051741c643ea6118718aae1ef17fb/package/utils/e2fsprogs/Makefile)
+- [OpenWrt v25.12.5 Rockchip armv8 kernel configuration](https://github.com/openwrt/openwrt/blob/f0a60eee2fe051741c643ea6118718aae1ef17fb/target/linux/rockchip/armv8/config-6.12)
+- [OpenWrt v25.12.5 generic Linux configuration](https://github.com/openwrt/openwrt/blob/f0a60eee2fe051741c643ea6118718aae1ef17fb/target/linux/generic/config-6.12)
 
-本工程只保留官方页面链接，不提交抓取的网页副本，避免过期内容和无关示例数据进入版本库。
+本工程只保留上游固定 commit 的页面链接，不提交抓取的网页副本，避免过期内容和无关示例数据进入版本库。

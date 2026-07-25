@@ -75,9 +75,27 @@ build_openwrt()
 		fit_image=$file
 		fit_count=$((fit_count + 1))
 	done < <(find "$dest" -maxdepth 1 -type f \
-		-name '*toybrick_tb-rk3399prod-initramfs-kernel.bin' -print0)
+		-name '*toybrick_tb-rk3399prod-kernel.bin' -print0)
 	[ "$fit_count" -eq 1 ] || \
-		fail "expected exactly one TB-RK3399ProD initramfs FIT, found $fit_count"
+		fail "expected exactly one TB-RK3399ProD normal FIT, found $fit_count"
+
+	rootfs_count=0
+	rootfs_image=
+	while IFS= read -r -d '' file; do
+		rootfs_image=$file
+		rootfs_count=$((rootfs_count + 1))
+	done < <(find "$dest" -maxdepth 1 -type f \
+		-name '*toybrick_tb-rk3399prod-squashfs-rootfs.img' -print0)
+	[ "$rootfs_count" -eq 1 ] || \
+		fail "expected exactly one TB-RK3399ProD SquashFS rootfs image, found $rootfs_count"
+	[ "$(stat -c '%s' "$rootfs_image")" -eq 134217728 ] || \
+		fail "SquashFS rootfs image is not exactly 128 MiB"
+	[ "$(od -An -tx1 -N4 "$rootfs_image" | tr -d ' \n')" = 68737173 ] || \
+		fail "rootfs image does not start with a SquashFS superblock"
+
+	rootfs_original_name=$(basename -- "$rootfs_image")
+	mv -- "$rootfs_image" "$dest/rootfs.img"
+	ln -s rootfs.img "$dest/$rootfs_original_name"
 
 	mkimage="$source/staging_dir/host/bin/mkimage"
 	[ -x "$mkimage" ] || fail "OpenWrt host mkimage not found: $mkimage"

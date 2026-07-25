@@ -2,7 +2,7 @@
 
 本文记录当前 OpenWrt 适配所依据的板级硬件、DTS 固定参数和实机已确认结果。以后升级 OpenWrt、Linux 或重做补丁时，应以本文和 `dts/` 为回归基线；设备编号（如 `mmcblk0`/`mmcblk1`）可能随内核变化，不能作为硬件身份依据。
 
-实际构建以 `patches/openwrt/0001-tb-rk3399prod-board-support.patch` 中加入内核树的文件为准，`dts/` 是便于审阅的同步副本。刷新补丁时必须同时更新两处并检查差异；当前实机通过情况和未完成项目另见 `HARDWARE-STATUS.md`。
+实际板级 DTS 以 `patches/openwrt/0001-tb-rk3399prod-board-support.patch` 中加入内核树的文件为准，持久化镜像 profile 由 `0002-tb-rk3399prod-persistent-overlay.patch` 追加；`dts/` 是便于审阅的 DTS 同步副本。刷新板级补丁时必须同时更新 DTS 两处并检查差异；当前实机通过情况和未完成项目另见 `HARDWARE-STATUS.md`。
 
 ## 1. 软件基线
 
@@ -87,8 +87,9 @@ Linux 6.12 基线中，TCS4525/TCS4526 由兼容的 `fan53555` regulator 驱动�
 - 控制器别名 `mmc1 = &sdhci`，硬件节点 `sdhci@fe330000`，8-bit、不可移除。
 - HS400 1.8 V、Enhanced Strobe、eMMC PHY 均启用。
 - 实机容量约 29.1 GiB；HS400 Enhanced Strobe、CQE 和 ADMA 已识别。
-- Linux 下预期可作为普通块设备读写，但升级前应按容量、CID/名称识别设备，不要依赖 `mmcblkN` 编号。正式改分区或安装前必须保留 loader、parameter、trust、U-Boot 和原系统分区备份。
-- 原厂 GPT 使用 512-byte sector：`uboot@0x2000` 为 4 MiB，`trust@0x4000` 为 4 MiB，`boot_linux@0x6000` 为 96 MiB，`rootfs@0x36000` 占用剩余空间。工程生成的 64 MiB `boot_linux.img` 仅写入 `boot_linux`；完整映射和回滚边界见 `EMMC-INSTALL.md`。
+- Linux 下可作为普通块设备读写，但管理命令应按容量、CID/名称或 GPT `PARTLABEL` 识别设备，不要依赖 `mmcblkN` 编号。
+- 原厂 GPT 使用 512-byte sector：`uboot@0x2000` 为 4 MiB，`trust@0x4000` 为 4 MiB，`boot_linux@0x6000` 为 96 MiB，`rootfs@0x36000` 占用剩余空间。
+- 工程生成 64 MiB `boot_linux.img` 和 128 MiB `rootfs.img`。启动参数使用 `root=PARTLABEL=rootfs` 和 `fstools_overlay_fstype=ext4`；SquashFS 后面的全部剩余空间由 OpenWrt `fstools` 在首次启动时格式化为 ext4 `/overlay`。该设计不调整 GPT，也不依赖 eMMC 的动态设备编号。完整映射、持久化和重装边界见 `EMMC-INSTALL.md`。
 
 ## 5. 千兆以太网
 
