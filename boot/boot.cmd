@@ -2,7 +2,7 @@
 # Loaded by U-Boot distro_bootcmd from the boot_linux ext2 partition.
 
 setenv fitaddr 0x10000000
-setenv bootargs console=ttyS2,1500000n8 earlycon=uart8250,mmio32,0xff1a0000 loglevel=8 root=PARTLABEL=rootfs rootwait rootfstype=squashfs fstools_overlay_fstype=ext4
+setenv bootargs console=tty0 console=ttyS2,1500000n8 earlycon=uart8250,mmio32,0xff1a0000 loglevel=8 root=PARTLABEL=rootfs rootwait rootfstype=squashfs fstools_overlay_fstype=ext4
 
 if test -z "${devtype}"; then
 	setenv devtype mmc

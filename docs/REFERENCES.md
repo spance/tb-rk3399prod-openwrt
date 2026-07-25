@@ -16,6 +16,9 @@
 - [Linux v6.12 RTL8822CE PCIe driver](https://github.com/torvalds/linux/blob/v6.12/drivers/net/wireless/realtek/rtw88/rtw8822ce.c)
 - [OpenWrt v25.12.5 Realtek rtw88 package definitions](https://github.com/openwrt/openwrt/blob/f0a60eee2fe051741c643ea6118718aae1ef17fb/package/kernel/mac80211/realtek.mk)
 - [OpenWrt v25.12.5 Realtek firmware packages](https://github.com/openwrt/openwrt/blob/f0a60eee2fe051741c643ea6118718aae1ef17fb/package/firmware/linux-firmware/realtek.mk)
+- [Linux v6.12 Rockchip DRM Kconfig](https://github.com/torvalds/linux/blob/v6.12/drivers/gpu/drm/rockchip/Kconfig)
+- [Linux v6.12 Rockchip DW-HDMI binding](https://github.com/torvalds/linux/blob/v6.12/Documentation/devicetree/bindings/display/rockchip/rockchip%2Cdw-hdmi.yaml)
+- [Linux v6.12 RK3399 HDMI/VOP board example](https://github.com/torvalds/linux/blob/v6.12/arch/arm64/boot/dts/rockchip/rk3399-rock-pi-4.dtsi)
 - [OpenWrt v25.12.5 official release feed commits](https://downloads.openwrt.org/releases/25.12.5/targets/rockchip/armv8/feeds.buildinfo)
 - [OpenWrt v25.12.5 feeds implementation](https://github.com/openwrt/openwrt/blob/f0a60eee2fe051741c643ea6118718aae1ef17fb/scripts/feeds)
 

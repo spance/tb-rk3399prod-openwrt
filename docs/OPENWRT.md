@@ -21,7 +21,8 @@
 - USB2 EHCI/OHCI、USB3 xHCI、板载 Hub 电源和复位。
 - PCIe：默认启用，Gen1、x4 host，允许连接 x1 端点；无端点时 training timeout 与原厂 BSP 一致。
 - 外置 Wi-Fi：正式 profile 包含 RTL8822CE 的主线 `rtw88` PCIe 驱动；其依赖会自动带入芯片固件、mac80211、cfg80211、`iw`、无线脚本和监管数据库。
-- 板载/厂商专用无线集成、蓝牙、显示、摄像、音频和 NPU 不纳入当前目标。
+- HDMI console：内建 Rockchip DRM、VOPB、DW-HDMI、fbdev/fbcon，保留 UART2 并增加 `tty1` 键盘登录；详细设计和验收见 [HDMI Linux console](HDMI-CONSOLE.md)。
+- 板载/厂商专用无线集成、蓝牙、摄像、音频、图形桌面、GPU 和 NPU 不纳入当前目标。
 
 RTL8822CE 不需要静态 DTS 子节点，PCIe 枚举后由设备 ID 自动绑定。若以后改装 PCIe 有线网卡，仍需按具体型号增加 `igb`、`igc` 或 `r8169` 等驱动，并完成枚举、吞吐、错误计数和长时间稳定性验收。
 
@@ -45,7 +46,7 @@ root=PARTLABEL=rootfs rootwait rootfstype=squashfs fstools_overlay_fstype=ext4
 mmc dev 1
 setenv fitaddr 0x10000000
 fatload mmc 1:1 ${fitaddr} openwrt-rockchip-armv8-toybrick_tb-rk3399prod-initramfs-kernel.bin
-setenv bootargs console=ttyS2,1500000n8 earlycon=uart8250,mmio32,0xff1a0000 loglevel=8
+setenv bootargs console=tty0 console=ttyS2,1500000n8 earlycon=uart8250,mmio32,0xff1a0000 loglevel=8
 bootm ${fitaddr}
 ```
 

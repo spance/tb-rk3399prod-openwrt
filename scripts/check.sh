@@ -44,6 +44,7 @@ assert_file "$PROJECT_DIR/configs/openwrt.config"
 assert_file "$PROJECT_DIR/configs/feeds.conf"
 assert_file "$PROJECT_DIR/boot/boot.cmd"
 assert_file "$PROJECT_DIR/docs/BOOT-CHAIN.md"
+assert_file "$PROJECT_DIR/docs/HDMI-CONSOLE.md"
 
 [ "$(find "$PROJECT_DIR/patches/openwrt" -mindepth 1 -maxdepth 1 \
 	-type d | wc -l)" -eq 0 ] || \
@@ -87,10 +88,42 @@ grep -Eq '^src-git packages ' "$PROJECT_DIR/configs/feeds.conf" || \
 
 grep -Fq 'setenv fitaddr 0x10000000' "$PROJECT_DIR/boot/boot.cmd" || \
 	fail "boot script FIT address is missing or unexpected"
+grep -Fq 'console=tty0 console=ttyS2,1500000n8' "$PROJECT_DIR/boot/boot.cmd" || \
+	fail "boot script HDMI/serial dual console arguments are missing"
 grep -Fq 'root=PARTLABEL=rootfs' "$PROJECT_DIR/boot/boot.cmd" || \
 	fail "boot script persistent rootfs argument is missing"
 grep -Fq 'kmod-rtw88-8822ce' "$openwrt_patch" || \
 	fail "RTL8822CE PCIe wireless driver is missing from the device profile"
+grep -Fq 'kmod-usb-hid' "$openwrt_patch" || \
+	fail "USB HID support for the HDMI console is missing from the device profile"
+for config in \
+	'CONFIG_DRM=y' \
+	'CONFIG_DRM_FBDEV_EMULATION=y' \
+	'CONFIG_DRM_KMS_FB_HELPER=y' \
+	'CONFIG_DRM_ROCKCHIP=y' \
+	'CONFIG_FB=y' \
+	'CONFIG_FONT_8x16=y' \
+	'CONFIG_FRAMEBUFFER_CONSOLE=y' \
+	'CONFIG_FRAMEBUFFER_CONSOLE_DETECT_PRIMARY=y' \
+	'CONFIG_PHY_ROCKCHIP_INNO_HDMI=y' \
+	'CONFIG_ROCKCHIP_DW_HDMI=y'; do
+	grep -Fq "$config" "$openwrt_patch" || \
+		fail "HDMI console kernel setting is missing: $config"
+done
+grep -Fq 'tty1::askfirst:/usr/libexec/login.sh' "$openwrt_patch" || \
+	fail "HDMI tty1 login entry is missing"
+for dts_setting in \
+	'&hdmi {' \
+	'avdd-0v9-supply = <&vcca_0v9>;' \
+	'avdd-1v8-supply = <&vcca_1v8>;' \
+	'ddc-i2c-bus = <&i2c3>;' \
+	'&i2c3 {' \
+	'&vopb {' \
+	'&vopb_mmu {'; do
+	grep -Fq "$dts_setting" \
+		"$PROJECT_DIR/dts/rk3399pro-toybrick-prod.dtsi" || \
+		fail "HDMI device-tree setting is missing: $dts_setting"
+done
 
 if [ -d "$WORK_DIR/openwrt/.git" ]; then
 	[ "$(git -C "$WORK_DIR/openwrt" rev-parse HEAD)" = "$OPENWRT_COMMIT" ] || \

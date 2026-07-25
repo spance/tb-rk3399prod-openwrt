@@ -2,6 +2,8 @@
 
 面向 Toybrick TB-RK3399ProD 的 OpenWrt 25.12.5 板级适配。仓库只保存可维护的 DTS、U-Boot/OpenWrt 补丁、固定配置、构建脚本和设计文档；上游源码、工具链、调试日志、设备信息与编译产物均不提交。
 
+正式 profile 包含串口/HDMI 双 Linux console、RTL8822CE PCIe Wi-Fi、千兆以太网、USB、TF、eMMC 持久化 overlay 和 PCIe host；HDMI 音频、图形桌面、GPU、板载无线、蓝牙和 NPU 不在当前范围内。
+
 ## 构建
 
 在原生 Linux x86_64 主机执行：

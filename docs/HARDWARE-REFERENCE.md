@@ -17,7 +17,7 @@
 | Toybrick linux-x86 工具链 | commit `32505a8032d04e9320dbdb817b08bf67bdfb5a0c` |
 | OpenWrt target | `rockchip/armv8`，profile `toybrick_tb-rk3399prod` |
 
-当前正式 profile 默认启用 PCIe，并包含外置 RTL8822CE Wi-Fi 驱动。板载/厂商专用无线集成、蓝牙、显示、摄像、音频、GPU 功能和 NPU 不属于本阶段的完成条件。
+当前正式 profile 默认启用 PCIe、外置 RTL8822CE Wi-Fi 和 HDMI Linux 文本 console。板载/厂商专用无线集成、蓝牙、摄像、音频、图形桌面、GPU 功能和 NPU 不属于本阶段的完成条件。
 
 ## 2. SoC、内存与控制台
 
@@ -28,13 +28,14 @@
 | 内存 | 4 GiB LPDDR3，双通道；每通道 2 GiB、32-bit、双 CS，DDR 初始化日志为 800 MHz | 原厂 DDR 日志已确认 |
 | UART | UART2，`ttyS2`，1500000 baud，8N1 | 已确认 |
 | earlycon | `uart8250,mmio32,0xff1a0000` | 已确认 |
+| HDMI console | RK3399 VOPB + DW-HDMI，`tty0`/`tty1` | 软件已纳入，待实机验收 |
 | TSADC | `hw-tshut-mode=1`，`hw-tshut-polarity=1` | CPU/GPU thermal zone 已确认 |
 | LEDs | 蓝 GPIO2_A5、红 GPIO2_A4、绿 GPIO2_A3，均高电平有效 | DTS 固定值 |
 
 启动参数至少应保留：
 
 ```text
-console=ttyS2,1500000n8 earlycon=uart8250,mmio32,0xff1a0000
+console=tty0 console=ttyS2,1500000n8 earlycon=uart8250,mmio32,0xff1a0000
 ```
 
 ### 启动内存约束
@@ -115,7 +116,20 @@ Linux 6.12 基线中，TCS4525/TCS4526 由兼容的 `fan53555` regulator 驱动�
 - 板载 USB Hub 复位：GPIO4_C5，输出高。
 - 实机已确认 USB2/USB3 主控制器和板载 Hub 枚举；USB3 存储设备的持续吞吐仍需最终验收。
 
-## 7. PCIe
+## 7. HDMI console
+
+| 项目 | 固定值 |
+|---|---|
+| HDMI TX / PHY | `hdmi@ff940000`，Synopsys DW-HDMI + Rockchip INNO HDMI PHY |
+| 显示控制器 | VOPB `vop@ff900000` 及 `iommu@ff903f00` |
+| DDC | I2C3，SCL rise/fall `450/15 ns` |
+| 模拟电源 | `vcca_0v9` / `vcca_1v8` |
+| 内核终端 | `console=tty0`；`tty1::askfirst` |
+| 恢复终端 | UART2 1500000，始终保留并列在 bootargs 最后 |
+
+HDMI 只承担 Linux 文本 console；U-Boot 显示、HDMI 音频、桌面和 GPU 不在范围内。模式由 EDID 自动选择，不固定分辨率。详细验收见 [HDMI Linux console](HDMI-CONSOLE.md)。
+
+## 8. PCIe
 
 | 参数 | 固定值 |
 |---|---|
@@ -131,7 +145,7 @@ Linux 6.12 基线中，TCS4525/TCS4526 由兼容的 `fan53555` regulator 驱动�
 
 无端点时出现链路训练超时与厂商 BSP 行为一致，不代表供电或控制器必然故障。RTL8822CE 的 Wi-Fi 功能通过 PCIe 枚举，Linux 6.12 `rtw88_8822ce` 支持 PCI ID `10ec:c822` 和 `10ec:c82f`；正式 profile 选择 `kmod-rtw88-8822ce`，其 OpenWrt 依赖自动包含 `rtl8822ce-firmware`。蓝牙功能通常使用卡上的独立 USB 接口，本工程保持禁用。安装后必须验证 `lspci -nnk`、实际链路宽度/速率、AER 错误、固件加载、无线 PHY、吞吐与重启稳定性。
 
-## 8. 升级回归清单
+## 9. 升级回归清单
 
 升级 OpenWrt 或 Linux 后，至少保存以下输出，与本页逐项比较：
 
@@ -148,7 +162,7 @@ ethtool -S eth0
 ip -s link show dev eth0
 lsusb -t
 lspci -nnvv
-dmesg | grep -Ei 'pcie|aer|usb|xhci|ehci|ohci|stmmac|gmac'
+dmesg | grep -Ei 'pcie|aer|usb|xhci|ehci|ohci|stmmac|gmac|drm|vop|hdmi|fbcon'
 ```
 
-还应从构建后的 FIT 提取 DTB，确认 `model`、`compatible`、串口、RGMII delay、eMMC HS400、PCIe `status/max-link-speed/num-lanes` 和关键 regulator 没有在补丁刷新时丢失。升级验收顺序建议为：串口和电源 → CPU/温控 → TF/eMMC → 千兆网 → USB → 插有实物端点的 PCIe。
+还应从构建后的 FIT 提取 DTB，确认 `model`、`compatible`、串口、HDMI/VOPB、RGMII delay、eMMC HS400、PCIe `status/max-link-speed/num-lanes` 和关键 regulator 没有在补丁刷新时丢失。升级验收顺序建议为：串口和电源 → CPU/温控 → TF/eMMC → 千兆网 → USB → HDMI → 插有实物端点的 PCIe。

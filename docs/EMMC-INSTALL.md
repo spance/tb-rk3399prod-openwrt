@@ -90,7 +90,7 @@ source 0x00500000
 ```text
 mmc dev 0
 ext2load mmc 0:3 0x10000000 /openwrt.itb
-setenv bootargs console=ttyS2,1500000n8 earlycon=uart8250,mmio32,0xff1a0000 loglevel=8 root=PARTLABEL=rootfs rootwait rootfstype=squashfs fstools_overlay_fstype=ext4
+setenv bootargs console=tty0 console=ttyS2,1500000n8 earlycon=uart8250,mmio32,0xff1a0000 loglevel=8 root=PARTLABEL=rootfs rootwait rootfstype=squashfs fstools_overlay_fstype=ext4
 bootm 0x10000000
 ```
 
@@ -99,7 +99,7 @@ bootm 0x10000000
 ```text
 mmc dev 1
 fatload mmc 1:1 0x10000000 openwrt-rockchip-armv8-toybrick_tb-rk3399prod-initramfs-kernel.bin
-setenv bootargs console=ttyS2,1500000n8 earlycon=uart8250,mmio32,0xff1a0000 loglevel=8
+setenv bootargs console=tty0 console=ttyS2,1500000n8 earlycon=uart8250,mmio32,0xff1a0000 loglevel=8
 bootm 0x10000000
 ```
 
