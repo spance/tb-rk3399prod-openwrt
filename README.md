@@ -1,35 +1,53 @@
 # TB-RK3399ProD OpenWrt 适配工程
 
-本工程只保存 TB-RK3399ProD 的板级 DTS、U-Boot/OpenWrt 补丁、最小配置和可复现构建脚本。上游源码、工具链、调试日志和已编译固件均不纳入工程。
+面向 Toybrick TB-RK3399ProD 的 OpenWrt 25.12.5 板级适配。仓库只保存可维护的 DTS、U-Boot/OpenWrt 补丁、固定配置、构建脚本和设计文档；上游源码、工具链、调试日志、设备信息与编译产物均不提交。
 
-## 快速开始
+## 构建
 
 在原生 Linux x86_64 主机执行：
 
 ```sh
 make check
-make init
-make all
+make init JOBS=4
+make all JOBS=4
 make package
 ```
 
-- `make check`：执行离线项目结构、脚本语法、唯一来源和关键不变量检查；已有初始化工作树时还会核对上游 commit、补丁和同步文件。
-- `make init`：准备固定版本的全部上游源码和唯一 `packages` feed，应用补丁、同步 DTS、生成 OpenWrt 配置并下载所有编译源包。
-- `make all`：只校验既有初始化状态并构建 U-Boot、正常/恢复 FIT、`boot_linux.img`，以及带自动持久化 overlay 的 `rootfs.img`；不更新 feeds 或主动下载源码。
-- `make package`：校验并打包 `out/` 中的固件到 `dist/`。
+| 目标 | 职责 |
+|---|---|
+| `make check` | 离线检查工程结构、脚本、补丁、配置和关键不变量 |
+| `make init` | 获取固定上游和唯一 `packages` feed，应用补丁、同步 DTS、生成配置并下载全部源包 |
+| `make all` | 只验证既有初始化状态并编译 U-Boot/OpenWrt、生成分区镜像 |
+| `make package` | 校验 `out/` 并生成 `dist/` 发布包 |
 
-下载、编译和发布目录分别是 `.work/`、`out/`、`dist/`，均由工程生成并被版本控制忽略。详细依赖、版本和操作说明见 `docs/BUILD.md`；以后升级 OpenWrt/Linux 时的硬件回归基线见 `docs/HARDWARE-REFERENCE.md`。
+完整的主机依赖、版本固定、目录变量和构建行为见 [构建说明](docs/BUILD.md)。8 GiB 内存主机建议先使用 `JOBS=2`～`4`。
 
-## 目录
+## 构建产物
+
+| 文件 | 用途 |
+|---|---|
+| `out/uboot/uboot.img` | 当前厂商 miniloader 启动链使用的 U-Boot |
+| `out/openwrt/boot_linux.img` | eMMC 正常启动容器，包含 OpenWrt FIT 和 `boot.scr` |
+| `out/openwrt/rootfs.img` | SquashFS 系统和首次启动自动创建的持久化 ext4 overlay |
+| `out/openwrt/*initramfs-kernel.bin` | TF/串口恢复启动 |
+| `dist/*.tar.gz` | 最终发布包及 SHA256 |
+
+## 工程结构
 
 ```text
+boot/             boot_linux 容器使用的 U-Boot 启动脚本
 configs/          OpenWrt 最小配置和精确锁定的必要 feed
-boot/             eMMC boot_linux 分区使用的 U-Boot 启动脚本
-docs/             构建、硬件状态、启动内存和 eMMC 安装说明
+docs/             架构、构建、硬件、部署和维护文档
 dts/              TB-RK3399ProD 唯一权威 DTS/DTSI
-patches/u-boot/   官方 Toybrick U-Boot 补丁
 patches/openwrt/  OpenWrt v25.12.5 板级补丁
-scripts/          初始化、构建和打包脚本
+patches/u-boot/   Toybrick U-Boot 板级补丁
+scripts/          检查、初始化、构建和打包脚本
 ```
 
-刷写使用 Rockchip 官方 RKDevTool/rkdeveloptool，并沿用开发板官方 loader、parameter/分区表。本工程不提供自动刷写或整盘 `dd` 脚本。正常安装必须成对写入 `boot_linux.img@0x6000` 和 `rootfs.img@0x36000`；首次启动会自动把 eMMC `rootfs` 分区的剩余空间初始化为 ext4 `/overlay`。
+`.work/`、`out/` 和 `dist/` 均为可重新生成且不纳入版本控制的目录。板级参数和升级回归基线见 [硬件参考](docs/HARDWARE-REFERENCE.md)，当前验收状态见 [硬件状态](docs/HARDWARE-STATUS.md)。
+
+## 启动与部署
+
+`trust.img`、BL31/BL32、厂商 miniloader 和分区可变边界统一说明在 [启动链设计](docs/BOOT-CHAIN.md)。刷写映射、官方工具边界、恢复启动和上板验收独立维护在 [eMMC 部署与验收](docs/EMMC-INSTALL.md)。
+
+本工程不提供自动刷写或整盘 `dd` 脚本。当前发行版沿用已验证的官方 loader、`uboot`/`trust` 位置和 GPT；不要把 OpenWrt 镜像写入 `trust` 分区。

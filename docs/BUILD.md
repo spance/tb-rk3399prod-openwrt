@@ -122,6 +122,6 @@ dist/tb-rk3399prod-openwrt-25.12.5.tar.gz.sha256
 
 包内包含固件、逐文件 `SHA256SUMS` 和固定上游版本信息。OpenWrt 输出目录另外保留官方 `sha256sums`，工程生成的目录级清单使用 `TB-SHA256SUMS`，避免在 NTFS 上发生大小写文件名碰撞。`boot_linux.img` 是原厂 `boot_linux` 分区使用的 ext2 镜像，内部包含正常 FIT 和安全加载地址为 `0x10000000` 的 `boot.scr`；`rootfs.img` 提供只读 SquashFS 和首次启动自动创建的持久化 ext4 overlay。二者都不是 Rockchip `update.img`。
 
-## 刷写边界
+## 后续：部署
 
-使用 Rockchip 官方 RKDevTool/rkdeveloptool 和本板官方 loader、parameter/分区表。`uboot.img` 只对应 `uboot@0x2000`，`boot_linux.img` 只对应 `boot_linux@0x6000`，`rootfs.img` 只对应 `rootfs@0x36000`；不得覆盖 `trust@0x4000`。正常系统必须成对更新 `boot_linux.img` 与 `rootfs.img`。详细边界见 `EMMC-INSTALL.md`，本工程不提供自动刷机命令。
+构建和部署是两个独立阶段。产物写入映射、`trust.img` 保留要求、恢复启动与上板验收只在 [eMMC 部署与验收](EMMC-INSTALL.md) 中维护；启动固件和分区设计依据见 [启动链设计](BOOT-CHAIN.md)。

@@ -1,6 +1,8 @@
-# eMMC 正常系统与持久化 overlay
+# eMMC 部署与验收
 
-## 原厂分区边界
+本文只描述构建完成后的写入边界、恢复方法和上板验收。构建主机和产物生成流程见 [构建说明](BUILD.md)；`trust.img`、BL31/BL32 和分区设计依据见 [启动链设计](BOOT-CHAIN.md)。
+
+## 部署前提
 
 本板沿用原厂 GPT 和 512-byte sector：
 
@@ -11,9 +13,13 @@
 | `boot_linux` | `0x6000` | `0x30000` | 96 MiB |
 | `rootfs` | `0x36000` | grow | eMMC 剩余空间，约 29 GiB |
 
-`0x4000` 是 BL31/BL32 使用的 `trust`，不得写入 OpenWrt。`0x10000000` 是 FIT 的 DRAM 加载地址，也不是 eMMC LBA。
+当前厂商 miniloader 启动链要求保留 `uboot@0x2000` 和 `trust@0x4000`。`trust.img` 同时包含 BL31 和 BL32，并非可以因 OpenWrt 不使用 OP-TEE 应用就删除的普通系统分区；本工程不生成或更新它。
 
-## 构建产物及用途
+`boot_linux` 和 `rootfs` 并非 RK3399 在所有启动方案下的硬编码布局，但当前镜像、启动脚本和验收基线均按上表生成，因此本版本也不允许单独移动。若重新设计 GPT，必须同步修改启动脚本、镜像尺寸、根分区标签和部署规则，并作为新的完整方案重新验收。
+
+> `0x10000000` 是 FIT 的 DRAM 加载地址，不是 eMMC LBA；不得把它用于刷写工具的扇区地址。
+
+## 部署产物
 
 ```text
 out/uboot/uboot.img
@@ -60,7 +66,7 @@ GPT 分区名比 `mmcblk0p4` 一类动态编号稳定。`fstools_overlay_fstype=
 | 文件 | 唯一目标 |
 |---|---:|
 | `uboot.img` | `uboot`，LBA `0x2000` |
-| 原厂 `trust.img` | `trust`，LBA `0x4000`；本工程不修改 |
+| 原厂 `trust.img` | `trust`，LBA `0x4000`；保留且不由本工程更新 |
 | `boot_linux.img` | `boot_linux`，LBA `0x6000` |
 | `rootfs.img` | `rootfs`，LBA `0x36000` |
 

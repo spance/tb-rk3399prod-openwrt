@@ -11,6 +11,10 @@
 - 配置：`rk3399pro_defconfig`。
 - 设备树：厂商 `rk3399-evb`。
 
+## 可信固件
+
+当前厂商 miniloader 从独立 `trust` 分区加载 BL31 和 BL32，再进入独立 `uboot.img`。本工程只构建 U-Boot，不重新生成 `trust.img`。其中 BL32/OP-TEE 对当前 OpenWrt 应用不是必需功能，但 BL31 仍是现有启动链的一部分，因此不能删除整个 `trust` 分区。组成、内存占用和替代启动方案见 [启动链设计](BOOT-CHAIN.md)。
+
 ## 补丁
 
 1. `patches/u-boot/0001-modern-linux-host-build-compat.patch`

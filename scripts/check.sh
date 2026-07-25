@@ -43,6 +43,7 @@ assert_file "$PROJECT_DIR/dts/rk3399pro-toybrick-prod.dtsi"
 assert_file "$PROJECT_DIR/configs/openwrt.config"
 assert_file "$PROJECT_DIR/configs/feeds.conf"
 assert_file "$PROJECT_DIR/boot/boot.cmd"
+assert_file "$PROJECT_DIR/docs/BOOT-CHAIN.md"
 
 [ "$(find "$PROJECT_DIR/patches/openwrt" -mindepth 1 -maxdepth 1 \
 	-type d | wc -l)" -eq 0 ] || \
