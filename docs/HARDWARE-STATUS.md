@@ -15,7 +15,8 @@
 | USB2 | 已确认枚举 | 两组 EHCI/OHCI 和板载 Hub |
 | USB3 | 已确认枚举 | xHCI SuperSpeed 和板载 SuperSpeed Hub |
 | PCIe | 控制器确认 | host/PHY/电源正常进入 probe；无端点时 training timeout 与原厂一致 |
+| RTL8822CE Wi-Fi | 软件已纳入，待实机验收 | profile 包含 `rtw88_8822ce` 及其固件依赖；待确认 PCIe 枚举、双频无线和稳定性 |
 | NPU | 不要求 | 未纳入 OpenWrt 完成条件 |
-| Wi-Fi/蓝牙 | 不要求 | 保持禁用 |
+| 板载 Wi-Fi/蓝牙 | 不要求 | 保持禁用；RTL8822CE 的蓝牙 USB 功能也不启用 |
 
-尚未完成的最终验收：千兆网 30–60 分钟压力测试、USB3 实际存储传输、TF/eMMC 长时间读写、CPU 满载温控、PCIe 网卡实物枚举、正式 eMMC 系统安装、overlay 跨重启持久化和回滚。
+尚未完成的最终验收：千兆网 30–60 分钟压力测试、USB3 实际存储传输、TF/eMMC 长时间读写、CPU 满载温控、RTL8822CE 实物枚举和无线压力测试、正式 eMMC 系统安装、overlay 跨重启持久化和回滚。

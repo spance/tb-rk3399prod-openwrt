@@ -20,9 +20,10 @@
 - RTL8211E 千兆以太网：RGMII，TX/RX delay `0x28/0x20`。
 - USB2 EHCI/OHCI、USB3 xHCI、板载 Hub 电源和复位。
 - PCIe：默认启用，Gen1、x4 host，允许连接 x1 端点；无端点时 training timeout 与原厂 BSP 一致。
-- Wi-Fi、蓝牙、显示、摄像、音频和 NPU 不纳入目标。
+- 外置 Wi-Fi：正式 profile 包含 RTL8822CE 的主线 `rtw88` PCIe 驱动；其依赖会自动带入芯片固件、mac80211、cfg80211、`iw`、无线脚本和监管数据库。
+- 板载/厂商专用无线集成、蓝牙、显示、摄像、音频和 NPU 不纳入当前目标。
 
-PCIe 网卡型号确定后，需在 PCIe 配置中增加对应的 `igb`、`igc` 或 `r8169` 等驱动，并完成枚举、吞吐、错误计数和长时间稳定性验收。
+RTL8822CE 不需要静态 DTS 子节点，PCIe 枚举后由设备 ID 自动绑定。若以后改装 PCIe 有线网卡，仍需按具体型号增加 `igb`、`igc` 或 `r8169` 等驱动，并完成枚举、吞吐、错误计数和长时间稳定性验收。
 
 ## 正常启动与持久化 overlay
 

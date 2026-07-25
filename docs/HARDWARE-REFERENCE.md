@@ -17,7 +17,7 @@
 | Toybrick linux-x86 工具链 | commit `32505a8032d04e9320dbdb817b08bf67bdfb5a0c` |
 | OpenWrt target | `rockchip/armv8`，profile `toybrick_tb-rk3399prod` |
 
-当前正式 profile 默认启用 PCIe。Wi-Fi、蓝牙、显示、摄像、音频、GPU 功能和 NPU 不属于本适配的完成条件。
+当前正式 profile 默认启用 PCIe，并包含外置 RTL8822CE Wi-Fi 驱动。板载/厂商专用无线集成、蓝牙、显示、摄像、音频、GPU 功能和 NPU 不属于本阶段的完成条件。
 
 ## 2. SoC、内存与控制台
 
@@ -123,13 +123,13 @@ Linux 6.12 基线中，TCS4525/TCS4526 由兼容的 `fan53555` regulator 驱动�
 | PHY / host | 默认 `okay` |
 | 最大链路速率 | Gen1，`max-link-speed = 1` |
 | Root Complex lanes | x4，`num-lanes = 4` |
-| 插槽用途 | 可接 x1 PCIe 网卡 |
+| 插槽用途 | x1 PCIe 端点；当前目标为 RTL8822CE Wi-Fi 卡 |
 | ASPM | 禁用 L0s（`aspm-no-l0s`） |
 | EP GPIO | GPIO0_B4，高有效 |
 | CLKREQ# pinctrl | `pcie_clkreqn_cpm` |
 | 电源 | 0.9 V、1.8 V、3.3 V；3.3 V 由 GPIO2_A6 使能 |
 
-当前插槽没有端点设备。此时出现链路训练超时与厂商 BSP 行为一致，不代表供电或控制器必然故障。安装网卡后必须验证 `lspci -nnvv`、实际链路宽度/速率、AER 错误、驱动绑定、吞吐与重启稳定性；并按网卡型号启用 `igb`、`igc`、`r8169` 等对应驱动。
+无端点时出现链路训练超时与厂商 BSP 行为一致，不代表供电或控制器必然故障。RTL8822CE 的 Wi-Fi 功能通过 PCIe 枚举，Linux 6.12 `rtw88_8822ce` 支持 PCI ID `10ec:c822` 和 `10ec:c82f`；正式 profile 选择 `kmod-rtw88-8822ce`，其 OpenWrt 依赖自动包含 `rtl8822ce-firmware`。蓝牙功能通常使用卡上的独立 USB 接口，本工程保持禁用。安装后必须验证 `lspci -nnk`、实际链路宽度/速率、AER 错误、固件加载、无线 PHY、吞吐与重启稳定性。
 
 ## 8. 升级回归清单
 

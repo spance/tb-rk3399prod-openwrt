@@ -13,6 +13,9 @@
 - [OpenWrt v25.12.5 e2fsprogs package](https://github.com/openwrt/openwrt/blob/f0a60eee2fe051741c643ea6118718aae1ef17fb/package/utils/e2fsprogs/Makefile)
 - [OpenWrt v25.12.5 Rockchip armv8 kernel configuration](https://github.com/openwrt/openwrt/blob/f0a60eee2fe051741c643ea6118718aae1ef17fb/target/linux/rockchip/armv8/config-6.12)
 - [OpenWrt v25.12.5 generic Linux configuration](https://github.com/openwrt/openwrt/blob/f0a60eee2fe051741c643ea6118718aae1ef17fb/target/linux/generic/config-6.12)
+- [Linux v6.12 RTL8822CE PCIe driver](https://github.com/torvalds/linux/blob/v6.12/drivers/net/wireless/realtek/rtw88/rtw8822ce.c)
+- [OpenWrt v25.12.5 Realtek rtw88 package definitions](https://github.com/openwrt/openwrt/blob/f0a60eee2fe051741c643ea6118718aae1ef17fb/package/kernel/mac80211/realtek.mk)
+- [OpenWrt v25.12.5 Realtek firmware packages](https://github.com/openwrt/openwrt/blob/f0a60eee2fe051741c643ea6118718aae1ef17fb/package/firmware/linux-firmware/realtek.mk)
 - [OpenWrt v25.12.5 official release feed commits](https://downloads.openwrt.org/releases/25.12.5/targets/rockchip/armv8/feeds.buildinfo)
 - [OpenWrt v25.12.5 feeds implementation](https://github.com/openwrt/openwrt/blob/f0a60eee2fe051741c643ea6118718aae1ef17fb/scripts/feeds)
 

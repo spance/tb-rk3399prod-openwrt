@@ -3,8 +3,9 @@
  * Toybrick TB-RK3399ProD board support
  *
  * This description intentionally contains only the hardware required for a
- * headless OpenWrt system.  Display, camera, audio, Wi-Fi, Bluetooth and the
- * external NPU firmware interface are left disabled.
+ * headless OpenWrt system.  Display, camera, audio, on-board/vendor wireless,
+ * Bluetooth and the external NPU firmware interface are left disabled.
+ * External PCIe endpoints such as RTL8822CE are discovered by PCI enumeration.
  */
 
 #include "rk3399.dtsi"

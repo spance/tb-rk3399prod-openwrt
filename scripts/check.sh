@@ -89,6 +89,8 @@ grep -Fq 'setenv fitaddr 0x10000000' "$PROJECT_DIR/boot/boot.cmd" || \
 	fail "boot script FIT address is missing or unexpected"
 grep -Fq 'root=PARTLABEL=rootfs' "$PROJECT_DIR/boot/boot.cmd" || \
 	fail "boot script persistent rootfs argument is missing"
+grep -Fq 'kmod-rtw88-8822ce' "$openwrt_patch" || \
+	fail "RTL8822CE PCIe wireless driver is missing from the device profile"
 
 if [ -d "$WORK_DIR/openwrt/.git" ]; then
 	[ "$(git -C "$WORK_DIR/openwrt" rev-parse HEAD)" = "$OPENWRT_COMMIT" ] || \
