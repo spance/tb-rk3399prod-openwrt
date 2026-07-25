@@ -10,7 +10,7 @@ bash "$SCRIPT_DIR/check-env.sh"
 
 for required in \
 	"$OUT_DIR/uboot/uboot.img" \
-	"$OUT_DIR/openwrt"; do
+	"$OUT_DIR/openwrt/boot_linux.img"; do
 	[ -e "$required" ] || fail "missing build output: $required; run make all first"
 done
 

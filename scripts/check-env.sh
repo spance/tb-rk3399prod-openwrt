@@ -12,7 +12,8 @@ Debian/Ubuntu 可执行：
   sudo apt-get install -y build-essential flex bison gawk gcc-multilib \
     libc6-dev libc6-dev-i386 gettext git libncurses-dev libssl-dev \
     libelf-dev pkg-config python3 python3-setuptools rsync swig unzip \
-    zlib1g-dev file wget xz-utils bc device-tree-compiler bzip2 cpio
+    zlib1g-dev file wget xz-utils bc device-tree-compiler bzip2 cpio \
+    e2fsprogs
 EOF
 }
 
@@ -23,7 +24,7 @@ missing=()
 for command in git make gcc g++ python3 bc bison flex swig openssl dtc \
 	gawk gettext perl rsync unzip file wget tar xz bzip2 gzip cpio \
 	sha256sum readlink realpath stat nproc find xargs patch diff cmp \
-	pkg-config which getopt grep sed awk; do
+	pkg-config which getopt grep sed awk truncate touch mke2fs e2fsck debugfs; do
 	command -v "$command" >/dev/null 2>&1 || missing+=("$command")
 done
 

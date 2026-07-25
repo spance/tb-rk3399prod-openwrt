@@ -10,6 +10,7 @@
 | 温控 | 已确认 | CPU/GPU thermal zone、TSADC 正常 |
 | TF | 已确认启动 | Linux 50 MHz/4-bit/IDMAC；U-Boot 25 MHz/PIO 可靠读取 FIT |
 | eMMC | 已确认启动 | 29.1 GiB，HS400 Enhanced Strobe、CQE、ADMA |
+| eMMC `boot_linux` | 待实机写入验收 | 已生成 64 MiB ext2 镜像；含 `boot.scr` 和 initramfs FIT |
 | 千兆网 | 链路确认，压测中 | RTL8211E，1000/full，RX/TX flow control |
 | USB2 | 已确认枚举 | 两组 EHCI/OHCI 和板载 Hub |
 | USB3 | 已确认枚举 | xHCI SuperSpeed 和板载 SuperSpeed Hub |

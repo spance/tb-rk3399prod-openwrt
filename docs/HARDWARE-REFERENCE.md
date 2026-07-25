@@ -88,6 +88,7 @@ Linux 6.12 基线中，TCS4525/TCS4526 由兼容的 `fan53555` regulator 驱动�
 - HS400 1.8 V、Enhanced Strobe、eMMC PHY 均启用。
 - 实机容量约 29.1 GiB；HS400 Enhanced Strobe、CQE 和 ADMA 已识别。
 - Linux 下预期可作为普通块设备读写，但升级前应按容量、CID/名称识别设备，不要依赖 `mmcblkN` 编号。正式改分区或安装前必须保留 loader、parameter、trust、U-Boot 和原系统分区备份。
+- 原厂 GPT 使用 512-byte sector：`uboot@0x2000` 为 4 MiB，`trust@0x4000` 为 4 MiB，`boot_linux@0x6000` 为 96 MiB，`rootfs@0x36000` 占用剩余空间。工程生成的 64 MiB `boot_linux.img` 仅写入 `boot_linux`；完整映射和回滚边界见 `EMMC-INSTALL.md`。
 
 ## 5. 千兆以太网
 

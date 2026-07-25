@@ -13,7 +13,7 @@ make package
 ```
 
 - `make init`：下载固定版本的 Toybrick U-Boot、rkbin、官方交叉工具链和 OpenWrt，并应用本板补丁。
-- `make all`：构建 U-Boot 和默认启用 PCIe 的 OpenWrt 正式目标。
+- `make all`：构建 U-Boot、默认启用 PCIe 的 OpenWrt FIT 和可写入原厂 `boot_linux` 分区的 ext2 镜像。
 - `make package`：校验并打包 `out/` 中的固件到 `dist/`。
 
 下载、编译和发布目录分别是 `.work/`、`out/`、`dist/`，均由工程生成并被版本控制忽略。详细依赖、版本和操作说明见 `docs/BUILD.md`；以后升级 OpenWrt/Linux 时的硬件回归基线见 `docs/HARDWARE-REFERENCE.md`。
@@ -22,7 +22,8 @@ make package
 
 ```text
 configs/          唯一的 OpenWrt 最小配置
-docs/             构建、硬件状态、启动内存和适配历史
+boot/             eMMC boot_linux 分区使用的 U-Boot 启动脚本
+docs/             构建、硬件状态、启动内存和 eMMC 安装说明
 dts/              TB-RK3399ProD 最终 DTS/DTSI
 patches/u-boot/   官方 Toybrick U-Boot 补丁
 patches/openwrt/  OpenWrt v25.12.5 板级补丁

@@ -33,4 +33,4 @@ setenv bootargs console=ttyS2,1500000n8 earlycon=uart8250,mmio32,0xff1a0000 logl
 bootm ${fitaddr}
 ```
 
-当前配置特意设置 `IMAGES :=` 并构建 initramfs FIT，用于先验证启动和硬件。它不是已经验收的 eMMC 系统盘镜像。
+当前配置特意设置 `IMAGES :=` 并构建 initramfs FIT。工程随后把 FIT、可读的 `boot.cmd` 和生成的 `boot.scr` 放进 64 MiB ext2 `boot_linux.img`；脚本始终把 FIT 加载到安全地址 `0x10000000` 后执行 `bootm`。该镜像仍使用内存根文件系统，不是持久化 rootfs。

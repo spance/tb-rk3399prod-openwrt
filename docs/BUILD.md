@@ -9,7 +9,7 @@ sudo apt-get update
 sudo apt-get install -y build-essential flex bison gawk gcc-multilib \
   libc6-dev libc6-dev-i386 gettext git libncurses-dev libssl-dev libelf-dev \
   pkg-config python3 python3-setuptools rsync swig unzip zlib1g-dev file \
-  wget xz-utils bc device-tree-compiler bzip2 cpio
+  wget xz-utils bc device-tree-compiler bzip2 cpio e2fsprogs
 ```
 
 `make init` 会在下载前检查 Linux x86_64、必要命令，并实际编译/链接小型探针，确认 native libc、C++、32-bit libc、ncurses、OpenSSL、zlib、libelf、Python setuptools 和 Perl 模块可用；`swig` 与 `dtc` 也会执行版本探测。检查失败时会列出缺项和 Debian/Ubuntu 安装命令，不会等到长时间构建后才报错。默认目录：
@@ -74,7 +74,7 @@ make openwrt
 bash scripts/build.sh all 16
 ```
 
-U-Boot 使用厂商命令 `./make.sh rk3399pro`。OpenWrt 会更新/安装 feeds、执行 `make defconfig`、下载源码并构建；并行构建失败时自动以 `-j1 V=s` 重试，保留完整错误位置。
+U-Boot 使用厂商命令 `./make.sh rk3399pro`。OpenWrt 会更新/安装 feeds、执行 `make defconfig`、下载源码并构建；并行构建失败时自动以 `-j1 V=s` 重试，保留完整错误位置。OpenWrt 构建完成后，脚本使用其 host `mkimage` 和 `e2fsprogs` 生成 64 MiB `boot_linux.img`。
 
 ## 3. 打包
 
@@ -89,8 +89,8 @@ dist/tb-rk3399prod-openwrt-25.12.5.tar.gz
 dist/tb-rk3399prod-openwrt-25.12.5.tar.gz.sha256
 ```
 
-包内包含固件、逐文件 `SHA256SUMS` 和固定上游版本信息。OpenWrt 输出目录另外保留官方 `sha256sums`，工程生成的目录级清单使用 `TB-SHA256SUMS`，避免在 NTFS 上发生大小写文件名碰撞。当前 OpenWrt profile 生成的是已验证启动路径使用的 initramfs FIT；正式 eMMC 分区安装和回滚仍需单独实机验收，不能把该归档误当作 Rockchip `update.img`。
+包内包含固件、逐文件 `SHA256SUMS` 和固定上游版本信息。OpenWrt 输出目录另外保留官方 `sha256sums`，工程生成的目录级清单使用 `TB-SHA256SUMS`，避免在 NTFS 上发生大小写文件名碰撞。`boot_linux.img` 是原厂 `boot_linux` 分区使用的 ext2 镜像，内部包含 initramfs FIT 和安全加载地址为 `0x10000000` 的 `boot.scr`；它不是 Rockchip `update.img`，也不提供持久化 rootfs。
 
 ## 刷写边界
 
-使用 Rockchip 官方 RKDevTool/rkdeveloptool 和本板官方 loader、parameter/分区表。U-Boot 产物只写 U-Boot 分区，不连带改写 loader/trust；本工程不提供自动刷机命令。
+使用 Rockchip 官方 RKDevTool/rkdeveloptool 和本板官方 loader、parameter/分区表。`uboot.img` 只对应 `uboot@0x2000`，`boot_linux.img` 只对应 `boot_linux@0x6000`；不得覆盖 `trust@0x4000`。详细边界见 `EMMC-INSTALL.md`，本工程不提供自动刷机命令。

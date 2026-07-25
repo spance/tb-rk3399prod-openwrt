@@ -6,4 +6,5 @@
 - `HARDWARE-REFERENCE.md`：板级硬件、关键电气/总线参数和升级回归基线。
 - `HARDWARE-STATUS.md`：已确认和待验收硬件状态。
 - `BOOT-MEMORY-MAP.md`：TEE/FIT/内核地址约束。
+- `EMMC-INSTALL.md`：原厂 GPT 分区映射、boot_linux 镜像及刷写边界。
 - `REFERENCES.md`：Toybrick 官方板卡、内核和 U-Boot 资料链接。

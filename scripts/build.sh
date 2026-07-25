@@ -68,6 +68,21 @@ build_openwrt()
 		-name profiles.json \) \
 		-print0)
 	[ "$found" -eq 1 ] || fail "no TB-RK3399ProD OpenWrt output was found"
+
+	fit_count=0
+	fit_image=
+	while IFS= read -r -d '' file; do
+		fit_image=$file
+		fit_count=$((fit_count + 1))
+	done < <(find "$dest" -maxdepth 1 -type f \
+		-name '*toybrick_tb-rk3399prod-initramfs-kernel.bin' -print0)
+	[ "$fit_count" -eq 1 ] || \
+		fail "expected exactly one TB-RK3399ProD initramfs FIT, found $fit_count"
+
+	mkimage="$source/staging_dir/host/bin/mkimage"
+	[ -x "$mkimage" ] || fail "OpenWrt host mkimage not found: $mkimage"
+	bash "$SCRIPT_DIR/make-boot-linux.sh" \
+		"$fit_image" "$mkimage" "$dest/boot_linux.img"
 	(
 		cd "$dest"
 		find . -maxdepth 1 -type f ! -name TB-SHA256SUMS -print0 | \
