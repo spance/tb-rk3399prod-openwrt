@@ -6,7 +6,7 @@ check:
 	bash scripts/check.sh
 
 init:
-	bash scripts/init.sh
+	bash scripts/init.sh "$(JOBS)"
 
 uboot:
 	bash scripts/build.sh uboot

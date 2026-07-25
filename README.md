@@ -14,8 +14,8 @@ make package
 ```
 
 - `make check`：执行离线项目结构、脚本语法、唯一来源和关键不变量检查；已有初始化工作树时还会核对上游 commit、补丁和同步文件。
-- `make init`：下载固定版本的 Toybrick U-Boot、rkbin、官方交叉工具链和 OpenWrt，应用本板补丁，并同步唯一的板级 DTS 源文件。
-- `make all`：构建 U-Boot、正常/恢复 FIT、`boot_linux.img`，以及带自动持久化 overlay 的 `rootfs.img`。
+- `make init`：准备固定版本的全部上游源码和唯一 `packages` feed，应用补丁、同步 DTS、生成 OpenWrt 配置并下载所有编译源包。
+- `make all`：只校验既有初始化状态并构建 U-Boot、正常/恢复 FIT、`boot_linux.img`，以及带自动持久化 overlay 的 `rootfs.img`；不更新 feeds 或主动下载源码。
 - `make package`：校验并打包 `out/` 中的固件到 `dist/`。
 
 下载、编译和发布目录分别是 `.work/`、`out/`、`dist/`，均由工程生成并被版本控制忽略。详细依赖、版本和操作说明见 `docs/BUILD.md`；以后升级 OpenWrt/Linux 时的硬件回归基线见 `docs/HARDWARE-REFERENCE.md`。
@@ -23,7 +23,7 @@ make package
 ## 目录
 
 ```text
-configs/          OpenWrt 最小配置和精确锁定的 feeds
+configs/          OpenWrt 最小配置和精确锁定的必要 feed
 boot/             eMMC boot_linux 分区使用的 U-Boot 启动脚本
 docs/             构建、硬件状态、启动内存和 eMMC 安装说明
 dts/              TB-RK3399ProD 唯一权威 DTS/DTSI

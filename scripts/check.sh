@@ -22,6 +22,17 @@ for script in "$SCRIPT_DIR"/*.sh; do
 	bash -n "$script"
 done
 
+if grep -Eq 'scripts/feeds|make[[:space:]]+(defconfig|download)|init\.sh' \
+	"$SCRIPT_DIR/build.sh"; then
+	fail "build stage must not initialize feeds, configuration or downloads"
+fi
+grep -Fq './scripts/feeds update -a' "$SCRIPT_DIR/init.sh" || \
+	fail "init stage does not update OpenWrt feeds"
+grep -Fq 'make defconfig' "$SCRIPT_DIR/init.sh" || \
+	fail "init stage does not generate the OpenWrt configuration"
+grep -Fq 'make download' "$SCRIPT_DIR/init.sh" || \
+	fail "init stage does not download OpenWrt source archives"
+
 git -C "$PROJECT_DIR" diff --check
 git -C "$PROJECT_DIR" diff --cached --check
 
@@ -63,13 +74,15 @@ assert_exact_line "$PROJECT_DIR/configs/openwrt.config" \
 assert_exact_line "$PROJECT_DIR/configs/openwrt.config" \
 	'CONFIG_TARGET_ROOTFS_INITRAMFS=y'
 
-[ "$(wc -l < "$PROJECT_DIR/configs/feeds.conf")" -eq 5 ] || \
-	fail "configs/feeds.conf must contain exactly five pinned feeds"
+[ "$(wc -l < "$PROJECT_DIR/configs/feeds.conf")" -eq 1 ] || \
+	fail "configs/feeds.conf must contain exactly one required feed"
 while IFS= read -r feed; do
 	printf '%s\n' "$feed" | grep -Eq \
 		'^src-git [a-z0-9_-]+ https://[^[:space:]]+\^[0-9a-f]{40}$' || \
 		fail "feed is not pinned to an exact commit: $feed"
 done < "$PROJECT_DIR/configs/feeds.conf"
+grep -Eq '^src-git packages ' "$PROJECT_DIR/configs/feeds.conf" || \
+	fail "the required OpenWrt packages feed is missing"
 
 grep -Fq 'setenv fitaddr 0x10000000' "$PROJECT_DIR/boot/boot.cmd" || \
 	fail "boot script FIT address is missing or unexpected"
@@ -83,6 +96,13 @@ if [ -d "$WORK_DIR/openwrt/.git" ]; then
 	cmp -s "$PROJECT_DIR/configs/feeds.conf" \
 		"$WORK_DIR/openwrt/feeds.conf" || \
 		fail "OpenWrt worktree feeds.conf differs from the canonical file"
+	feeds_match_config "$WORK_DIR/openwrt" "$PROJECT_DIR/configs/feeds.conf" || \
+		fail "OpenWrt feed checkout differs from the pinned configuration"
+	[ -f "$WORK_DIR/openwrt/.config" ] || \
+		fail "OpenWrt configuration has not been initialized"
+	grep -Fqx 'CONFIG_TARGET_rockchip_armv8_DEVICE_toybrick_tb-rk3399prod=y' \
+		"$WORK_DIR/openwrt/.config" || \
+		fail "OpenWrt worktree does not select the board profile"
 
 	rockchip_makefile="$WORK_DIR/openwrt/target/linux/rockchip/Makefile"
 	kernel_patchver=$(sed -n \

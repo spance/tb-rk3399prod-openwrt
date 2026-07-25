@@ -100,6 +100,43 @@ ensure_patches_applied()
 	done
 }
 
+feeds_match_config()
+{
+	openwrt_dir=$1
+	feeds_config=$2
+	expected=0
+
+	while read -r kind name location extra; do
+		case "$kind" in
+		''|'#'*) continue ;;
+		esac
+		[ "$kind" = src-git ] || return 1
+		[ -z "${extra:-}" ] || return 1
+		url=${location%^*}
+		commit=${location##*^}
+		[ "$url" != "$location" ] || return 1
+		expected=$((expected + 1))
+
+		repo="$openwrt_dir/feeds/$name"
+		[ -d "$repo/.git" ] || return 1
+		[ -f "$openwrt_dir/feeds/$name.index" ] || return 1
+		[ "$(git -C "$repo" remote get-url origin 2>/dev/null)" = "$url" ] || \
+			return 1
+		[ "$(git -C "$repo" rev-parse HEAD 2>/dev/null)" = "$commit" ] || \
+			return 1
+		git -C "$repo" diff --quiet || return 1
+		git -C "$repo" diff --cached --quiet || return 1
+	done < "$feeds_config"
+
+	[ "$expected" -gt 0 ] || return 1
+	actual=0
+	for repo in "$openwrt_dir"/feeds/*; do
+		[ -d "$repo/.git" ] || continue
+		actual=$((actual + 1))
+	done
+	[ "$actual" -eq "$expected" ]
+}
+
 reset_generated_dir()
 {
 	dir=$(readlink -m "$1")

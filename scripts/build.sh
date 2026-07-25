@@ -19,7 +19,14 @@ case "$jobs" in
 esac
 [ "$jobs" -gt 0 ] || fail "jobs must be greater than zero"
 
-bash "$SCRIPT_DIR/init.sh"
+bash "$SCRIPT_DIR/check-env.sh"
+[ -d "$WORK_DIR/u-boot/.git" ] || \
+	fail "U-Boot worktree is not initialized; run make init first"
+[ -d "$WORK_DIR/openwrt/.git" ] || \
+	fail "OpenWrt worktree is not initialized; run make init first"
+[ -f "$WORK_DIR/BASELINES" ] || \
+	fail "initialization baseline record is missing; run make init first"
+bash "$SCRIPT_DIR/check.sh"
 
 build_uboot()
 {
@@ -42,15 +49,9 @@ build_uboot()
 build_openwrt()
 {
 	source="$WORK_DIR/openwrt"
-	config="$PROJECT_DIR/configs/openwrt.config"
 
 	(
 		cd "$source"
-		./scripts/feeds update -a
-		./scripts/feeds install -a
-		cp "$config" .config
-		make defconfig
-		make download -j"$jobs"
 		make -j"$jobs" || make -j1 V=s
 	)
 

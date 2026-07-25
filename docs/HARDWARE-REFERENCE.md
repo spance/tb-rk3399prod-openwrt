@@ -2,7 +2,7 @@
 
 本文记录当前 OpenWrt 适配所依据的板级硬件、DTS 固定参数和实机已确认结果。以后升级 OpenWrt、Linux 或重做补丁时，应以本文和 `dts/` 为回归基线；设备编号（如 `mmcblk0`/`mmcblk1`）可能随内核变化，不能作为硬件身份依据。
 
-`dts/rk3399pro-toybrick-prod.dts` 和 `.dtsi` 是实际构建使用的唯一板级设备树来源。`make init` 会读取 OpenWrt Rockchip target 的内核补丁版本，并通过 `scripts/sync-openwrt-dts.sh` 覆写到对应源码树；`patches/openwrt/0001-tb-rk3399prod-board-support.patch` 只保存 profile、DTB 构建入口和必要的内核 binding 修改，不再包含完整 DTS。以后修改硬件描述只改 `dts/`，当前实机通过情况和未完成项目另见 `HARDWARE-STATUS.md`。
+`dts/rk3399pro-toybrick-prod.dts` 和 `.dtsi` 是实际构建使用的唯一板级设备树来源。`make init` 会读取 OpenWrt Rockchip target 的内核补丁版本，并通过 `scripts/sync-openwrt-dts.sh` 覆写到对应源码树；`patches/openwrt/0001-tb-rk3399prod-board-support.patch` 只保存 profile、DTB 构建入口和必要的内核 binding 修改，不再包含完整 DTS。以后修改硬件描述只改 `dts/`，然后重新执行 `make init` 再构建。当前实机通过情况和未完成项目另见 `HARDWARE-STATUS.md`。
 
 ## 1. 软件基线
 

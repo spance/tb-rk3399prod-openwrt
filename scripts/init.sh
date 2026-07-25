@@ -5,6 +5,13 @@ SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 # shellcheck source=lib.sh
 . "$SCRIPT_DIR/lib.sh"
 
+[ "$#" -le 1 ] || fail "usage: $0 [jobs]"
+jobs=${1:-$(nproc)}
+case "$jobs" in
+''|*[!0-9]*) fail "jobs must be a positive integer" ;;
+esac
+[ "$jobs" -gt 0 ] || fail "jobs must be greater than zero"
+
 bash "$SCRIPT_DIR/check-env.sh"
 require_case_sensitive_dir "$WORK_DIR"
 
@@ -28,6 +35,24 @@ install -m 0644 "$PROJECT_DIR/configs/feeds.conf" \
 	"$WORK_DIR/openwrt/feeds.conf"
 cmp -s "$PROJECT_DIR/configs/feeds.conf" "$WORK_DIR/openwrt/feeds.conf" || \
 	fail "OpenWrt feeds configuration synchronization failed"
+
+if ! feeds_match_config "$WORK_DIR/openwrt" \
+	"$PROJECT_DIR/configs/feeds.conf"; then
+	(
+		cd "$WORK_DIR/openwrt"
+		retry 3 10 ./scripts/feeds update -a
+	)
+fi
+feeds_match_config "$WORK_DIR/openwrt" "$PROJECT_DIR/configs/feeds.conf" || \
+	fail "OpenWrt feeds do not match the pinned configuration; use an empty TB_WORK_DIR"
+
+(
+	cd "$WORK_DIR/openwrt"
+	./scripts/feeds install -a
+	install -m 0644 "$PROJECT_DIR/configs/openwrt.config" .config
+	make defconfig
+	make download -j"$jobs"
+)
 
 printf '%s\n' \
 	"U-Boot=$UBOOT_COMMIT" \
