@@ -12,7 +12,7 @@ make all
 make package
 ```
 
-- `make init`：下载固定版本的 Toybrick U-Boot、rkbin、官方交叉工具链和 OpenWrt，并应用本板补丁。
+- `make init`：下载固定版本的 Toybrick U-Boot、rkbin、官方交叉工具链和 OpenWrt，应用本板补丁，并同步唯一的板级 DTS 源文件。
 - `make all`：构建 U-Boot、正常/恢复 FIT、`boot_linux.img`，以及带自动持久化 overlay 的 `rootfs.img`。
 - `make package`：校验并打包 `out/` 中的固件到 `dist/`。
 
@@ -24,7 +24,7 @@ make package
 configs/          唯一的 OpenWrt 最小配置
 boot/             eMMC boot_linux 分区使用的 U-Boot 启动脚本
 docs/             构建、硬件状态、启动内存和 eMMC 安装说明
-dts/              TB-RK3399ProD 最终 DTS/DTSI
+dts/              TB-RK3399ProD 唯一权威 DTS/DTSI
 patches/u-boot/   官方 Toybrick U-Boot 补丁
 patches/openwrt/  OpenWrt v25.12.5 板级补丁
 scripts/          初始化、构建和打包脚本

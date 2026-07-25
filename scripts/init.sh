@@ -21,10 +21,23 @@ apply_patch_set "$WORK_DIR/u-boot" .tb-rk3399prod-patches-applied \
 
 ensure_checkout "$OPENWRT_URL" "refs/tags/$OPENWRT_TAG" "$OPENWRT_COMMIT" \
 	"$WORK_DIR/openwrt"
+openwrt_patch="$PROJECT_DIR/patches/openwrt/0001-tb-rk3399prod-board-support.patch"
+openwrt_marker="$WORK_DIR/openwrt/.tb-rk3399prod-patch-applied"
+if [ -f "$openwrt_marker" ] && \
+	! git -C "$WORK_DIR/openwrt" apply --reverse --check "$openwrt_patch" \
+		>/dev/null 2>&1; then
+	migration_patch="$PROJECT_DIR/patches/openwrt/migrations/0001-v1-profile-to-persistent-rootfs.patch"
+	if git -C "$WORK_DIR/openwrt" apply --check "$migration_patch"; then
+		git -C "$WORK_DIR/openwrt" apply "$migration_patch"
+		git -C "$WORK_DIR/openwrt" diff --check
+		git -C "$WORK_DIR/openwrt" apply --reverse --check "$openwrt_patch" || \
+			fail "OpenWrt worktree migration did not reach the expected patch state"
+		echo "Migrated existing OpenWrt worktree to the consolidated board profile"
+	fi
+fi
 apply_patch_set "$WORK_DIR/openwrt" .tb-rk3399prod-patch-applied \
-	"$PROJECT_DIR/patches/openwrt/0001-tb-rk3399prod-board-support.patch"
-apply_patch_set "$WORK_DIR/openwrt" .tb-rk3399prod-overlay-patch-applied \
-	"$PROJECT_DIR/patches/openwrt/0002-tb-rk3399prod-persistent-overlay.patch"
+	"$openwrt_patch"
+bash "$SCRIPT_DIR/sync-openwrt-dts.sh" "$WORK_DIR/openwrt"
 
 printf '%s\n' \
 	"U-Boot=$UBOOT_COMMIT" \

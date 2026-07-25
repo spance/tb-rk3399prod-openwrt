@@ -24,7 +24,7 @@ missing=()
 for command in git make gcc g++ python3 bc bison flex swig openssl dtc \
 	gawk gettext perl rsync unzip file wget tar xz bzip2 gzip cpio \
 	sha256sum readlink realpath stat nproc find xargs patch diff cmp \
-	pkg-config which getopt grep sed awk od tr truncate touch mke2fs e2fsck debugfs; do
+	pkg-config which getopt grep sed awk od tr install truncate touch mke2fs e2fsck debugfs; do
 	command -v "$command" >/dev/null 2>&1 || missing+=("$command")
 done
 

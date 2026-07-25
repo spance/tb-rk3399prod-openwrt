@@ -53,6 +53,10 @@ OpenWrt 只使用一个工作树和一个正式配置，PCIe host 默认启用�
 
 初始化是幂等的。网络 fetch 会自动重试三次；中断后再次执行可以继续未完成的初始 checkout。脚本会核对 commit 和补丁状态，不会静默切换到新版上游。
 
+`dts/rk3399pro-toybrick-prod.dts` 和 `.dtsi` 是板级设备树的唯一权威文件。每次初始化都会读取 OpenWrt Rockchip target 的 `KERNEL_PATCHVER`，将这两个文件覆写到对应的 `target/linux/rockchip/files-<版本>/arch/arm64/boot/dts/rockchip/`，然后逐字节校验。OpenWrt 补丁不再保存 DTS 副本；更新设备树后直接重新运行 `make init` 或任意 `make openwrt/all` 即可同步。
+
+如果 `.work/openwrt` 来自本工程较早版本，初始化会用 `patches/openwrt/migrations/` 中的小型 profile 迁移补丁就地升级，再核对合并后的正式补丁状态；它不删除既有 OpenWrt 编译树，也不包含 DTS 副本。全新初始化不会应用迁移补丁。
+
 ## 2. 构建
 
 构建全部目标：

@@ -1,28 +1,25 @@
 From: TB-RK3399ProD OpenWrt port
-Subject: [PATCH] rockchip: add persistent rootfs and overlay image
+Subject: migrate an existing v1 worktree to the consolidated board profile
 
-Install both the normal FIT kernel and a bounded SquashFS root image.  The
-board keeps the vendor GPT rootfs partition, so fstools can use the space
-after SquashFS as a loop-backed ext4 rootfs_data overlay.
-
-Include mkfs.ext4 for first-boot formatting and block-mount for storage
-inspection and administration.
-
----
- target/linux/rockchip/image/armv8.mk | 7 +++++--
- 1 file changed, 5 insertions(+), 2 deletions(-)
+This patch is only used when .work/openwrt already contains the original
+board patch but not the persistent-rootfs profile changes. Fresh checkouts
+receive the final profile directly from 0001-tb-rk3399prod-board-support.patch.
 
 diff --git a/target/linux/rockchip/image/armv8.mk b/target/linux/rockchip/image/armv8.mk
 --- a/target/linux/rockchip/image/armv8.mk
 +++ b/target/linux/rockchip/image/armv8.mk
-@@ -442,5 +442,8 @@ define Device/toybrick_tb-rk3399prod
+@@ -443,8 +443,11 @@ define Device/toybrick_tb-rk3399prod
    DEVICE_DTS := rk3399pro-toybrick-prod
    SUPPORTED_DEVICES := rockchip,rk3399pro-toybrick-prod
    KERNEL := kernel-bin | fit none $$(KDIR)/image-rk3399pro-toybrick-prod.dtb
 -  IMAGES :=
 -  DEVICE_PACKAGES := ethtool iperf3 kmod-fs-vfat kmod-usb-storage \
+-	mmc-utils pciutils usbutils kmod-usb-storage-uas
 +  KERNEL_INSTALL := 1
 +  IMAGES := rootfs.img
 +  IMAGE_SIZE := 128m
 +  IMAGE/rootfs.img := append-rootfs | check-size 120m | pad-to 128M
 +  DEVICE_PACKAGES := block-mount e2fsprogs ethtool iperf3 kmod-fs-vfat kmod-usb-storage \
++	mmc-utils pciutils usbutils kmod-usb-storage-uas
+ endef
+ TARGET_DEVICES += toybrick_tb-rk3399prod
