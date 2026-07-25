@@ -1,0 +1,31 @@
+// SPDX-License-Identifier: (GPL-2.0+ OR MIT)
+
+/dts-v1/;
+#include "rk3399pro-toybrick-prod.dtsi"
+
+/ {
+	model = "Toybrick TB-RK3399ProD";
+};
+
+&pcie_phy {
+	status = "okay";
+};
+
+&pcie0 {
+	aspm-no-l0s;
+	ep-gpios = <&gpio0 RK_PB4 GPIO_ACTIVE_HIGH>;
+	max-link-speed = <1>;
+	num-lanes = <4>;
+	pinctrl-names = "default";
+	pinctrl-0 = <&pcie_clkreqn_cpm>;
+	vpcie0v9-supply = <&vcca_0v9>;
+	vpcie1v8-supply = <&vcca_1v8>;
+	vpcie3v3-supply = <&vcc_pcie>;
+	status = "okay";
+};
+
+&vcc_pcie {
+	regulator-always-on;
+	regulator-boot-on;
+	status = "okay";
+};

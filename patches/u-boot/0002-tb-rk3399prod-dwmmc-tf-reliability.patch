@@ -1,0 +1,175 @@
+diff --git a/arch/arm/dts/rk3399-evb.dts b/arch/arm/dts/rk3399-evb.dts
+index 5605eaa..561b726 100644
+--- a/arch/arm/dts/rk3399-evb.dts
++++ b/arch/arm/dts/rk3399-evb.dts
+@@ -245,6 +245,12 @@
+ 
+ &sdmmc {
+ 	bus-width = <4>;
++	/*
++	 * TB-RK3399ProD: keep the removable-card path conservative in U-Boot.
++	 * Linux will configure its own clock after the FIT has been loaded.
++	 */
++	max-frequency = <25000000>;
++	fifo-mode;
+ 	status = "okay";
+ };
+ 
+diff --git a/configs/rk3399pro_defconfig b/configs/rk3399pro_defconfig
+index 883ac14..f0f7220 100644
+--- a/configs/rk3399pro_defconfig
++++ b/configs/rk3399pro_defconfig
+@@ -1,4 +1,5 @@
+ CONFIG_ARM=y
++CONFIG_LOCALVERSION="-tb-rk3399prod"
+ CONFIG_ARCH_ROCKCHIP=y
+ CONFIG_SPL_LIBCOMMON_SUPPORT=y
+ CONFIG_SPL_LIBGENERIC_SUPPORT=y
+diff --git a/drivers/mmc/dw_mmc.c b/drivers/mmc/dw_mmc.c
+index f8347f0..7e4a822 100644
+--- a/drivers/mmc/dw_mmc.c
++++ b/drivers/mmc/dw_mmc.c
+@@ -13,6 +13,7 @@
+ #include <memalign.h>
+ #include <mmc.h>
+ #include <dwmmc.h>
++#include <wait_bit.h>
+ #ifdef CONFIG_DM_GPIO
+ #include <asm/gpio.h>
+ #include <asm-generic/gpio.h>
+@@ -121,6 +122,9 @@ static void dwmci_prepare_data(struct dwmci_host *host,
+ 
+ 	dwmci_wait_reset(host, DWMCI_CTRL_FIFO_RESET);
+ 
++	/* Drop completion state left by the preceding IDMAC transfer. */
++	dwmci_writel(host, DWMCI_IDSTS, 0xFFFFFFFF);
++
+ 	data_start = (ulong)cur_idmac;
+ 	dwmci_writel(host, DWMCI_DBADDR, (ulong)cur_idmac);
+ 
+@@ -182,7 +186,14 @@ static int dwmci_data_transfer(struct dwmci_host *host, struct mmc_data *data)
+ 		mask = dwmci_readl(host, DWMCI_RINTSTS);
+ 		/* Error during data transfer. */
+ 		if (mask & (DWMCI_DATA_ERR | DWMCI_DATA_TOUT)) {
+-			debug("%s: DATA ERROR!\n", __func__);
++			printf("DWMMC %s data error: RINTSTS=%08x STATUS=%08x "
++			       "IDSTS=%08x CTRL=%08x BMOD=%08x mode=%s\n",
++			       host->name, mask,
++			       dwmci_readl(host, DWMCI_STATUS),
++			       dwmci_readl(host, DWMCI_IDSTS),
++			       dwmci_readl(host, DWMCI_CTRL),
++			       dwmci_readl(host, DWMCI_BMOD),
++			       host->fifo_mode ? "PIO" : "IDMAC");
+ 
+ 			dwmci_wait_reset(host, DWMCI_RESET_ALL);
+ 			dwmci_writel(host, DWMCI_CMD, DWMCI_CMD_PRV_DAT_WAIT |
+@@ -276,8 +287,11 @@ write_again:
+ 
+ 		/* Check for timeout. */
+ 		if (get_timer(start) > timeout) {
+-			debug("%s: Timeout waiting for data!\n",
+-			      __func__);
++			printf("DWMMC %s data timeout: RINTSTS=%08x STATUS=%08x "
++			       "IDSTS=%08x mode=%s\n", host->name, mask,
++			       dwmci_readl(host, DWMCI_STATUS),
++			       dwmci_readl(host, DWMCI_IDSTS),
++			       host->fifo_mode ? "PIO" : "IDMAC");
+ 			ret = -ETIMEDOUT;
+ 			break;
+ 		}
+@@ -421,10 +435,35 @@ static int dwmci_send_cmd(struct mmc *mmc, struct mmc_cmd *cmd,
+ 	}
+ 
+ 	if (data) {
+-		ret = dwmci_data_transfer(host, data);
++		int data_ret = dwmci_data_transfer(host, data);
++
++		ret = data_ret;
+ 
+ 		/* only dma mode need it */
+ 		if (!host->fifo_mode) {
++			int idmac_ret;
++
++			if (data->flags == MMC_DATA_READ)
++				mask = DWMCI_IDINTEN_RI;
++			else
++				mask = DWMCI_IDINTEN_TI;
++
++			/* Do not disable IDMAC until it has completed the transfer. */
++			idmac_ret = wait_for_bit_le32(host->ioaddr + DWMCI_IDSTS,
++						      mask, true, 1000, false);
++			if (idmac_ret) {
++				printf("DWMMC %s IDMAC timeout: want=%08x "
++				       "IDSTS=%08x RINTSTS=%08x STATUS=%08x\n",
++				       host->name, mask,
++				       dwmci_readl(host, DWMCI_IDSTS),
++				       dwmci_readl(host, DWMCI_RINTSTS),
++				       dwmci_readl(host, DWMCI_STATUS));
++				if (!ret)
++					ret = idmac_ret;
++			}
++
++			dwmci_writel(host, DWMCI_IDSTS, DWMCI_IDINTEN_MASK);
++
+ 			ctrl = dwmci_readl(host, DWMCI_CTRL);
+ 			ctrl &= ~(DWMCI_DMA_EN);
+ 			dwmci_writel(host, DWMCI_CTRL, ctrl);
+@@ -600,12 +639,16 @@ static int dwmci_init(struct mmc *mmc)
+ 		return -EIO;
+ 	}
+ 
+-	use_dma = SDMMC_GET_TRANS_MODE(dwmci_readl(host, DWMCI_HCON));
+-	if (use_dma == DMA_INTERFACE_IDMA) {
+-		host->fifo_mode = 0;
+-	} else {
+-		host->fifo_mode = 1;
++	/* Preserve a board DT request for PIO; otherwise use the HW capability. */
++	if (!host->fifo_mode) {
++		use_dma = SDMMC_GET_TRANS_MODE(dwmci_readl(host, DWMCI_HCON));
++		if (use_dma == DMA_INTERFACE_IDMA)
++			host->fifo_mode = 0;
++		else
++			host->fifo_mode = 1;
+ 	}
++	if (host->fifo_mode)
++		printf("DWMMC %s: using PIO data transfers\n", host->name);
+ 
+ 	/* Enumerate at 400KHz */
+ 	dwmci_setup_bus(host, mmc->cfg->f_min);
+@@ -631,6 +674,8 @@ static int dwmci_init(struct mmc *mmc)
+ 
+ 	dwmci_writel(host, DWMCI_CLKENA, 0);
+ 	dwmci_writel(host, DWMCI_CLKSRC, 0);
++	if (!host->fifo_mode)
++		dwmci_writel(host, DWMCI_IDINTEN, DWMCI_IDINTEN_MASK);
+ 
+ 	return 0;
+ }
+diff --git a/include/configs/rk3399_common.h b/include/configs/rk3399_common.h
+index 0328275..57b8b30 100644
+--- a/include/configs/rk3399_common.h
++++ b/include/configs/rk3399_common.h
+@@ -36,6 +36,7 @@
+ 
+ /* MMC/SD IP block */
+ #define CONFIG_BOUNCE_BUFFER
++#define CONFIG_SYS_MMC_MAX_BLK_COUNT	2048
+ #define CONFIG_ROCKCHIP_SDHCI_MAX_FREQ	200000000
+ 
+ #define CONFIG_SUPPORT_VFAT
+diff --git a/include/dwmmc.h b/include/dwmmc.h
+index 9e5966d..a75bb38 100644
+--- a/include/dwmmc.h
++++ b/include/dwmmc.h
+@@ -132,6 +132,11 @@
+ /* UHS register */
+ #define DWMCI_DDR_MODE	(1 << 16)
+ 
++/* Internal DMA controller completion interrupts. */
++#define DWMCI_IDINTEN_RI		BIT(1)
++#define DWMCI_IDINTEN_TI		BIT(0)
++#define DWMCI_IDINTEN_MASK	(DWMCI_IDINTEN_TI | DWMCI_IDINTEN_RI)
++
+ /* quirks */
+ #define DWMCI_QUIRK_DISABLE_SMU		(1 << 0)
+ 
