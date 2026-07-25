@@ -64,4 +64,4 @@ while read -r kind name location extra; do
 done < "$PROJECT_DIR/configs/feeds.conf"
 
 rm -f -- "$WORK_DIR/BASELINES"
-echo "Worktrees reset; run 'make init J=<jobs>' before building"
+echo "Worktrees reset; run 'make -j<jobs> init' before building"

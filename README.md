@@ -10,8 +10,8 @@
 
 ```sh
 make check
-make init J=4
-make all J=4
+make -j4 init
+make -j4 all
 make package
 ```
 
@@ -22,10 +22,10 @@ make package
 | `make all` | 只验证既有初始化状态并编译 U-Boot/OpenWrt、生成分区镜像 |
 | `make package` | 校验 `out/` 并生成 `dist/` 发布包 |
 | `make clean` | 仅删除 `out/` 和 `dist/` |
-| `make reset-work` | 校验 origin/固定 commit 后强制复位 `.work` 内的上游 Git 工作树 |
-| `make reinit J=2` | 依次执行 `reset-work` 和 `init` |
+| `make reset` | 校验 origin/固定 commit 后强制复位 `.work` 内的上游 Git 工作树 |
+| `make -j2 reinit` | 依次执行 `reset` 和 `init` |
 
-完整的主机依赖、版本固定、目录变量和构建行为见 [构建说明](docs/BUILD.md)。8 GiB 内存主机建议先使用 `J=2`～`4`。
+完整的主机依赖、版本固定、目录变量和构建行为见 [构建说明](docs/BUILD.md)。8 GiB 内存主机建议先使用 `make -j2`～`-j4`。
 
 ## 构建产物
 
@@ -51,7 +51,7 @@ scripts/          检查、初始化、构建和打包脚本
 
 `.work/`、`out/` 和 `dist/` 均为可重新生成且不纳入版本控制的目录。板级参数和升级回归基线见 [硬件参考](docs/HARDWARE-REFERENCE.md)，当前验收状态见 [硬件状态](docs/HARDWARE-STATUS.md)。
 
-`make clean` 只删除 `out/` 和 `dist/`。若上游工作树被中断的补丁或人工修改污染，使用显式的 `make reset-work`；它会丢弃 `.work` 内的 Git 修改，但保留已下载和已编译的 ignored cache。`make reinit J=2` 可以完成工作树复位并重新初始化。
+`make clean` 只删除 `out/` 和 `dist/`。若上游工作树被中断的补丁或人工修改污染，使用显式的 `make reset`；它会丢弃 `.work` 内的 Git 修改，但保留已下载和已编译的 ignored cache。`make -j2 reinit` 可以完成工作树复位并重新初始化。
 
 ## 启动与部署
 

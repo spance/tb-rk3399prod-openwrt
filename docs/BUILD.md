@@ -57,7 +57,7 @@ OpenWrt 只使用一个工作树和一个正式配置，PCIe host、RTL8822CE �
 
 `dts/rk3399pro-toybrick-prod.dts` 和 `.dtsi` 是板级设备树的唯一权威文件。每次初始化都会读取 OpenWrt Rockchip target 的 `KERNEL_PATCHVER`，将这两个文件覆写到对应的 `target/linux/rockchip/files-<版本>/arch/arm64/boot/dts/rockchip/`，然后逐字节校验。OpenWrt 补丁不再保存 DTS 副本；更新设备树后必须先重新运行 `make init`，再执行构建。
 
-`make init` 随后验证 feed 仓库的 origin、HEAD、索引、干净状态和仓库数量；精确匹配时不访问 feed 远端，不匹配时才执行更新。OpenWrt 的 `src-git` feed 获取本身使用 `--depth 1`，不会同步完整 Git 历史。之后安装 package 索引、写入唯一的 `configs/openwrt.config`、执行 `make defconfig` 和 `make download`。因此成功返回表示编译所需源码已经准备完成；可用 `make init J=4` 控制源包并行下载数。
+`make init` 随后验证 feed 仓库的 origin、HEAD、索引、干净状态和仓库数量；精确匹配时不访问 feed 远端，不匹配时才执行更新。OpenWrt 的 `src-git` feed 获取本身使用 `--depth 1`，不会同步完整 Git 历史。之后安装 package 索引、写入唯一的 `configs/openwrt.config`、执行 `make defconfig` 和 `make download`。因此成功返回表示编译所需源码已经准备完成；使用 GNU Make 标准参数 `make -j4 init` 控制源包并行下载数。
 
 ## 2. 项目检查
 
@@ -78,7 +78,7 @@ make all
 OpenWrt 并行数可通过 Make 变量设置；8 GiB 内存的主机建议从 2～4 开始：
 
 ```sh
-make all J=4
+make -j4 all
 ```
 
 也可以单独执行：
@@ -133,19 +133,19 @@ make clean
 如果 `.work/` 因中断的补丁、手工调试或更新后的旧补丁状态而无法再次初始化，执行：
 
 ```sh
-make reset-work
-make init J=2
+make reset
+make -j2 init
 ```
 
-`reset-work` 是显式的破坏性操作：它先校验每个上游仓库位于 `TB_WORK_DIR` 之下、origin 与工程固定 URL 完全一致、固定 commit 已在本地存在，然后才对 U-Boot、rkbin、工具链、OpenWrt 和 feeds 执行 `git reset --hard` 与 `git clean -fd`。因此 `.work` 内未提交的源码和未跟踪文件会丢失。它不使用 `git clean -fdx`，所以 OpenWrt 下载包、构建缓存等 ignored 数据会保留，随后 `make init` 重新应用补丁、DTS、feed 和正式配置。
+`reset` 是显式的破坏性操作：它先校验每个上游仓库位于 `TB_WORK_DIR` 之下、origin 与工程固定 URL 完全一致、固定 commit 已在本地存在，然后才对 U-Boot、rkbin、工具链、OpenWrt 和 feeds 执行 `git reset --hard` 与 `git clean -fd`。因此 `.work` 内未提交的源码和未跟踪文件会丢失。它不使用 `git clean -fdx`，所以 OpenWrt 下载包、构建缓存等 ignored 数据会保留，随后 `make init` 重新应用补丁、DTS、feed 和正式配置。
 
 便捷写法：
 
 ```sh
-make reinit J=2
+make -j2 reinit
 ```
 
-该目标严格等价于先 `reset-work` 再 `init`，不会删除 `out/` 或 `dist/`。
+该目标严格等价于先 `reset` 再 `init`，不会删除 `out/` 或 `dist/`。
 
 ## 后续：部署
 
