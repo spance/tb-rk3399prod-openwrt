@@ -210,10 +210,24 @@ grep -Fq '++	for (timeout = 0; timeout < 100; timeout++) {' "$openwrt_patch" || 
 	fail "RK3399 Type-C host set_mode does not validate PIPE readiness"
 grep -Fq 'failed to reinitialize USB3 PHY for host' "$openwrt_patch" || \
 	fail "RK3399 Type-C deferred PHY failure path is missing"
+grep -Fq 'USB3 PHY ready for %s orientation' "$openwrt_patch" || \
+	fail "RK3399 Type-C successful PHY reinitialization marker is missing"
 if grep -Fq 'PIPE becomes ready only after TCPM subsequently selects host role.' \
 	"$openwrt_patch"; then
 	fail "obsolete in-orientation PHY initialization remains in the OpenWrt patch"
 fi
+grep -Fq '145-usb-dwc3-set-host-phy-mode-before-xhci.patch' \
+	"$openwrt_patch" || \
+	fail "DWC3 host PHY/xHCI ordering patch is missing"
+dwc3_order_patch=$(sed -n \
+	'/145-usb-dwc3-set-host-phy-mode-before-xhci.patch/,/2.54.0.windows.1/p' \
+	"$openwrt_patch")
+printf '%s\n' "$dwc3_order_patch" | \
+	grep -Fq '++			phy_set_mode(dwc->usb3_generic_phy[i], PHY_MODE_USB_HOST);' || \
+	fail "DWC3 does not select USB3 host PHY mode before xHCI registration"
+printf '%s\n' "$dwc3_order_patch" | \
+	grep -Fq '+ 		ret = dwc3_host_init(dwc);' || \
+	fail "DWC3 host initialization ordering context is missing"
 grep -Fq '+CONFIG_USB_DWC3_DUAL_ROLE=y' "$openwrt_patch" || \
 	fail "DWC3 dual-role state machine is missing from the OpenWrt patch"
 grep -Fq '+CONFIG_USB_GADGET=y' "$openwrt_patch" || \

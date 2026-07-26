@@ -233,10 +233,10 @@ index 0000000..a1231ad
 + };
 diff --git a/target/linux/rockchip/patches-6.12/144-phy-rockchip-typec-orientation-switch.patch b/target/linux/rockchip/patches-6.12/144-phy-rockchip-typec-orientation-switch.patch
 new file mode 100644
-index 0000000..7d14fc8
+index 0000000..f359dfc
 --- /dev/null
 +++ b/target/linux/rockchip/patches-6.12/144-phy-rockchip-typec-orientation-switch.patch
-@@ -0,0 +1,229 @@
+@@ -0,0 +1,232 @@
 +From ee5f73f20fb58416c06b576d6fa646fa3cab4c18 Mon Sep 17 00:00:00 2001
 +From: TB-RK3399ProD OpenWrt project <noreply@example.invalid>
 +Date: Sun, 26 Jul 2026 16:21:16 +0800
@@ -252,13 +252,14 @@ index 0000000..7d14fc8
 +Keep SuperSpeed host routing enabled across the reset, matching the driver's
 +normal PHY power-off path.  Defer reinitialization and PIPE readiness to the
 +generic PHY set_mode callback: TCPM invokes orientation before selecting the
-+host role, while DWC3 calls set_mode after creating its host core.
++host role, while the companion DWC3 patch calls set_mode after selecting host
++mode and before registering xHCI.
 +
 +Link: https://lore.kernel.org/all/20260304094152.92-5-kernel@airkyi.com/
 +---
 + drivers/phy/rockchip/Kconfig              |   1 +
-+ drivers/phy/rockchip/phy-rockchip-typec.c | 143 ++++++++++++++++++++++
-+ 2 files changed, 144 insertions(+)
++ drivers/phy/rockchip/phy-rockchip-typec.c | 145 ++++++++++++++++++++++
++ 2 files changed, 146 insertions(+)
 +
 +diff --git a/drivers/phy/rockchip/Kconfig b/drivers/phy/rockchip/Kconfig
 +index dcb8e16..3677bfe 100644
@@ -273,7 +274,7 @@ index 0000000..7d14fc8
 + 	select GENERIC_PHY
 + 	select RESET_CONTROLLER
 +diff --git a/drivers/phy/rockchip/phy-rockchip-typec.c b/drivers/phy/rockchip/phy-rockchip-typec.c
-+index 4efcb78..d5d0284 100644
++index 4efcb78..7ee29ff 100644
 +--- a/drivers/phy/rockchip/phy-rockchip-typec.c
 ++++ b/drivers/phy/rockchip/phy-rockchip-typec.c
 +@@ -54,6 +54,7 @@
@@ -309,7 +310,7 @@ index 0000000..7d14fc8
 + 
 + 			/* enable usb3 host */
 + 			tcphy_cfg_usb3_to_usb2_only(tcphy, false);
-+@@ -935,9 +940,141 @@ unlock:
++@@ -935,9 +940,143 @@ unlock:
 + 	return 0;
 + }
 + 
@@ -319,8 +320,8 @@ index 0000000..7d14fc8
 ++ * programs a different pair of physical lanes for each Type-C orientation, so
 ++ * updating tcphy->flip alone is too late.  Invalidate the cached orientation
 ++ * on detach.  For a new attachment, stop the active PHY and defer its
-++ * direction-dependent initialization until DWC3 has created the host core and
-++ * calls the generic PHY set_mode callback.
+++ * direction-dependent initialization until DWC3 has selected the host role
+++ * and calls the generic PHY set_mode callback, before registering xHCI.
 ++ */
 ++static int tcphy_set_orientation(struct typec_switch_dev *sw,
 ++				 enum typec_orientation orientation)
@@ -425,6 +426,8 @@ index 0000000..7d14fc8
 ++		if (!(val & BIT(reg->enable_bit))) {
 ++			tcphy_cfg_usb3_to_usb2_only(tcphy, false);
 ++			tcphy->reinit_pending = false;
+++			dev_info(tcphy->dev, "USB3 PHY ready for %s orientation\n",
+++				 tcphy->flip ? "reverse" : "normal");
 ++			goto out_unlock;
 ++		}
 ++		usleep_range(10, 20);
@@ -451,7 +454,7 @@ index 0000000..7d14fc8
 + 	.owner		= THIS_MODULE,
 + };
 + 
-+@@ -1183,6 +1320,12 @@ static int rockchip_typec_phy_probe(struct platform_device *pdev)
++@@ -1183,6 +1322,12 @@ static int rockchip_typec_phy_probe(struct platform_device *pdev)
 + 		phy_set_drvdata(phy, tcphy);
 + 	}
 + 
@@ -464,5 +467,67 @@ index 0000000..7d14fc8
 + 	phy_provider = devm_of_phy_provider_register(dev, of_phy_simple_xlate);
 + 	if (IS_ERR(phy_provider)) {
 + 		dev_err(dev, "Failed to register phy provider\n");
++-- 
++2.54.0.windows.1
+diff --git a/target/linux/rockchip/patches-6.12/145-usb-dwc3-set-host-phy-mode-before-xhci.patch b/target/linux/rockchip/patches-6.12/145-usb-dwc3-set-host-phy-mode-before-xhci.patch
+new file mode 100644
+index 0000000..08aa255
+--- /dev/null
++++ b/target/linux/rockchip/patches-6.12/145-usb-dwc3-set-host-phy-mode-before-xhci.patch
+@@ -0,0 +1,56 @@
++From 7230f3619e7e589f1c4aba9bc045e882ce760e22 Mon Sep 17 00:00:00 2001
++From: TB-RK3399ProD OpenWrt project <noreply@example.invalid>
++Date: Sun, 26 Jul 2026 15:18:42 +0800
++Subject: [PATCH] usb: dwc3: set host PHY mode before registering xHCI
++
++The static-host initialization path selects the generic PHY host mode before
++calling dwc3_host_init(), but the dynamic role-switch path does the reverse.
++
++RK3399 Type-C needs to reinitialize its direction-dependent SuperSpeed lanes
++after DWC3 has selected host port capability and before xHCI probes the dead
++PIPE.  Calling set_mode only after xHCI registration leaves the root hub
++running against a PHY that was stopped by the orientation callback and ends
++with connect-debounce failed.
++
++Align the dynamic host transition with the established static-host ordering.
++DWC3 has already completed its role-change core reset and selected host port
++capability at this point, while xHCI has not yet been registered.
++
++Link: https://patchew.org/linux/20260109-dwc3-apple-usb2phy-fix-v2-1-ab6b041e3b26%40kernel.org/
++---
++ drivers/usb/dwc3/core.c | 16 ++++++++--------
++ 1 file changed, 8 insertions(+), 8 deletions(-)
++
++diff --git a/drivers/usb/dwc3/core.c b/drivers/usb/dwc3/core.c
++index 2cdb073..c138b6f 100644
++--- a/drivers/usb/dwc3/core.c
+++++ b/drivers/usb/dwc3/core.c
++@@ -236,18 +236,18 @@ static void __dwc3_set_mode(struct work_struct *work)
++ 
++ 	switch (desired_dr_role) {
++ 	case DWC3_GCTL_PRTCAP_HOST:
+++		if (dwc->usb2_phy)
+++			otg_set_vbus(dwc->usb2_phy->otg, true);
+++
+++		for (i = 0; i < dwc->num_usb2_ports; i++)
+++			phy_set_mode(dwc->usb2_generic_phy[i], PHY_MODE_USB_HOST);
+++		for (i = 0; i < dwc->num_usb3_ports; i++)
+++			phy_set_mode(dwc->usb3_generic_phy[i], PHY_MODE_USB_HOST);
+++
++ 		ret = dwc3_host_init(dwc);
++ 		if (ret) {
++ 			dev_err(dwc->dev, "failed to initialize host\n");
++ 		} else {
++-			if (dwc->usb2_phy)
++-				otg_set_vbus(dwc->usb2_phy->otg, true);
++-
++-			for (i = 0; i < dwc->num_usb2_ports; i++)
++-				phy_set_mode(dwc->usb2_generic_phy[i], PHY_MODE_USB_HOST);
++-			for (i = 0; i < dwc->num_usb3_ports; i++)
++-				phy_set_mode(dwc->usb3_generic_phy[i], PHY_MODE_USB_HOST);
++-
++ 			if (dwc->dis_split_quirk) {
++ 				reg = dwc3_readl(dwc->regs, DWC3_GUCTL3);
++ 				reg |= DWC3_GUCTL3_SPLITDISABLE;
 +-- 
 +2.54.0.windows.1
