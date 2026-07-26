@@ -34,11 +34,11 @@ Linux 阶段只把 USB2/USB3 主机作为产品功能，不提供充电输入或
 
 OpenWrt 25.12.5 的 Rockchip armv8 内核已经内建 `TYPEC`、`TYPEC_TCPM`、`TYPEC_FUSB302`、`USB_ROLE_SWITCH` 和 `PHY_ROCKCHIP_TYPEC`。Linux 6.12 的 RK3399 Type-C PHY 驱动却只从旧式 extcon 读取插头方向，无法接收主线 TCPM 的 orientation-switch 事件。仅打开 DTS 节点会形成“默认方向可能工作、反插或重插不可靠”的半成品。
 
-工程中的 `144-phy-rockchip-typec-orientation-switch.patch` 以 Rockchip 上游 v15 orientation-switch 方案为依据，只保留本板 USB 主机所需的部分。RK3399 DWC3 在切换角色时会保持 generic PHY 上电，因此回调不能只比较新旧方向：拔出时把缓存的 orientation 标记为无效；每次重新连接时，即使插头方向与上次相同，也会记录当前方向、标记一次待处理的 PHY 重初始化，并停止仍按旧方向运行的 PHY。
+工程中的 `144-phy-rockchip-typec-orientation-switch.patch` 以 Rockchip 上游 v15 orientation-switch 方案为依据，并补齐 DWC3 动态角色切换所需的 PHY 生命周期。RK3399 DWC3 在切换角色时保持 generic PHY 的逻辑 power reference，因此不能依赖下一次标准 `power_on()`。orientation 回调只记录方向和 attachment 状态：拔出时使缓存失效；每次重新连接时，即使插头方向与上次相同，也记录当前方向并标记待重建。回调本身不再停止或初始化 PHY，避免在旧 xHCI/gadget 尚未退出时改变物理链路。
 
-重置活动 PHY 时必须保持 USB3 host 路由开启。驱动的标准 `rockchip_usb3_phy_power_off()` 路径会先调用 `tcphy_cfg_usb3_to_usb2_only(tcphy, false)`，orientation 回调遵循同一约束。更重要的是，该回调不能初始化 PHY，也不能轮询 `pipe_status`：TCPM 在 orientation 回调成功返回之后才设置 USB host role，此前 DWC3 仍处于 peripheral/idle，PHY 和 PIPE 都不具备完整建链条件。实际初始化被延后到 Rockchip USB3 PHY 的标准 `.set_mode(PHY_MODE_USB_HOST)` 回调；DWC3 完成角色切换 core reset 并选择 host port capability 后调用 `set_mode`，驱动按缓存方向执行 `tcphy_phy_init()`，在 PMA ready 后验证 PIPE ready，然后 DWC3 才注册 xHCI。
+DTS 将连接器的方向端点连接到 `tcphy0_usb3`，将角色端点连接到 DWC3_0，并为 DWC3_0 设置 `dr_mode = "otg"` 与 `usb-role-switch`。TCPM 先设置 orientation，再设置 USB role。拔出时，DWC3 先退出 host 并删除 xHCI；随后 Linux 6.12 把 `USB_ROLE_NONE` 映射为默认 device role，Rockchip PHY 的 `.set_mode(PHY_MODE_USB_DEVICE)` 利用此前的 orientation NONE 状态识别“真正断开”，执行有序 deinit、恢复 probe 阶段的 external PSM/GRF 配置，并让 PHY 保持 `MODE_DISCONNECT`/reset。这样不会把上一次连接的接收器状态带入下一次 attachment。
 
-DTS 将连接器的方向端点连接到 `tcphy0_usb3`，将角色端点连接到 DWC3_0，并为 DWC3_0 设置 `dr_mode = "otg"` 与 `usb-role-switch`。TCPM 的事件顺序是：先设置 orientation，再设置 USB role。拔出时 orientation 回调使缓存和待处理标记失效，随后 DWC3 退出 host 并删除该控制器的 xHCI；再次插入时 orientation 回调记录方向并停止旧 PHY，然后立即返回，TCPM 切换 DWC3 core 到 host，generic PHY `set_mode` 完成按方向初始化和 PIPE 验证，最后才创建新的 xHCI。该生命周期完全由内核状态机执行，不依赖 OpenWrt 热插拔脚本或轮询服务。
+再次插入时，orientation 回调只记录正反方向；DWC3 完成角色 core reset 并选择 host port capability 后，`.set_mode(PHY_MODE_USB_HOST)` 从 reset 状态按当前方向执行 `tcphy_phy_init()`，在 PMA ready 后验证 PIPE ready，最后 DWC3 才注册 xHCI。代码也保留 attached UFP 的 `PHY_MODE_USB_DEVICE` 初始化语义，但本板 DTS 固定为 source/host，不把 Linux gadget 作为产品功能。整个过程由内核状态机完成，不依赖 OpenWrt 热插拔脚本、用户态驱动重绑或固定延时。
 
 Linux 6.12 的静态 host 初始化本来就是“`phy_set_mode()` → `dwc3_host_init()`”，动态 role-switch 路径却采用相反顺序。`145-usb-dwc3-set-host-phy-mode-before-xhci.patch` 将动态路径与静态路径对齐；它不把 PHY 初始化提前到 TCPM orientation 阶段，而只从“xHCI 注册之后”移动到“DWC3 已选定 host、xHCI 注册之前”。这一顺序也符合其他 DWC3 平台对 USB3 PHY 的要求：DWC3 core 必须先可用，但 host controller 不应在无效 PIPE 上启动。
 
@@ -104,4 +104,6 @@ role-switch 镜像进一步实测确认状态机已接通：拔出时 Type-C xHC
 
 第四次镜像已确认运行内核中存在新的 `rockchip_usb3_phy_set_mode`，PHY clocks 保持启用，且没有 PMA/PIPE timeout；但是 Linux 6.12 动态角色路径先运行 `dwc3_host_init()` 注册 xHCI，之后才调用该回调。实机在 `normal` 和 `reverse` 两个方向均创建 Bus 7/8，随后同样以 `connect-debounce failed` 告终，排除了单一方向映射问题，也证明仅把初始化延后到现有 `set_mode` 调用点仍然太晚。
 
-当前工程把方向记录、物理初始化和 host controller 创建严格排序：orientation 回调只记录、停 PHY 和返回；DWC3 完成 host role 的 core reset 与 port capability 设置后，先调用 `.set_mode(PHY_MODE_USB_HOST)` 让 Rockchip PHY 重建并检查 PIPE，再运行 `dwc3_host_init()` 创建 xHCI。成功路径会输出 `USB3 PHY ready for normal/reverse orientation`，使下一次上板可直接确认回调时机。标准 `power_on()` 若已先完成一次真正的电源循环，也会清除待处理标记，避免重复初始化。该版本仍需重新构建和刷机；完成两个方向交替热插拔、长时读写和 Loader 回归前，状态保持为“SuperSpeed 硬件已确认，自动热插拔修复待验收”。
+第五次镜像确认了 `set_mode → xHCI` 的新顺序，成功日志总是在 xHCI 注册之前出现；但从空载运行状态进行三次物理插拔（normal 两次、reverse 一次）均只建立 Bus 7/8，没有枚举存储设备，其中一次明确报告 `connect-debounce failed`。保持 M.2 已插入进行冷启动的两次试验中，设备均立即以 UAS/`5000M` 枚举；从这一成功状态只重绑 FUSB302，又稳定复现失败。完整重绑 FUSB302、DWC3 与 `tcphy0` 曾成功恢复一次，但在同一镜像的后续重复试验中没有再次恢复，因此它只能证明完整生命周期可能恢复链路，不能作为可靠方案。综合结果排除了 UAS、线材、方向映射、VBUS 和 xHCI 创建先后，根因进一步收敛到“动态断开时 PHY 没有进入可供下一次连接复用的完整 reset 状态”。
+
+当前待构建代码因此把 teardown 从 orientation 阶段移到 DWC3 role 阶段：orientation 回调只记录状态；DWC3 先删除旧 xHCI；断开对应的 `.set_mode(PHY_MODE_USB_DEVICE)` 再关闭 PHY、恢复 probe-time PSM/GRF 状态并保持 reset；下次 `.set_mode(PHY_MODE_USB_HOST)` 才按方向重建 PHY、检查 PIPE，然后创建 xHCI。拔出和成功重建分别输出 `USB3 PHY held in reset after detach` 与 `USB3 PHY ready for normal/reverse orientation in host mode`，可直接验证事件顺序。完成新镜像的空载启动后正反插、同方向重插、长时读写和 Loader 回归前，状态仍保持为“SuperSpeed 硬件已确认，自动热插拔修复待验收”。

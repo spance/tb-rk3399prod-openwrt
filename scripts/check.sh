@@ -181,8 +181,6 @@ grep -Fq '144-phy-rockchip-typec-orientation-switch.patch' \
 	fail "RK3399 Type-C orientation-switch patch is missing"
 grep -Fq 'tcphy_set_orientation' "$openwrt_patch" || \
 	fail "RK3399 Type-C orientation callback is missing"
-grep -Fq 'tcphy_phy_deinit(tcphy);' "$openwrt_patch" || \
-	fail "RK3399 Type-C lane reinitialization is missing"
 grep -Fq 'if (orientation == TYPEC_ORIENTATION_NONE) {' "$openwrt_patch" || \
 	fail "RK3399 Type-C detach handling is missing"
 grep -Fq 'tcphy->orientation_valid = false;' "$openwrt_patch" || \
@@ -191,24 +189,35 @@ grep -Fq 'tcphy->orientation_valid && tcphy->flip == flip' "$openwrt_patch" || \
 	fail "RK3399 Type-C same-orientation reconnect guard is missing"
 grep -Fq 'tcphy->reinit_pending = true;' "$openwrt_patch" || \
 	fail "RK3399 Type-C orientation callback does not defer PHY reinitialization"
-grep -Fq '++	tcphy_cfg_usb3_to_usb2_only(tcphy, false);' "$openwrt_patch" || \
-	fail "RK3399 Type-C PHY reset does not preserve SuperSpeed host routing"
-if grep -Fq '++	tcphy_cfg_usb3_to_usb2_only(tcphy, true);' "$openwrt_patch"; then
-	fail "RK3399 Type-C PHY reset incorrectly enables USB2-only routing"
-fi
 grep -Fq 'rockchip_usb3_phy_set_mode' "$openwrt_patch" || \
 	fail "RK3399 Type-C deferred generic PHY set_mode callback is missing"
 orientation_callback=$(sed -n \
 	'/++static int tcphy_set_orientation/,/++static void tcphy_unregister_orientation_switch/p' \
 	"$openwrt_patch")
-if printf '%s\n' "$orientation_callback" | grep -Fq 'tcphy_phy_init'; then
-	fail "RK3399 Type-C orientation callback still initializes the PHY before host role"
+if printf '%s\n' "$orientation_callback" | grep -Eq 'tcphy_phy_(init|deinit)'; then
+	fail "RK3399 Type-C orientation callback still changes PHY power before role teardown"
 fi
 grep -Fq '++	.set_mode	= rockchip_usb3_phy_set_mode,' "$openwrt_patch" || \
 	fail "RK3399 Type-C deferred callback is not registered in phy_ops"
+grep -Fq 'mode == PHY_MODE_USB_DEVICE && !tcphy->orientation_valid' \
+	"$openwrt_patch" || \
+	fail "RK3399 Type-C disconnect is not distinguished from an attached UFP"
+grep -Fq 'property_enable(tcphy, &cfg->external_psm, true);' \
+	"$openwrt_patch" || \
+	fail "RK3399 Type-C detach does not restore probe-time PSM configuration"
+grep -Fq 'tcphy->mode = MODE_DISCONNECT;' "$openwrt_patch" || \
+	fail "RK3399 Type-C detach does not hold the PHY in reset"
+grep -Fq 'USB3 PHY held in reset after detach' "$openwrt_patch" || \
+	fail "RK3399 Type-C detach verification marker is missing"
+grep -Fq 'tcphy_phy_deinit(tcphy);' "$openwrt_patch" || \
+	fail "RK3399 Type-C ordered PHY shutdown is missing"
+grep -Fq 'tcphy_phy_init(tcphy, new_mode);' "$openwrt_patch" || \
+	fail "RK3399 Type-C attached-role PHY initialization is missing"
+grep -Fq 'tcphy->mode = new_mode;' "$openwrt_patch" || \
+	fail "RK3399 Type-C attached role is not committed after PIPE readiness"
 grep -Fq '++	for (timeout = 0; timeout < 100; timeout++) {' "$openwrt_patch" || \
-	fail "RK3399 Type-C host set_mode does not validate PIPE readiness"
-grep -Fq 'failed to reinitialize USB3 PHY for host' "$openwrt_patch" || \
+	fail "RK3399 Type-C set_mode does not validate PIPE readiness"
+grep -Fq 'failed to reinitialize USB3 PHY for %s mode' "$openwrt_patch" || \
 	fail "RK3399 Type-C deferred PHY failure path is missing"
 grep -Fq 'USB3 PHY ready for %s orientation' "$openwrt_patch" || \
 	fail "RK3399 Type-C successful PHY reinitialization marker is missing"

@@ -16,7 +16,7 @@
 | 网络调优 | 已确认 | GMAC IRQ 在开机及接口 `ifup` 后均绑定 CPU4/A72，复测 942/941 Mbit/s、0 重传；S99 服务作为兜底，fw4 软件 flowtable 正常生成 |
 | USB2 | 已确认枚举 | 两组 EHCI/OHCI 和板载 Hub |
 | USB3 Type-A | 已确认高速读写 | 多种设备以 `5000M` 枚举；Lexar E300 2 TB/UAS 的 4 GiB direct read 约 319 MiB/s，测试后无新增 USB/UAS/SCSI 错误 |
-| USB3 Type-C | 硬件高速已确认，自动重连待验收 | 正反插 CC/角色/VBUS 正常，`usb-role-switch` 可随插拔删除/重建 xHCI。完整重绑 FUSB302、DWC3 和 `tcphy0` 后 Lexar E300 以 UAS/5000M 枚举，4 GiB direct read 约 367 MB/s（350 MiB/s），无 USB/UAS/SCSI/I/O 错误。上一版已进入 PHY `set_mode` 且无 PMA/PIPE timeout，但 Linux 6.12 动态路径先创建 xHCI、后设置 PHY，正反方向均报 `connect-debounce failed`；当前代码将动态路径对齐静态 host 顺序：DWC3 选定 host 后先重建 PHY，再创建 xHCI，待新镜像完成自动枚举、交替方向热插拔、长时读写和 Loader 回归 |
+| USB3 Type-C | 硬件高速已确认，自动重连待验收 | 正反插 CC/角色/VBUS 正常；两次带设备冷启动以及一次完整驱动重建中，Lexar E300 以 UAS/5000M 枚举，4 GiB direct read 约 367 MB/s（350 MiB/s），无 USB/UAS/SCSI/I/O 错误，但完整重建并非每次都能恢复。第五版已确认 PHY 在 xHCI 前 ready，normal/reverse 热插拔仍不枚举；FUSB302-only A/B 测试把根因锁定为动态 detach 后 PHY 未保持完整 reset。当前待构建代码让 DWC3 先删除 xHCI，再由 `set_mode` 关闭 PHY并保持 reset；下一次 host role 从 reset 重建 PHY后才创建 xHCI，待正反插、长时读写和 Loader 回归 |
 | HDMI console | 已确认 | DRM/VOPB/DW-HDMI、fbcon 和 Linux 文本 console 已在显示器输出；串口继续保留 |
 | PCIe | 控制器确认，端点待验收 | host/PHY/电源正常进入 probe；当前独立 x4 插座没有端点，training timeout 符合预期 |
 | Mini-PCIe | USB2-only | 面向 LTE 模块，没有 PCIe lane；不作为 PCIe 端点插槽使用 |

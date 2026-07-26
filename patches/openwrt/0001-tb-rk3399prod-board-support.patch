@@ -233,10 +233,10 @@ index 0000000..a1231ad
 + };
 diff --git a/target/linux/rockchip/patches-6.12/144-phy-rockchip-typec-orientation-switch.patch b/target/linux/rockchip/patches-6.12/144-phy-rockchip-typec-orientation-switch.patch
 new file mode 100644
-index 0000000..f359dfc
+index 0000000..1fb856e
 --- /dev/null
 +++ b/target/linux/rockchip/patches-6.12/144-phy-rockchip-typec-orientation-switch.patch
-@@ -0,0 +1,232 @@
+@@ -0,0 +1,266 @@
 +From ee5f73f20fb58416c06b576d6fa646fa3cab4c18 Mon Sep 17 00:00:00 2001
 +From: TB-RK3399ProD OpenWrt project <noreply@example.invalid>
 +Date: Sun, 26 Jul 2026 16:21:16 +0800
@@ -245,21 +245,19 @@ index 0000000..f359dfc
 +Backport the orientation-switch integration proposed by Rockchip for the
 +RK3399 Type-C PHY, limited to the USB host path used by this board.
 +
-+The DWC3 core keeps its generic PHY powered while changing USB roles.  Mark
-+the cached orientation invalid on detach, then reinitialize an active PHY for
-+every new attachment before the role switch creates xHCI.  This also covers
-+same-orientation reconnects, where the lane direction itself did not change.
-+Keep SuperSpeed host routing enabled across the reset, matching the driver's
-+normal PHY power-off path.  Defer reinitialization and PIPE readiness to the
-+generic PHY set_mode callback: TCPM invokes orientation before selecting the
-+host role, while the companion DWC3 patch calls set_mode after selecting host
-+mode and before registering xHCI.
++The DWC3 core keeps its generic PHY powered while changing USB roles.  Record
++orientation in the Type-C switch callback, but leave the old PHY running until
++DWC3 has removed xHCI or the gadget.  On a real detach, hold the PHY in the
++same fully reset state used by probe.  On the next attached host or device
++role, reinitialize the direction-dependent lanes and verify PIPE readiness.
++The companion DWC3 patch calls set_mode after selecting host mode and before
++registering xHCI, so the PHY lifecycle is ordered around the role lifecycle.
 +
 +Link: https://lore.kernel.org/all/20260304094152.92-5-kernel@airkyi.com/
 +---
 + drivers/phy/rockchip/Kconfig              |   1 +
-+ drivers/phy/rockchip/phy-rockchip-typec.c | 145 ++++++++++++++++++++++
-+ 2 files changed, 146 insertions(+)
++ drivers/phy/rockchip/phy-rockchip-typec.c | 181 ++++++++++++++++++++++
++ 2 files changed, 182 insertions(+)
 +
 +diff --git a/drivers/phy/rockchip/Kconfig b/drivers/phy/rockchip/Kconfig
 +index dcb8e16..3677bfe 100644
@@ -310,18 +308,17 @@ index 0000000..f359dfc
 + 
 + 			/* enable usb3 host */
 + 			tcphy_cfg_usb3_to_usb2_only(tcphy, false);
-+@@ -935,9 +940,143 @@ unlock:
++@@ -935,9 +940,179 @@ unlock:
 + 	return 0;
 + }
 + 
 ++#if IS_ENABLED(CONFIG_TYPEC)
 ++/*
-++ * The DWC3 core keeps the PHY powered across USB role changes.  The RK3399 PHY
-++ * programs a different pair of physical lanes for each Type-C orientation, so
-++ * updating tcphy->flip alone is too late.  Invalidate the cached orientation
-++ * on detach.  For a new attachment, stop the active PHY and defer its
-++ * direction-dependent initialization until DWC3 has selected the host role
-++ * and calls the generic PHY set_mode callback, before registering xHCI.
+++ * The DWC3 core keeps the PHY powered across USB role changes.  Only record
+++ * orientation here: TCPM calls the switch before it changes the USB role, so
+++ * tearing down the PHY here would race the old xHCI or gadget instance.
+++ * rockchip_usb3_phy_set_mode() performs the ordered shutdown and restart after
+++ * DWC3 has exited the old role.
 ++ */
 ++static int tcphy_set_orientation(struct typec_switch_dev *sw,
 ++				 enum typec_orientation orientation)
@@ -343,12 +340,6 @@ index 0000000..f359dfc
 ++	tcphy->flip = flip;
 ++	tcphy->orientation_valid = true;
 ++	tcphy->reinit_pending = true;
-++	if (!(tcphy->mode & (MODE_DFP_USB | MODE_UFP_USB)))
-++		goto out_unlock;
-++
-++	/* Keep host routing enabled, matching the normal PHY power-off path. */
-++	tcphy_cfg_usb3_to_usb2_only(tcphy, false);
-++	tcphy_phy_deinit(tcphy);
 ++out_unlock:
 ++	mutex_unlock(&tcphy->lock);
 ++	return 0;
@@ -406,18 +397,60 @@ index 0000000..f359dfc
 ++	struct rockchip_typec_phy *tcphy = phy_get_drvdata(phy);
 ++	const struct rockchip_usb3phy_port_cfg *cfg = tcphy->port_cfgs;
 ++	const struct usb3phy_reg *reg = &cfg->pipe_status;
+++	const char *role;
+++	u8 new_mode;
 ++	int ret = 0;
 ++	int timeout;
 ++	u32 val;
 ++
-++	if (mode != PHY_MODE_USB_HOST)
+++	if (mode == PHY_MODE_USB_HOST) {
+++		new_mode = MODE_DFP_USB;
+++		role = "host";
+++	} else if (mode == PHY_MODE_USB_DEVICE) {
+++		new_mode = MODE_UFP_USB;
+++		role = "device";
+++	} else {
 ++		return 0;
+++	}
 ++
 ++	mutex_lock(&tcphy->lock);
-++	if (!tcphy->reinit_pending)
+++
+++	/*
+++	 * USB_ROLE_NONE is represented by DWC3's default device role.  The
+++	 * preceding orientation NONE event distinguishes a real disconnect from
+++	 * an attached UFP.  Leave the PHY fully reset until the next attachment;
+++	 * this mirrors probe-time pre-initialization and avoids carrying stale
+++	 * receiver state across a cable removal.
+++	 */
+++	if (mode == PHY_MODE_USB_DEVICE && !tcphy->orientation_valid) {
+++		if (tcphy->mode != MODE_DISCONNECT) {
+++			tcphy_cfg_usb3_to_usb2_only(tcphy, false);
+++			tcphy_phy_deinit(tcphy);
+++		}
+++		property_enable(tcphy, &cfg->external_psm, true);
+++		property_enable(tcphy, &cfg->usb3tousb2_en, false);
+++		tcphy->mode = MODE_DISCONNECT;
+++		tcphy->reinit_pending = false;
+++		dev_info(tcphy->dev, "USB3 PHY held in reset after detach\n");
+++		goto out_unlock;
+++	}
+++
+++	if (!tcphy->orientation_valid)
 ++		goto out_unlock;
 ++
-++	ret = tcphy_phy_init(tcphy, tcphy->mode);
+++	if (!tcphy->reinit_pending && tcphy->mode == new_mode)
+++		goto out_unlock;
+++
+++	/* DWC3 has exited the old role, so it is now safe to reset the PHY. */
+++	if (tcphy->mode != MODE_DISCONNECT) {
+++		tcphy_cfg_usb3_to_usb2_only(tcphy, false);
+++		tcphy_phy_deinit(tcphy);
+++	}
+++	property_enable(tcphy, &cfg->external_psm, true);
+++	property_enable(tcphy, &cfg->usb3tousb2_en, false);
+++	tcphy->mode = MODE_DISCONNECT;
+++
+++	ret = tcphy_phy_init(tcphy, new_mode);
 ++	if (ret)
 ++		goto err_disconnected;
 ++
@@ -425,9 +458,11 @@ index 0000000..f359dfc
 ++		regmap_read(tcphy->grf_regs, reg->offset, &val);
 ++		if (!(val & BIT(reg->enable_bit))) {
 ++			tcphy_cfg_usb3_to_usb2_only(tcphy, false);
+++			tcphy->mode = new_mode;
 ++			tcphy->reinit_pending = false;
-++			dev_info(tcphy->dev, "USB3 PHY ready for %s orientation\n",
-++				 tcphy->flip ? "reverse" : "normal");
+++			dev_info(tcphy->dev,
+++				 "USB3 PHY ready for %s orientation in %s mode\n",
+++				 tcphy->flip ? "reverse" : "normal", role);
 ++			goto out_unlock;
 ++		}
 ++		usleep_range(10, 20);
@@ -437,9 +472,8 @@ index 0000000..f359dfc
 ++	ret = -ETIMEDOUT;
 ++
 ++err_disconnected:
-++	dev_err(tcphy->dev, "failed to reinitialize USB3 PHY for host: %d\n",
-++		ret);
-++	tcphy->orientation_valid = false;
+++	dev_err(tcphy->dev, "failed to reinitialize USB3 PHY for %s mode: %d\n",
+++		role, ret);
 ++	tcphy->reinit_pending = false;
 ++	tcphy->mode = MODE_DISCONNECT;
 ++out_unlock:
@@ -454,7 +488,7 @@ index 0000000..f359dfc
 + 	.owner		= THIS_MODULE,
 + };
 + 
-+@@ -1183,6 +1322,12 @@ static int rockchip_typec_phy_probe(struct platform_device *pdev)
++@@ -1183,6 +1358,12 @@ static int rockchip_typec_phy_probe(struct platform_device *pdev)
 + 		phy_set_drvdata(phy, tcphy);
 + 	}
 + 
