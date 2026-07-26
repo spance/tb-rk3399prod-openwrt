@@ -187,6 +187,12 @@ grep -Fq '+CONFIG_USB_DWC3_DUAL_ROLE=y' "$openwrt_patch" || \
 	fail "DWC3 dual-role state machine is missing from the OpenWrt patch"
 grep -Fq '+CONFIG_USB_GADGET=y' "$openwrt_patch" || \
 	fail "DWC3 dual-role build dependency USB_GADGET is missing"
+for disabled_dwc3_mode in \
+	'+# CONFIG_USB_DWC3_GADGET is not set' \
+	'+# CONFIG_USB_DWC3_HOST is not set'; do
+	grep -Fq "$disabled_dwc3_mode" "$openwrt_patch" || \
+		fail "DWC3 choice is incomplete: $disabled_dwc3_mode"
+done
 if grep -Fq '+CONFIG_USB_DWC3_HOST=y' "$openwrt_patch"; then
 	fail "OpenWrt patch must not restore host-only DWC3 mode"
 fi
@@ -341,6 +347,12 @@ if [ -d "$WORK_DIR/openwrt/.git" ]; then
 		'CONFIG_USB_ROLE_SWITCH=y'; do
 		grep -Fqx "$required_kernel_config" "$rockchip_kernel_config" || \
 			fail "required Type-C kernel setting is missing: $required_kernel_config"
+	done
+	for disabled_dwc3_mode in \
+		'# CONFIG_USB_DWC3_GADGET is not set' \
+		'# CONFIG_USB_DWC3_HOST is not set'; do
+		grep -Fqx "$disabled_dwc3_mode" "$rockchip_kernel_config" || \
+			fail "DWC3 choice is incomplete: $disabled_dwc3_mode"
 	done
 	if grep -Fqx 'CONFIG_USB_DWC3_HOST=y' "$rockchip_kernel_config"; then
 		fail "Type-C DWC3 still uses host-only mode; role-switch cannot rebuild xHCI"

@@ -38,7 +38,7 @@ OpenWrt 25.12.5 的 Rockchip armv8 内核已经内建 `TYPEC`、`TYPEC_TCPM`、`
 
 DTS 将连接器的方向端点连接到 `tcphy0_usb3`，将角色端点连接到 DWC3_0，并为 DWC3_0 设置 `dr_mode = "otg"` 与 `usb-role-switch`。TCPM 的事件顺序是：先设置 orientation，再设置 USB role。拔出时 DWC3 退出 host 并删除该控制器的 xHCI；再次插入时先完成 PHY 换向，再切换到 host 并创建新的 xHCI。这个生命周期与实机上有效的 DWC3 手工解绑/重绑一致，但由内核状态机自动执行，不依赖 OpenWrt 热插拔脚本。
 
-`CONFIG_USB_DWC3_DUAL_ROLE` 依赖 `CONFIG_USB_GADGET`，所以后者也会编入内核；它只是 DWC3 标准角色切换实现的构建依赖。本板连接器的 `data-role = "host"`、`power-role = "source"` 未改变，不把 gadget/受电端作为受支持功能，也不添加任何 gadget function 或用户空间配置。
+`CONFIG_USB_DWC3_DUAL_ROLE` 依赖 `CONFIG_USB_GADGET`，所以后者也会编入内核；它只是 DWC3 标准角色切换实现的构建依赖。本板连接器的 `data-role = "host"`、`power-role = "source"` 未改变，不把 gadget/受电端作为受支持功能，也不添加任何 gadget function 或用户空间配置。Linux 把 DWC3 的 host-only、gadget-only 和 dual-role 定义为一个 Kconfig choice，因此目标配置还必须显式记录前两项为 `not set`；只加入 dual-role 正选项会使 `syncconfig` 将其余选项标成 `NEW` 并进入交互，破坏无人值守构建。
 
 该补丁属于 Linux 6.12 的板级回移，不应在升级内核时机械沿用。升级流程必须先检查新内核的 `phy-rockchip-typec.c` 是否已经原生支持 `orientation-switch`，若已支持则删除补丁并按新绑定调整 DTS；若仍未支持，则重新审查上游最新版本并完成正反插回归。
 
