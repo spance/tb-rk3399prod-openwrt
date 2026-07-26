@@ -176,13 +176,20 @@ grep -Fq '143-mmc-sdhci-of-arasan-disable-rk3399-cqe.patch' \
 	fail "RK3399 eMMC CQE reliability patch is missing"
 grep -Fq 'SDHCI_QUIRK_BROKEN_CQE' "$openwrt_patch" || \
 	fail "RK3399 eMMC CQE is not disabled with the standard SDHCI quirk"
-grep -Fq '144-phy-rockchip-typec-fixed-host-orientation.patch' \
+grep -Fq '144-phy-rockchip-typec-orientation-switch.patch' \
 	"$openwrt_patch" || \
-	fail "RK3399 fixed-host Type-C orientation patch is missing"
+	fail "RK3399 Type-C orientation-switch patch is missing"
 grep -Fq 'tcphy_set_orientation' "$openwrt_patch" || \
 	fail "RK3399 Type-C orientation callback is missing"
 grep -Fq 'tcphy_phy_deinit(tcphy);' "$openwrt_patch" || \
 	fail "RK3399 Type-C lane reinitialization is missing"
+grep -Fq '+CONFIG_USB_DWC3_DUAL_ROLE=y' "$openwrt_patch" || \
+	fail "DWC3 dual-role state machine is missing from the OpenWrt patch"
+grep -Fq '+CONFIG_USB_GADGET=y' "$openwrt_patch" || \
+	fail "DWC3 dual-role build dependency USB_GADGET is missing"
+if grep -Fq '+CONFIG_USB_DWC3_HOST=y' "$openwrt_patch"; then
+	fail "OpenWrt patch must not restore host-only DWC3 mode"
+fi
 grep -Fq 'Mini-PCIe 插座只接 USB2' \
 	"$PROJECT_DIR/docs/HARDWARE-REFERENCE.md" || \
 	fail "Mini-PCIe USB-only wiring constraint is not documented"
@@ -270,7 +277,14 @@ for typec_setting in \
 	'orientation-switch;' \
 	'&usbdrd3_0 {' \
 	'&usbdrd_dwc3_0 {' \
-	'dr_mode = "host";'; do
+	'dr_mode = "otg";' \
+	'usb-role-switch;' \
+	'usbc0_role_sw: endpoint {' \
+	'dwc3_0_role_switch: endpoint {' \
+	'remote-endpoint = <&tcphy0_orientation_switch>;' \
+	'remote-endpoint = <&dwc3_0_role_switch>;' \
+	'remote-endpoint = <&usbc0_orien_sw>;' \
+	'remote-endpoint = <&usbc0_role_sw>;'; do
 	grep -Fq "$typec_setting" \
 		"$PROJECT_DIR/dts/rk3399pro-toybrick-prod.dtsi" || \
 		fail "USB Type-C device-tree setting is missing: $typec_setting"
@@ -278,7 +292,11 @@ done
 for vendor_typec_setting in \
 	'compatible = "fairchild,fusb302";' \
 	'vbus-5v-gpios' \
-	'extcon = <&fusb0>'; do
+	'extcon = <&fusb0>' \
+	'u2phy0_typec_hs' \
+	'usbc0_hs' \
+	'tcphy0_typec_ss' \
+	'usbc0_ss'; do
 	if grep -Fq "$vendor_typec_setting" \
 		"$PROJECT_DIR/dts/rk3399pro-toybrick-prod.dtsi"; then
 		fail "obsolete vendor Type-C binding remains: $vendor_typec_setting"
@@ -318,11 +336,15 @@ if [ -d "$WORK_DIR/openwrt/.git" ]; then
 		'CONFIG_TYPEC_FUSB302=y' \
 		'CONFIG_TYPEC_TCPM=y' \
 		'CONFIG_USB_DWC3=y' \
-		'CONFIG_USB_DWC3_HOST=y' \
+		'CONFIG_USB_DWC3_DUAL_ROLE=y' \
+		'CONFIG_USB_GADGET=y' \
 		'CONFIG_USB_ROLE_SWITCH=y'; do
 		grep -Fqx "$required_kernel_config" "$rockchip_kernel_config" || \
 			fail "required Type-C kernel setting is missing: $required_kernel_config"
 	done
+	if grep -Fqx 'CONFIG_USB_DWC3_HOST=y' "$rockchip_kernel_config"; then
+		fail "Type-C DWC3 still uses host-only mode; role-switch cannot rebuild xHCI"
+	fi
 	dts_dest="$WORK_DIR/openwrt/target/linux/rockchip/files-$kernel_patchver/arch/arm64/boot/dts/rockchip"
 	for name in rk3399pro-toybrick-prod.dts rk3399pro-toybrick-prod.dtsi; do
 		cmp -s "$PROJECT_DIR/dts/$name" "$dts_dest/$name" || \

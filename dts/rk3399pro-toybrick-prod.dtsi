@@ -200,7 +200,7 @@
 		pinctrl-0 = <&usbc0_int>;
 		vbus-supply = <&vbus_typec>;
 
-		connector {
+		usb_con: connector {
 			compatible = "usb-c-connector";
 			data-role = "host";
 			label = "USB-C";
@@ -215,16 +215,16 @@
 				port@0 {
 					reg = <0>;
 
-					usbc0_hs: endpoint {
-						remote-endpoint = <&u2phy0_typec_hs>;
+					usbc0_orien_sw: endpoint {
+						remote-endpoint = <&tcphy0_orientation_switch>;
 					};
 				};
 
 				port@1 {
 					reg = <1>;
 
-					usbc0_ss: endpoint {
-						remote-endpoint = <&tcphy0_typec_ss>;
+					usbc0_role_sw: endpoint {
+						remote-endpoint = <&dwc3_0_role_switch>;
 					};
 				};
 			};
@@ -609,8 +609,8 @@
 	orientation-switch;
 
 	port {
-		tcphy0_typec_ss: endpoint {
-			remote-endpoint = <&usbc0_ss>;
+		tcphy0_orientation_switch: endpoint {
+			remote-endpoint = <&usbc0_orien_sw>;
 		};
 	};
 };
@@ -635,12 +635,6 @@
 	u2phy0_host: host-port {
 		phy-supply = <&vcc5v0_usb>;
 		status = "okay";
-	};
-
-	port {
-		u2phy0_typec_hs: endpoint {
-			remote-endpoint = <&usbc0_hs>;
-		};
 	};
 };
 
@@ -682,9 +676,16 @@
 };
 
 &usbdrd_dwc3_0 {
-	dr_mode = "host";
+	dr_mode = "otg";
 	snps,dis-u3-autosuspend-quirk;
 	status = "okay";
+	usb-role-switch;
+
+	port {
+		dwc3_0_role_switch: endpoint {
+			remote-endpoint = <&usbc0_role_sw>;
+		};
+	};
 };
 
 &usbdrd3_1 {

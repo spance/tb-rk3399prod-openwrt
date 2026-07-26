@@ -20,7 +20,7 @@
 - eMMC：HS400 Enhanced Strobe、ADMA；为避免写入负载下反复进入 CQE recovery，使用 Linux 已有的 `SDHCI_QUIRK_BROKEN_CQE` 默认关闭 CQE。
 - RTL8211E 千兆以太网：RGMII，TX/RX delay `0x28/0x20`。
 - 网络调优：GMAC IRQ 动态绑定到第一颗 Cortex-A72，并在 LAN `ifup` 后及 S99 阶段幂等恢复；fw4 软件 flow offload 默认开启，硬件 flow offload 保持关闭。
-- USB2 EHCI/OHCI、两组 USB3 xHCI、板载 Hub 电源和复位；蓝色 Type-A 口已实测高速读写。Type-C 使用 DWC3_0/tcphy0、I2C8 FUSB302 和 TCPM，Linux 固定为 5 V source/host，并带固定主机正反插 PHY 换向补丁；当前状态为代码已实现、待新镜像实机验收，详见 [USB Type-C SuperSpeed 主机](USB-TYPE-C.md)。
+- USB2 EHCI/OHCI、两组 USB3 控制器、板载 Hub 电源和复位；蓝色 Type-A 口已实测高速读写。Type-C 使用 DWC3_0/tcphy0、I2C8 FUSB302、TCPM orientation switch 和 DWC3 `usb-role-switch`，连接器固定为 5 V source/host；C 口 SuperSpeed 已实测，自动换向重连待新镜像验收，详见 [USB Type-C SuperSpeed 主机](USB-TYPE-C.md)。
 - PCIe：默认启用，Gen1、x4 host，位于独立的 x4 板对板插座，并允许通过合适的转接板连接 x1 端点；无端点时 training timeout 与原厂 BSP 一致。
 - HDMI console：内建 Rockchip DRM、VOPB、DW-HDMI、fbdev/fbcon，保留 UART2 并增加 `tty1` 键盘登录；详细设计和验收见 [HDMI Linux console](HDMI-CONSOLE.md)。
 - 无线、蓝牙、摄像、音频、图形桌面、GPU 和 NPU 不纳入当前目标，也不打包 `rtw88`、mac80211 或无线固件。
