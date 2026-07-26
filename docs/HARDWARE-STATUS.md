@@ -10,7 +10,7 @@
 | 温控 | 已确认 | CPU/GPU thermal zone、TSADC 正常 |
 | TF | 已确认启动 | Linux 50 MHz/4-bit/IDMAC；U-Boot 25 MHz/PIO 可靠读取 FIT |
 | eMMC | 已确认启动 | 29.1 GiB，HS400 Enhanced Strobe、CQE、ADMA |
-| eMMC 正常系统 | 待实机写入验收 | 64 MiB `boot_linux.img` + 128 MiB SquashFS `rootfs.img`；首次启动自动建立 ext4 `/overlay` |
+| eMMC 正常系统 | 待实机写入验收 | 224 MiB `openwrt.img` 内含启动容器和 SquashFS rootfs；首次启动自动建立 ext4 `/overlay` |
 | 千兆网 | 链路确认，压测中 | RTL8211E，1000/full，RX/TX flow control |
 | USB2 | 已确认枚举 | 两组 EHCI/OHCI 和板载 Hub |
 | USB3 | 已确认枚举 | xHCI SuperSpeed 和板载 SuperSpeed Hub |

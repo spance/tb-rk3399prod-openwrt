@@ -93,7 +93,7 @@ build_openwrt()
 		-name '*toybrick_tb-rk3399prod-squashfs-rootfs.img' -print0)
 	[ "$rootfs_count" -eq 1 ] || \
 		fail "expected exactly one TB-RK3399ProD SquashFS rootfs image, found $rootfs_count"
-	[ "$(stat -c '%s' "$rootfs_image")" -eq 134217728 ] || \
+	[ "$(stat -c '%s' "$rootfs_image")" -eq "$ROOTFS_IMAGE_SIZE" ] || \
 		fail "SquashFS rootfs image is not exactly 128 MiB"
 	[ "$(od -An -tx1 -N4 "$rootfs_image" | tr -d ' \n')" = 68737173 ] || \
 		fail "rootfs image does not start with a SquashFS superblock"
@@ -101,11 +101,14 @@ build_openwrt()
 	rootfs_original_name=$(basename -- "$rootfs_image")
 	mv -- "$rootfs_image" "$dest/rootfs.img"
 	ln -s rootfs.img "$dest/$rootfs_original_name"
+	rootfs_image="$dest/rootfs.img"
 
 	mkimage="$source/staging_dir/host/bin/mkimage"
 	[ -x "$mkimage" ] || fail "OpenWrt host mkimage not found: $mkimage"
 	bash "$SCRIPT_DIR/make-boot-linux.sh" \
 		"$fit_image" "$mkimage" "$dest/boot_linux.img"
+	bash "$SCRIPT_DIR/make-openwrt-image.sh" \
+		"$dest/boot_linux.img" "$rootfs_image" "$dest/openwrt.img"
 	(
 		cd "$dest"
 		find . -maxdepth 1 -type f ! -name TB-SHA256SUMS -print0 | \

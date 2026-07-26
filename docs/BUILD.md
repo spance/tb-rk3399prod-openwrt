@@ -105,18 +105,16 @@ make openwrt
 bash scripts/build.sh all 16
 ```
 
-`make all` 不调用初始化，只检查主机依赖、工作树、固定基线、补丁、feed、`.config` 和 DTS 状态；任一输入未准备好便要求先执行 `make init`。U-Boot 使用厂商命令 `./make.sh rk3399pro`。OpenWrt 构建阶段不执行 `feeds update/install`、`defconfig` 或 `make download`，只执行编译；并行构建失败时自动关闭标准输入并以 `-j1 V=sc` 重试，既保留命令和完整错误上下文，也确保遗漏的 Kconfig 项直接失败而不会进入交互式配置。构建完成后，脚本使用 OpenWrt host `mkimage` 和 `e2fsprogs` 生成 64 MiB `boot_linux.img`，并校验、规范命名 128 MiB SquashFS `rootfs.img`。
+`make all` 不调用初始化，只检查主机依赖、工作树、固定基线、补丁、feed、`.config` 和 DTS 状态；任一输入未准备好便要求先执行 `make init`。U-Boot 使用厂商命令 `./make.sh rk3399pro`。OpenWrt 构建阶段不执行 `feeds update/install`、`defconfig` 或 `make download`，只执行编译；并行构建失败时自动关闭标准输入并以 `-j1 V=sc` 重试，既保留命令和完整错误上下文，也确保遗漏的 Kconfig 项直接失败而不会进入交互式配置。构建完成后，脚本生成并验证 64 MiB `boot_linux.img` 与 128 MiB SquashFS `rootfs.img`，再按原厂 GPT 的相对偏移组合为 224 MiB `openwrt.img`。
 
-关键 OpenWrt 输出为：
+正式部署只需要两个镜像：
 
 ```text
-out/openwrt/openwrt-...-toybrick_tb-rk3399prod-kernel.bin
-out/openwrt/openwrt-...-toybrick_tb-rk3399prod-initramfs-kernel.bin
-out/openwrt/boot_linux.img
-out/openwrt/rootfs.img
+out/uboot/uboot.img
+out/openwrt/openwrt.img
 ```
 
-第一项是 eMMC 正常启动 FIT，第二项仅用于恢复。`boot_linux.img` 包含正常 FIT 和 `boot.scr`；`rootfs.img` 写入 grow `rootfs` 分区后，首次启动会自动用其剩余空间建立 ext4 `/overlay`。
+`openwrt.img` 从 eMMC LBA `0x6000` 连续写入：开头是包含正常 FIT 与 `boot.scr` 的 ext2 启动容器，96 MiB 偏移处是 SquashFS rootfs；首次启动会使用 grow `rootfs` 分区剩余空间建立 ext4 `/overlay`。`out/openwrt/` 同时保留 FIT、initramfs、manifest、独立 `boot_linux.img` 和 `rootfs.img` 等诊断/恢复产物；它们不进入 `dist` 发布包。
 
 ## 4. 打包
 
@@ -131,7 +129,7 @@ dist/tb-rk3399prod-openwrt-25.12.5.tar.gz
 dist/tb-rk3399prod-openwrt-25.12.5.tar.gz.sha256
 ```
 
-包内包含固件、逐文件 `SHA256SUMS` 和固定上游版本信息。OpenWrt 输出目录另外保留官方 `sha256sums`，工程生成的目录级清单使用 `TB-SHA256SUMS`，避免在 NTFS 上发生大小写文件名碰撞。`boot_linux.img` 是原厂 `boot_linux` 分区使用的 ext2 镜像，内部包含正常 FIT 和安全加载地址为 `0x10000000` 的 `boot.scr`；`rootfs.img` 提供只读 SquashFS 和首次启动自动创建的持久化 ext4 overlay。二者都不是 Rockchip `update.img`。
+包内只发布 `firmware/uboot.img`、`firmware/openwrt.img`、逐文件 `SHA256SUMS` 和固定上游版本信息。`openwrt.img` 是按当前 GPT 布局生成的原始连续写入镜像，不是 Rockchip `update.img`；打包使用 GNU tar sparse 格式，避免镜像中的清零间隙和 rootfs 补零区无谓占用归档空间。
 
 ## 5. 清理与工作树恢复
 

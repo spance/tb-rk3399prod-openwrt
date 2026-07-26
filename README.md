@@ -19,7 +19,7 @@ make package
 |---|---|
 | `make check` | 离线检查工程结构、脚本、补丁、配置和关键不变量 |
 | `make init` | 获取固定上游和唯一 `packages` feed，应用补丁、同步 DTS、生成配置并下载全部源包 |
-| `make all` | 只验证既有初始化状态并编译 U-Boot/OpenWrt、生成分区镜像 |
+| `make all` | 只验证既有初始化状态并编译 U-Boot/OpenWrt、生成两个部署镜像 |
 | `make package` | 校验 `out/` 并生成 `dist/` 发布包 |
 | `make clean` | 仅删除 `out/` 和 `dist/` |
 | `make reset` | 校验 origin/固定 commit 后强制复位 `.work` 内的上游 Git 工作树 |
@@ -32,10 +32,13 @@ make package
 | 文件 | 用途 |
 |---|---|
 | `out/uboot/uboot.img` | 当前厂商 miniloader 启动链使用的 U-Boot |
-| `out/openwrt/boot_linux.img` | eMMC 正常启动容器，包含 OpenWrt FIT 和 `boot.scr` |
-| `out/openwrt/rootfs.img` | SquashFS 系统和首次启动自动创建的持久化 ext4 overlay |
-| `out/openwrt/*initramfs-kernel.bin` | TF/串口恢复启动 |
+| `out/openwrt/openwrt.img` | 从 LBA `0x6000` 连续写入的完整 OpenWrt 镜像，包含启动容器和 SquashFS rootfs |
+| `out/openwrt/boot_linux.img`、`rootfs.img` | 组合镜像的两个分区级组件，保留用于布局检查和调试 |
+| `out/openwrt/*initramfs-kernel.bin` | TF/串口恢复启动镜像 |
+| `out/openwrt/` 其他文件 | OpenWrt 上游校验、版本、manifest 和构建信息 |
 | `dist/*.tar.gz` | 最终发布包及 SHA256 |
+
+正常部署只写入 `uboot.img` 和 `openwrt.img`；原厂 `trust@0x4000` 保留不动。`out/openwrt/` 完整保留中间产物便于调试，`make package` 生成的正式发布包则只收录两个部署镜像。
 
 ## 工程结构
 

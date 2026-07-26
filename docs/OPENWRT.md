@@ -28,17 +28,17 @@ RTL8822CE 不需要静态 DTS 子节点，PCIe 枚举后由设备 ID 自动绑�
 
 ## 正常启动与持久化 overlay
 
-正常 `boot_linux.img` 内的 FIT 只包含 Linux 内核和 DTB。启动脚本使用稳定的 GPT 标签指定根文件系统：
+正式 `openwrt.img` 开头的 ext2 启动容器中，FIT 只包含 Linux 内核和 DTB。启动脚本使用稳定的 GPT 标签指定根文件系统：
 
 ```text
 root=PARTLABEL=rootfs rootwait rootfstype=squashfs fstools_overlay_fstype=ext4
 ```
 
-`rootfs.img` 是固定 128 MiB 的写入载体，开头为 OpenWrt SquashFS。它只用于覆盖原厂 `rootfs@0x36000` 分区的前 128 MiB；内核仍把整个 grow 分区作为根块设备。首次启动时，OpenWrt `fstools` 根据 SquashFS 实际结束位置建立 loop 设备，自动用 `mkfs.ext4` 格式化后面的全部剩余空间，并挂载为 `/overlay`。`fstools_overlay_fstype=ext4` 很重要：`fstools` 对大容量块设备的 `auto` 策略会选择 F2FS，本工程显式固定 ext4，以匹配已打包的格式化工具和当前稳定性目标。因此安装软件、UCI 配置及 `/etc` 修改能够跨重启保存。
+`openwrt.img` 的 96 MiB 偏移处是固定 128 MiB 的 rootfs 载体，开头为 OpenWrt SquashFS。整个组合镜像从 LBA `0x6000` 写入后，该载体正好覆盖原厂 `rootfs@0x36000` 分区的前 128 MiB；内核仍把整个 grow 分区作为根块设备。首次启动时，OpenWrt `fstools` 根据 SquashFS 实际结束位置建立 loop 设备，自动用 `mkfs.ext4` 格式化后面的全部剩余空间，并挂载为 `/overlay`。`fstools_overlay_fstype=ext4` 很重要：`fstools` 对大容量块设备的 `auto` 策略会选择 F2FS，本工程显式固定 ext4，以匹配已打包的格式化工具和当前稳定性目标。因此安装软件、UCI 配置及 `/etc` 修改能够跨重启保存。
 
 设备 profile 显式加入 `e2fsprogs`，保证首次启动存在 `mkfs.ext4`；Rockchip armv8 内核基线已内建 loop、SquashFS、ext4 和 overlayfs 所需支持。SquashFS 内容由 `check-size 120m` 约束，载体补齐到 128 MiB，预留的 8 MiB 清零区确保旧 overlay 超级块不会在重装后被误识别；内容超限时构建直接失败。
 
-`boot_linux.img` 和 `rootfs.img` 是匹配的一组，升级时必须同时写入。重新写入 `rootfs.img` 会清空旧 overlay 的起始元数据并在下一次启动重建，等同于恢复出厂；升级前应另行导出配置。
+构建脚本将匹配的启动容器和 rootfs 原子地组合成一个 `openwrt.img`，避免升级时错配。重新写入它会清空旧 overlay 的起始元数据并在下一次启动重建，等同于恢复出厂；升级前应另行导出配置。
 
 ## initramfs 恢复启动
 
@@ -50,4 +50,4 @@ setenv bootargs console=tty0 console=ttyS2,1500000n8 earlycon=uart8250,mmio32,0x
 bootm ${fitaddr}
 ```
 
-配置会额外保留强制 initramfs FIT 作为 TF/串口恢复镜像，但它不会放入正式 `boot_linux.img`，也不会挂载持久化 overlay。正式 `boot_linux.img` 使用正常 FIT。两种 FIT 都加载到安全地址 `0x10000000` 后执行 `bootm`。
+配置会额外保留强制 initramfs FIT 作为 TF/串口恢复镜像，并将它复制到 `out/openwrt/`；它不会放入正式 `openwrt.img`，也不会挂载持久化 overlay。正式组合镜像使用正常 FIT。两种 FIT 都加载到安全地址 `0x10000000` 后执行 `bootm`。

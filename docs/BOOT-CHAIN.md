@@ -32,7 +32,7 @@ Rockchip 官方说明明确区分两种方式：miniloader 从独立 `trust.img`
 ## 当前工程决策
 
 - 保留原厂 `trust.img` 和 `trust@0x4000`，本工程不生成、不更新它。
-- OpenWrt 升级只更新本工程构建的 U-Boot、`boot_linux.img` 和 `rootfs.img`；不得用 OpenWrt 镜像覆盖 `trust`。
+- OpenWrt 升级只更新本工程构建的 `uboot.img` 和从 LBA `0x6000` 连续写入的 `openwrt.img`；不得用任何本工程镜像覆盖 `trust`。
 - 若未来需要回收 BL32 保留内存，可以研究“保留 BL31、取消 BL32”的新 `trust.img`，但必须重新验证冷启动、软复位、PSCI/SMP、CPU 调频、休眠/唤醒和内存布局。它是独立启动固件项目，不属于普通 OpenWrt 升级。
 - 只有迁移到 SPL + `u-boot.itb`，把 BL31（以及可选 BL32）合并进 U-Boot FIT 后，独立 `trust` 分区才可以取消；这等同于更换整个启动链。
 

@@ -44,7 +44,9 @@ assert_file "$PROJECT_DIR/configs/openwrt.config"
 assert_file "$PROJECT_DIR/configs/feeds.conf"
 assert_file "$PROJECT_DIR/boot/boot.cmd"
 assert_file "$PROJECT_DIR/scripts/clean.sh"
+assert_file "$PROJECT_DIR/scripts/make-openwrt-image.sh"
 assert_file "$PROJECT_DIR/scripts/reset.sh"
+assert_file "$PROJECT_DIR/scripts/verify-openwrt-image.sh"
 assert_file "$PROJECT_DIR/docs/BOOT-CHAIN.md"
 assert_file "$PROJECT_DIR/docs/HDMI-CONSOLE.md"
 
@@ -65,6 +67,30 @@ grep -Fq 'mark_managed_dir "$OUT_DIR" out' "$PROJECT_DIR/scripts/build.sh" || \
 grep -Fq 'mark_managed_dir "$DIST_DIR" dist' \
 	"$PROJECT_DIR/scripts/package.sh" || \
 	fail "custom distribution directories are not marked as project-managed"
+grep -Fq '"$SCRIPT_DIR/make-openwrt-image.sh"' \
+	"$PROJECT_DIR/scripts/build.sh" || \
+	fail "OpenWrt deployment image is not assembled by the build stage"
+grep -Fq '"$OUT_DIR/openwrt/openwrt.img"' \
+	"$PROJECT_DIR/scripts/package.sh" || \
+	fail "release package does not require the combined OpenWrt image"
+for layout in \
+	'SECTOR_SIZE=512' \
+	'UBOOT_LBA=$((0x2000))' \
+	'TRUST_LBA=$((0x4000))' \
+	'BOOT_LINUX_LBA=$((0x6000))' \
+	'ROOTFS_LBA=$((0x36000))' \
+	'BOOT_LINUX_IMAGE_SIZE=$((64 * 1024 * 1024))' \
+	'ROOTFS_IMAGE_SIZE=$((128 * 1024 * 1024))'; do
+	grep -Fqx "$layout" "$PROJECT_DIR/scripts/lib.sh" || \
+		fail "eMMC image layout setting is missing: $layout"
+done
+[ "$OPENWRT_ROOTFS_OFFSET" -eq 100663296 ] || \
+	fail "combined image rootfs offset is not exactly 96 MiB"
+[ "$OPENWRT_IMAGE_SIZE" -eq 234881024 ] || \
+	fail "combined OpenWrt image is not exactly 224 MiB"
+[ $((BOOT_LINUX_LBA + OPENWRT_ROOTFS_OFFSET / SECTOR_SIZE)) \
+	-eq "$ROOTFS_LBA" ] || \
+	fail "combined image rootfs does not land at the vendor rootfs LBA"
 if grep -Eq 'git[[:space:]].*(reset|clean)' "$PROJECT_DIR/scripts/clean.sh"; then
 	fail "ordinary clean must not mutate Git worktrees"
 fi

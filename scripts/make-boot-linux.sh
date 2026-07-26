@@ -50,7 +50,7 @@ SOURCE_DATE_EPOCH=$build_epoch "$mkimage" \
 # Keep imported inode timestamps stable across build hosts.
 touch -d "@$build_epoch" "$boot_stage" "$boot_stage"/*
 
-truncate -s 64M "$image_tmp"
+truncate -s "$BOOT_LINUX_IMAGE_SIZE" "$image_tmp"
 E2FSPROGS_FAKE_TIME=$build_epoch \
 	mke2fs -q -F -t ext2 -b 4096 -i 8192 -m 0 \
 	-L boot_linux -U 8b3399d0-0000-4000-8000-000000000001 \
@@ -58,7 +58,7 @@ E2FSPROGS_FAKE_TIME=$build_epoch \
 	-E root_owner=0:0,hash_seed=8b3399d0-0000-4000-8000-000000000001 \
 	-d "$boot_stage" "$image_tmp"
 
-[ "$(stat -c '%s' "$image_tmp")" -eq 67108864 ] || \
+[ "$(stat -c '%s' "$image_tmp")" -eq "$BOOT_LINUX_IMAGE_SIZE" ] || \
 	fail "boot_linux.img is not exactly 64 MiB"
 e2fsck -fn "$image_tmp" >/dev/null 2>&1 || \
 	fail "boot_linux.img failed e2fsck"

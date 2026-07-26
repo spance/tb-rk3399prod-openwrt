@@ -23,13 +23,18 @@
 
 ```text
 out/uboot/uboot.img
-out/openwrt/openwrt-rockchip-armv8-toybrick_tb-rk3399prod-kernel.bin
-out/openwrt/openwrt-rockchip-armv8-toybrick_tb-rk3399prod-initramfs-kernel.bin
-out/openwrt/boot_linux.img
-out/openwrt/rootfs.img
+out/openwrt/openwrt.img
 ```
 
-`boot_linux.img` 固定为 64 MiB ext2，能够完整写入 96 MiB 的原厂分区。镜像内容：
+`openwrt.img` 固定为 224 MiB，是从 `boot_linux@0x6000` 开始连续写入的原始部署镜像。内部布局：
+
+| `openwrt.img` 内偏移 | 内容 | 写入后的目标 |
+|---:|---|---|
+| `0` | 64 MiB ext2 启动容器 | `boot_linux@0x6000` |
+| `64 MiB` | 32 MiB 清零间隙 | `boot_linux` 分区尾部 |
+| `96 MiB` | 128 MiB SquashFS rootfs 载体 | `rootfs@0x36000` 的开头 |
+
+64 MiB ext2 启动容器的内容为：
 
 ```text
 /boot.cmd       可审阅的启动命令
@@ -38,9 +43,9 @@ out/openwrt/rootfs.img
 /SHA256SUMS     镜像内文件校验值
 ```
 
-`rootfs.img` 固定为 128 MiB，开头是只读 SquashFS，后面补零。SquashFS 内容上限为 120 MiB，额外 8 MiB 清零余量用于确保重装后不会误识别旧 overlay 超级块。128 MiB 是安全的刷写载体，不是最终 `/overlay` 容量；写入 grow `rootfs` 分区后，内核看到的是整个约 29 GiB 分区。
+组合镜像中的 rootfs 载体固定为 128 MiB，开头是只读 SquashFS，后面补零。SquashFS 内容上限为 120 MiB，额外 8 MiB 清零余量用于确保重装后不会误识别旧 overlay 超级块。128 MiB 是安全的覆盖范围，不是最终 `/overlay` 容量；写入 grow `rootfs` 分区后，内核看到的是整个约 29 GiB 分区。
 
-`initramfs-kernel.bin` 仅用于 TF/串口恢复，不进入正式 `boot_linux.img`。
+普通 FIT、独立 `boot_linux.img`、`rootfs.img`、manifest 和 `initramfs-kernel.bin` 会保留在 `out/openwrt/`，便于检查、恢复和调试，但不进入 `dist` 发布包。
 
 ## overlay 工作方式
 
@@ -59,7 +64,7 @@ GPT 分区名比 `mmcblk0p4` 一类动态编号稳定。`fstools_overlay_fstype=
 
 因此 UCI 配置、安装的软件包以及普通 `/etc` 修改会保存在 eMMC，并在重启后继续存在。首次启动格式化会比后续启动稍慢，断电前应等待系统完全进入控制台。
 
-重新写入 `rootfs.img` 会把 overlay 的起始元数据清零；下一次启动将重新格式化 overlay，效果等同恢复出厂。当前工程没有实现保留配置的 `sysupgrade` 流程，升级前应在系统外保存所需配置，并始终写入同一次构建产生的 `boot_linux.img` 和 `rootfs.img`。
+重新写入 `openwrt.img` 会同时更新启动容器和 rootfs，并把 overlay 的起始元数据清零；下一次启动将重新格式化 overlay，效果等同恢复出厂。当前工程没有实现保留配置的 `sysupgrade` 流程，升级前应在系统外保存所需配置。
 
 ## 写入映射
 
@@ -67,10 +72,9 @@ GPT 分区名比 `mmcblk0p4` 一类动态编号稳定。`fstools_overlay_fstype=
 |---|---:|
 | `uboot.img` | `uboot`，LBA `0x2000` |
 | 原厂 `trust.img` | `trust`，LBA `0x4000`；保留且不由本工程更新 |
-| `boot_linux.img` | `boot_linux`，LBA `0x6000` |
-| `rootfs.img` | `rootfs`，LBA `0x36000` |
+| `openwrt.img` | 从 LBA `0x6000` 连续写入；内部 rootfs 自动落在 LBA `0x36000` |
 
-正常系统必须成对写入 `boot_linux.img@0x6000` 和 `rootfs.img@0x36000`。写入 `rootfs.img` 会覆盖原厂 rootfs 和已有 OpenWrt overlay；用户已保留原厂完整系统镜像。刷写仍使用 Rockchip 官方 RKDevTool/rkdeveloptool 和本板官方 loader、parameter/GPT，本工程不提供自动刷机命令。
+正常部署只需写入 `uboot.img@0x2000` 和 `openwrt.img@0x6000`，保留原厂 `trust@0x4000`。写入 `openwrt.img` 会覆盖原厂 `boot_linux`、rootfs 开头和已有 OpenWrt overlay；用户已保留原厂完整系统镜像。刷写仍使用 Rockchip 官方 RKDevTool/rkdeveloptool 和本板官方 loader、parameter/GPT，本工程不提供自动刷机命令。
 
 ## 串口手动验证
 
@@ -133,13 +137,11 @@ cat /etc/tb-overlay-test
 
 文件仍存在才算持久化验收通过。随后可安装一个小型软件包、再次重启并验证命令仍存在，最后检查 `dmesg` 中没有 ext4、loop、CQE、ADMA 或 eMMC I/O 错误。
 
-构建机可在刷写前检查两个容器：
+构建机可在刷写前检查组合镜像：
 
 ```sh
-e2fsck -fn out/openwrt/boot_linux.img
-debugfs -R 'ls -l /' out/openwrt/boot_linux.img
-od -An -tx1 -N4 out/openwrt/rootfs.img
-stat -c '%s' out/openwrt/rootfs.img
+bash scripts/verify-openwrt-image.sh out/openwrt/openwrt.img
+stat -c '%s' out/openwrt/openwrt.img
 ```
 
-`rootfs.img` 的前四字节应为 `68 73 71 73`，大小应为 `134217728`。
+检查脚本会验证开头的 ext2、`boot.scr`、正常 FIT、96 MiB 偏移处的 SquashFS 魔数和完整镜像长度；文件大小应为 `234881024` 字节。

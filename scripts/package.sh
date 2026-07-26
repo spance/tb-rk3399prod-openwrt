@@ -10,18 +10,23 @@ bash "$SCRIPT_DIR/check-env.sh"
 
 for required in \
 	"$OUT_DIR/uboot/uboot.img" \
-	"$OUT_DIR/openwrt/boot_linux.img" \
-	"$OUT_DIR/openwrt/rootfs.img"; do
+	"$OUT_DIR/openwrt/openwrt.img"; do
 	[ -e "$required" ] || fail "missing build output: $required; run make all first"
 done
+[ "$(stat -c '%s' "$OUT_DIR/uboot/uboot.img")" -eq 4194304 ] || \
+	fail "uboot.img is not exactly 4 MiB"
+bash "$SCRIPT_DIR/verify-openwrt-image.sh" \
+	"$OUT_DIR/openwrt/openwrt.img" >/dev/null
 
 mark_managed_dir "$DIST_DIR" dist
 stage=$(mktemp -d "$DIST_DIR/.stage.XXXXXX")
 trap 'rm -rf -- "$stage"' EXIT
 
 mkdir -p "$stage/firmware"
-cp -a "$OUT_DIR/uboot" "$stage/firmware/"
-cp -a "$OUT_DIR/openwrt" "$stage/firmware/"
+cp -- "$OUT_DIR/uboot/uboot.img" "$stage/firmware/uboot.img"
+cp --sparse=always -- "$OUT_DIR/openwrt/openwrt.img" \
+	"$stage/firmware/openwrt.img"
+chmod 0644 "$stage/firmware/uboot.img" "$stage/firmware/openwrt.img"
 
 printf '%s\n' \
 	"Board: TB-RK3399ProD" \
@@ -29,7 +34,11 @@ printf '%s\n' \
 	"rkbin: $RKBIN_COMMIT" \
 	"toolchain: $TOOLCHAIN_COMMIT" \
 	"OpenWrt: $OPENWRT_TAG ($OPENWRT_COMMIT)" \
-	"Linux: $LINUX_VERSION" > "$stage/BUILD-METADATA.txt"
+	"Linux: $LINUX_VERSION" \
+	"uboot.img: flash at LBA 0x$(printf '%x' "$UBOOT_LBA")" \
+	"openwrt.img: flash at LBA 0x$(printf '%x' "$BOOT_LINUX_LBA")" \
+	"openwrt.img rootfs: byte offset $OPENWRT_ROOTFS_OFFSET, eMMC LBA 0x$(printf '%x' "$ROOTFS_LBA")" \
+	> "$stage/BUILD-METADATA.txt"
 
 (
 	cd "$stage"
@@ -37,7 +46,8 @@ printf '%s\n' \
 )
 
 archive="$DIST_DIR/tb-rk3399prod-openwrt-$OPENWRT_VERSION.tar.gz"
-tar --sort=name --mtime="@${SOURCE_DATE_EPOCH:-0}" \
+tar --sparse --sparse-version=1.0 --sort=name \
+	--mtime="@${SOURCE_DATE_EPOCH:-0}" \
 	--owner=0 --group=0 --numeric-owner -C "$stage" -czf "$archive.tmp" .
 mv -f "$archive.tmp" "$archive"
 (
