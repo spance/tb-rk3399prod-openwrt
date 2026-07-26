@@ -12,6 +12,7 @@ Makefile text eol=lf
 *.dts text eol=lf
 *.dtsi text eol=lf
 *.patch text eol=lf
+patches/openwrt/0001-tb-rk3399prod-board-support.patch whitespace=-blank-at-eol
 rootfs/etc/init.d/* text eol=lf
 rootfs/etc/uci-defaults/* text eol=lf
 rootfs/etc/hotplug.d/*/* text eol=lf

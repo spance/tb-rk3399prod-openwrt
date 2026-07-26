@@ -59,6 +59,7 @@ assert_file "$PROJECT_DIR/scripts/verify-openwrt-image.sh"
 assert_file "$PROJECT_DIR/docs/BOOT-CHAIN.md"
 assert_file "$PROJECT_DIR/docs/HDMI-CONSOLE.md"
 assert_file "$PROJECT_DIR/docs/NETWORK-PERFORMANCE.md"
+assert_file "$PROJECT_DIR/docs/USB-TYPE-C.md"
 
 grep -Fq '$(filter -j%,$(MAKEFLAGS))' "$PROJECT_DIR/Makefile" || \
 	fail "Makefile must derive parallelism from GNU Make -j"
@@ -175,6 +176,13 @@ grep -Fq '143-mmc-sdhci-of-arasan-disable-rk3399-cqe.patch' \
 	fail "RK3399 eMMC CQE reliability patch is missing"
 grep -Fq 'SDHCI_QUIRK_BROKEN_CQE' "$openwrt_patch" || \
 	fail "RK3399 eMMC CQE is not disabled with the standard SDHCI quirk"
+grep -Fq '144-phy-rockchip-typec-fixed-host-orientation.patch' \
+	"$openwrt_patch" || \
+	fail "RK3399 fixed-host Type-C orientation patch is missing"
+grep -Fq 'tcphy_set_orientation' "$openwrt_patch" || \
+	fail "RK3399 Type-C orientation callback is missing"
+grep -Fq 'tcphy_phy_deinit(tcphy);' "$openwrt_patch" || \
+	fail "RK3399 Type-C lane reinitialization is missing"
 grep -Fq 'Mini-PCIe 插座只接 USB2' \
 	"$PROJECT_DIR/docs/HARDWARE-REFERENCE.md" || \
 	fail "Mini-PCIe USB-only wiring constraint is not documented"
@@ -249,6 +257,33 @@ for dts_setting in \
 		"$PROJECT_DIR/dts/rk3399pro-toybrick-prod.dtsi" || \
 		fail "HDMI device-tree setting is missing: $dts_setting"
 done
+for typec_setting in \
+	'&i2c8 {' \
+	'compatible = "fcs,fusb302";' \
+	'interrupts = <RK_PA2 IRQ_TYPE_LEVEL_LOW>;' \
+	'gpio = <&gpio0 RK_PA1 GPIO_ACTIVE_LOW>;' \
+	'data-role = "host";' \
+	'power-role = "source";' \
+	'PDO_FIXED(5000, 1500, PDO_FIXED_USB_COMM)' \
+	'&tcphy0 {' \
+	'&tcphy0_usb3 {' \
+	'orientation-switch;' \
+	'&usbdrd3_0 {' \
+	'&usbdrd_dwc3_0 {' \
+	'dr_mode = "host";'; do
+	grep -Fq "$typec_setting" \
+		"$PROJECT_DIR/dts/rk3399pro-toybrick-prod.dtsi" || \
+		fail "USB Type-C device-tree setting is missing: $typec_setting"
+done
+for vendor_typec_setting in \
+	'compatible = "fairchild,fusb302";' \
+	'vbus-5v-gpios' \
+	'extcon = <&fusb0>'; do
+	if grep -Fq "$vendor_typec_setting" \
+		"$PROJECT_DIR/dts/rk3399pro-toybrick-prod.dtsi"; then
+		fail "obsolete vendor Type-C binding remains: $vendor_typec_setting"
+	fi
+done
 
 if [ -d "$WORK_DIR/openwrt/.git" ]; then
 	[ "$(git -C "$WORK_DIR/openwrt" rev-parse HEAD)" = "$OPENWRT_COMMIT" ] || \
@@ -275,6 +310,19 @@ if [ -d "$WORK_DIR/openwrt/.git" ]; then
 		"$kernel_details")
 	[ "$kernel_patchver$kernel_suffix" = "$LINUX_VERSION" ] || \
 		fail "OpenWrt Linux version differs from the pinned project baseline"
+	rockchip_kernel_config="$WORK_DIR/openwrt/target/linux/rockchip/armv8/config-$kernel_patchver"
+	for required_kernel_config in \
+		'CONFIG_PHY_ROCKCHIP_TYPEC=y' \
+		'CONFIG_REGULATOR_FIXED_VOLTAGE=y' \
+		'CONFIG_TYPEC=y' \
+		'CONFIG_TYPEC_FUSB302=y' \
+		'CONFIG_TYPEC_TCPM=y' \
+		'CONFIG_USB_DWC3=y' \
+		'CONFIG_USB_DWC3_HOST=y' \
+		'CONFIG_USB_ROLE_SWITCH=y'; do
+		grep -Fqx "$required_kernel_config" "$rockchip_kernel_config" || \
+			fail "required Type-C kernel setting is missing: $required_kernel_config"
+	done
 	dts_dest="$WORK_DIR/openwrt/target/linux/rockchip/files-$kernel_patchver/arch/arm64/boot/dts/rockchip"
 	for name in rk3399pro-toybrick-prod.dts rk3399pro-toybrick-prod.dtsi; do
 		cmp -s "$PROJECT_DIR/dts/$name" "$dts_dest/$name" || \

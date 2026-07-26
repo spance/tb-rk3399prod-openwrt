@@ -112,11 +112,14 @@ Linux 6.12 基线中，TCS4525/TCS4526 由兼容的 `fan53555` regulator 驱动�
 ## 6. USB
 
 - USB2：两组 EHCI/OHCI 以及对应 USB2 PHY 已启用。
-- USB3：DWC3/xHCI 以 host 模式启用，Type-C PHY1 已启用。
-- USB3 host 电源使能：GPIO2_A2，输出高。
+- 蓝色 Type-A USB3：DWC3_1/xHCI `fe900000.usb`、`tcphy1`，固定 host 模式。
+- Type-A USB3 host 电源使能：GPIO2_A2，输出高。
 - 板载 USB Hub 复位：GPIO4_C5，输出高。
 - 正式 profile 内置 USB Mass Storage、UAS、FAT32 和 exFAT 驱动；常见 U 盘、SSD 与移动硬盘无需联网安装文件系统模块。
-- 实机已确认 USB2/USB3 主控制器和板载 Hub 枚举；ADATA USB3 存储设备以 5000 Mbit/s 连接，短时实测约 13.8 MiB/s 写、105.8 MiB/s 读。该结果确认 SuperSpeed 数据路径可用，不代表所有 USB3 介质的上限。
+- 蓝色 Type-A 口已由多种设备确认工作在 `5000M`；Lexar E300 2 TB M.2 移动硬盘使用 UAS，4 GiB direct read 约 310 MiB/s，测试后无新增 USB/UAS/SCSI 错误，已经证明该物理口的 SuperSpeed 路径可达到正常高速区间。
+- Type-C USB3：DWC3_0/xHCI `fe800000.usb`、`tcphy0`，Linux 固定为 source/host；FUSB302 位于 I2C8 `0x22`，中断 GPIO1_A2 低有效，VBUS 由 GPIO0_A1 低电平使能，对外声明 5 V/1.5 A。
+- Linux 6.12 的 RK3399 Type-C PHY 缺少 TCPM orientation-switch 支持；工程回移 Rockchip 2026 年 v15 方案的 USB 部分，并针对固定 host 在方向改变时重新初始化 SuperSpeed lanes。代码已经纳入，正反插、热插拔和长时读写仍需新镜像实机验收。设计和测试方法见 [USB Type-C SuperSpeed 主机](USB-TYPE-C.md)。
+- Type-C 的 Linux 配置不修改 BootROM/U-Boot；Loader/Maskrom 刷机接口继续保留。
 
 ## 7. HDMI console
 
@@ -165,8 +168,9 @@ ethtool eth0
 ethtool -S eth0
 ip -s link show dev eth0
 lsusb -t
+find /sys/class/typec -maxdepth 2 -type f -print 2>/dev/null
 lspci -nnvv
-dmesg | grep -Ei 'pcie|aer|usb|xhci|ehci|ohci|stmmac|gmac|drm|vop|hdmi|fbcon'
+dmesg | grep -Ei 'pcie|aer|usb|typec|tcpm|fusb|xhci|ehci|ohci|stmmac|gmac|drm|vop|hdmi|fbcon'
 ```
 
 还应从构建后的 FIT 提取 DTB，确认 `model`、`compatible`、串口、HDMI/VOPB、RGMII delay、eMMC HS400、PCIe `status/max-link-speed/num-lanes` 和关键 regulator 没有在补丁刷新时丢失。升级验收顺序建议为：串口和电源 → CPU/温控 → TF/eMMC → 千兆网 → USB → HDMI → 插有实物端点的 PCIe。

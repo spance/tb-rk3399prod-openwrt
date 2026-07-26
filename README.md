@@ -2,7 +2,7 @@
 
 面向 Toybrick TB-RK3399ProD 的 OpenWrt 25.12.5 板级适配。仓库只保存可维护的 DTS、U-Boot/OpenWrt 补丁、固定配置、构建脚本和设计文档；上游源码、工具链、调试日志、设备信息与编译产物均不提交。
 
-正式 profile 包含串口/HDMI 双 Linux console、千兆以太网、USB、TF、eMMC 持久化 overlay、FAT32/exFAT 移动存储、独立 x4 插座的 PCIe host，以及存储、网络和系统排障工具。板载 Mini-PCIe 插座仅接 USB2；无线、蓝牙、HDMI 音频、图形桌面、GPU 和 NPU 不在当前范围内。
+正式 profile 包含串口/HDMI 双 Linux console、千兆以太网、USB、TF、eMMC 持久化 overlay、FAT32/exFAT 移动存储、独立 x4 插座的 PCIe host，以及存储、网络和系统排障工具。蓝色 Type-A USB3 已确认高速工作；Type-C 的 FUSB302/TCPM、固定主机和正反插 PHY 换向已经纳入代码，等待新镜像实机验收。板载 Mini-PCIe 插座仅接 USB2；无线、蓝牙、HDMI 音频、图形桌面、GPU 和 NPU 不在当前范围内。
 
 ## 构建
 
@@ -53,7 +53,7 @@ rootfs/           注入固件的板级启动服务和首次启动默认值
 scripts/          检查、初始化、构建和打包脚本
 ```
 
-`.work/`、`out/` 和 `dist/` 均为可重新生成且不纳入版本控制的目录。板级参数和升级回归基线见 [硬件参考](docs/HARDWARE-REFERENCE.md)，当前验收状态见 [硬件状态](docs/HARDWARE-STATUS.md)，IRQ、flow offload、密码加速和 PCIe 网卡策略见 [网络性能与加速策略](docs/NETWORK-PERFORMANCE.md)。
+`.work/`、`out/` 和 `dist/` 均为可重新生成且不纳入版本控制的目录。板级参数和升级回归基线见 [硬件参考](docs/HARDWARE-REFERENCE.md)，当前验收状态见 [硬件状态](docs/HARDWARE-STATUS.md)，Type-C 的阶段切换、驱动设计和验收步骤见 [USB Type-C SuperSpeed 主机](docs/USB-TYPE-C.md)，IRQ、flow offload、密码加速和 PCIe 网卡策略见 [网络性能与加速策略](docs/NETWORK-PERFORMANCE.md)。
 
 `make clean` 只删除 `out/` 和 `dist/`。若上游工作树被中断的补丁或人工修改污染，使用显式的 `make reset`；它会丢弃 `.work` 内的 Git 修改，但保留已下载和已编译的 ignored cache。`make -j2 reinit` 可以完成工作树复位并重新初始化。
 

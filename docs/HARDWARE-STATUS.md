@@ -15,11 +15,12 @@
 | 千兆网 | 已确认 | RTL8211E，1000/full；两个方向各 1800 秒均为 941 Mbit/s、197 GiB，硬件错误计数为 0 |
 | 网络调优 | 已确认 | GMAC IRQ 在开机及接口 `ifup` 后均绑定 CPU4/A72，复测 942/941 Mbit/s、0 重传；S99 服务作为兜底，fw4 软件 flowtable 正常生成 |
 | USB2 | 已确认枚举 | 两组 EHCI/OHCI 和板载 Hub |
-| USB3 | 已确认读写 | ADATA 设备以 5000 Mbit/s 枚举；实测约 13.8 MiB/s 写、105.8 MiB/s 读 |
+| USB3 Type-A | 已确认高速读写 | 多种设备以 `5000M` 枚举；Lexar E300 2 TB/UAS 的 4 GiB direct read 约 310 MiB/s，测试后无新增 USB/UAS/SCSI 错误 |
+| USB3 Type-C | 已实现，待刷机验收 | DWC3_0/tcphy0、I2C8 FUSB302、主动低 VBUS 和 TCPM 正反插换向已纳入；需完成两个方向、热插拔、长时读写及 Loader 回归 |
 | HDMI console | 已确认 | DRM/VOPB/DW-HDMI、fbcon 和 Linux 文本 console 已在显示器输出；串口继续保留 |
 | PCIe | 控制器确认，端点待验收 | host/PHY/电源正常进入 probe；当前独立 x4 插座没有端点，training timeout 符合预期 |
 | Mini-PCIe | USB2-only | 面向 LTE 模块，没有 PCIe lane；不作为 PCIe 端点插槽使用 |
 | NPU | 不要求 | 未纳入 OpenWrt 完成条件 |
 | Wi-Fi/蓝牙 | 不要求 | 保持禁用，不打包无线驱动或固件 |
 
-尚未完成的最终验收：eMMC 更长时间读写、HDMI 拔插与反复重启、overlay 回滚，以及在独立 x4 插座安装第二网卡后的 PCIe 枚举、真实 LAN/WAN NAT 与软件 flow offload A/B 测试。
+尚未完成的最终验收：Type-C 正反插/热插拔/长时 SuperSpeed 读写及 Loader 回归、eMMC 更长时间读写、HDMI 拔插与反复重启、overlay 回滚，以及在独立 x4 插座安装第二网卡后的 PCIe 枚举、真实 LAN/WAN NAT 与软件 flow offload A/B 测试。
