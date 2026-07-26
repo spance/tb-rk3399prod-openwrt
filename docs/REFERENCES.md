@@ -31,6 +31,7 @@
 - [Linux v6.12 USB connector binding](https://github.com/torvalds/linux/blob/v6.12/Documentation/devicetree/bindings/connector/usb-connector.yaml)
 - [Rockchip RK3399 Type-C PHY TCPM/orientation-switch v15 proposal](https://lore.kernel.org/all/20260304094152.92-5-kernel@airkyi.com/)
 - [Rockchip RK3399 EVB Type-C role-switch DTS v15 proposal](https://patchew.org/linux/20260304094152.92-1-kernel%40airkyi.com/20260304094152.92-10-kernel%40airkyi.com/)
+- [Linux v6.12.94 RK3399 Type-C PHY implementation](https://github.com/gregkh/linux/blob/v6.12.94/drivers/phy/rockchip/phy-rockchip-typec.c)
 - [Linux v6.12.94 DWC3 dual-role implementation](https://github.com/gregkh/linux/blob/v6.12.94/drivers/usb/dwc3/drd.c)
 - [Linux v6.12 DWC3 `usb-role-switch` binding](https://github.com/torvalds/linux/blob/v6.12/Documentation/devicetree/bindings/usb/snps%2Cdwc3.yaml)
 - [Linux USB Type-C connector class](https://docs.kernel.org/driver-api/usb/typec.html)

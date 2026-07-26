@@ -233,10 +233,10 @@ index 0000000..a1231ad
 + };
 diff --git a/target/linux/rockchip/patches-6.12/144-phy-rockchip-typec-orientation-switch.patch b/target/linux/rockchip/patches-6.12/144-phy-rockchip-typec-orientation-switch.patch
 new file mode 100644
-index 0000000..6fe79f4
+index 0000000..8c4744d
 --- /dev/null
 +++ b/target/linux/rockchip/patches-6.12/144-phy-rockchip-typec-orientation-switch.patch
-@@ -0,0 +1,190 @@
+@@ -0,0 +1,192 @@
 +From ee5f73f20fb58416c06b576d6fa646fa3cab4c18 Mon Sep 17 00:00:00 2001
 +From: TB-RK3399ProD OpenWrt project <noreply@example.invalid>
 +Date: Sun, 26 Jul 2026 16:21:16 +0800
@@ -249,6 +249,8 @@ index 0000000..6fe79f4
 +the cached orientation invalid on detach, then reinitialize an active PHY for
 +every new attachment before the role switch creates xHCI.  This also covers
 +same-orientation reconnects, where the lane direction itself did not change.
++Keep SuperSpeed host routing enabled across the reset, matching the driver's
++normal PHY power-off path, so PIPE initialization sees the active USB3 path.
 +
 +Link: https://lore.kernel.org/all/20260304094152.92-5-kernel@airkyi.com/
 +---
@@ -269,7 +271,7 @@ index 0000000..6fe79f4
 + 	select GENERIC_PHY
 + 	select RESET_CONTROLLER
 +diff --git a/drivers/phy/rockchip/phy-rockchip-typec.c b/drivers/phy/rockchip/phy-rockchip-typec.c
-+index 4efcb78..59538d7 100644
++index 4efcb78..2e9032b 100644
 +--- a/drivers/phy/rockchip/phy-rockchip-typec.c
 ++++ b/drivers/phy/rockchip/phy-rockchip-typec.c
 +@@ -54,6 +54,7 @@
@@ -335,8 +337,8 @@ index 0000000..6fe79f4
 ++	if (!(tcphy->mode & (MODE_DFP_USB | MODE_UFP_USB)))
 ++		goto out_unlock;
 ++
-++	/* Stop advertising the SuperSpeed path while its lanes are reset. */
-++	tcphy_cfg_usb3_to_usb2_only(tcphy, true);
+++	/* Keep host routing enabled, matching the normal PHY power-off path. */
+++	tcphy_cfg_usb3_to_usb2_only(tcphy, false);
 ++	tcphy_phy_deinit(tcphy);
 ++
 ++	ret = tcphy_phy_init(tcphy, tcphy->mode);

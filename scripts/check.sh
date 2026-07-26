@@ -189,6 +189,11 @@ grep -Fq 'tcphy->orientation_valid = false;' "$openwrt_patch" || \
 	fail "RK3399 Type-C detach does not invalidate cached orientation"
 grep -Fq 'tcphy->orientation_valid && tcphy->flip == flip' "$openwrt_patch" || \
 	fail "RK3399 Type-C same-orientation reconnect guard is missing"
+grep -Fq '++	tcphy_cfg_usb3_to_usb2_only(tcphy, false);' "$openwrt_patch" || \
+	fail "RK3399 Type-C PHY reset does not preserve SuperSpeed host routing"
+if grep -Fq '++	tcphy_cfg_usb3_to_usb2_only(tcphy, true);' "$openwrt_patch"; then
+	fail "RK3399 Type-C PHY reset incorrectly enables USB2-only routing"
+fi
 grep -Fq '+CONFIG_USB_DWC3_DUAL_ROLE=y' "$openwrt_patch" || \
 	fail "DWC3 dual-role state machine is missing from the OpenWrt patch"
 grep -Fq '+CONFIG_USB_GADGET=y' "$openwrt_patch" || \
