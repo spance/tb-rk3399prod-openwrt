@@ -18,7 +18,7 @@ make package
 | 目标 | 职责 |
 |---|---|
 | `make check` | 离线检查工程结构、脚本、补丁、配置和关键不变量 |
-| `make init` | 获取固定上游和唯一 `packages` feed，应用补丁、同步 DTS、生成配置并下载全部源包 |
+| `make init` | 获取固定上游和唯一 `packages` feed，应用补丁、同步 DTS/板级 rootfs、生成配置并下载全部源包 |
 | `make all` | 只验证既有初始化状态并编译 U-Boot/OpenWrt、生成两个部署镜像 |
 | `make package` | 校验 `out/` 并生成 `dist/` 发布包 |
 | `make clean` | 仅删除 `out/` 和 `dist/` |
@@ -49,10 +49,11 @@ docs/             架构、构建、硬件、部署和维护文档
 dts/              TB-RK3399ProD 唯一权威 DTS/DTSI
 patches/openwrt/  OpenWrt v25.12.5 板级补丁
 patches/u-boot/   Toybrick U-Boot 板级补丁
+rootfs/           注入固件的板级启动服务和首次启动默认值
 scripts/          检查、初始化、构建和打包脚本
 ```
 
-`.work/`、`out/` 和 `dist/` 均为可重新生成且不纳入版本控制的目录。板级参数和升级回归基线见 [硬件参考](docs/HARDWARE-REFERENCE.md)，当前验收状态见 [硬件状态](docs/HARDWARE-STATUS.md)。
+`.work/`、`out/` 和 `dist/` 均为可重新生成且不纳入版本控制的目录。板级参数和升级回归基线见 [硬件参考](docs/HARDWARE-REFERENCE.md)，当前验收状态见 [硬件状态](docs/HARDWARE-STATUS.md)，IRQ、flow offload、密码加速和 PCIe 网卡策略见 [网络性能与加速策略](docs/NETWORK-PERFORMANCE.md)。
 
 `make clean` 只删除 `out/` 和 `dist/`。若上游工作树被中断的补丁或人工修改污染，使用显式的 `make reset`；它会丢弃 `.work` 内的 Git 修改，但保留已下载和已编译的 ignored cache。`make -j2 reinit` 可以完成工作树复位并重新初始化。
 

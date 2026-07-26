@@ -68,7 +68,9 @@ OpenWrt 只使用一个工作树和一个正式配置，PCIe host、RTL8822CE �
 
 `dts/rk3399pro-toybrick-prod.dts` 和 `.dtsi` 是板级设备树的唯一权威文件。每次初始化都会读取 OpenWrt Rockchip target 的 `KERNEL_PATCHVER`，将这两个文件覆写到对应的 `target/linux/rockchip/files-<版本>/arch/arm64/boot/dts/rockchip/`，然后逐字节校验。OpenWrt 补丁不再保存 DTS 副本；更新设备树后必须先重新运行 `make init`，再执行构建。
 
-`make init` 随后验证 feed 仓库的 origin、HEAD、索引、干净状态和仓库数量；精确匹配时不访问 feed 远端，不匹配时才执行更新。OpenWrt 的 `src-git` feed 获取本身使用 `--depth 1`，不会同步完整 Git 历史。之后安装 package 索引、写入唯一的 `configs/openwrt.config`、执行 `make defconfig` 和 `make download`。因此成功返回表示编译所需源码已经准备完成；使用 GNU Make 标准参数 `make -j4 init` 控制源包并行下载数。
+`rootfs/` 同样是板级固件文件的唯一权威来源。`scripts/sync-openwrt-rootfs.sh` 将其中的 init 服务和 UCI 首次启动脚本复制到 Rockchip target base-files，并逐文件校验；可执行模式由同步脚本显式设置，不依赖 Windows Git 的 mode bit。当前包含 GMAC IRQ 绑核和软件 flow offload 默认值。
+
+`make init` 随后验证 feed 仓库的 origin、HEAD、索引、干净状态和仓库数量；精确匹配时不访问 feed 远端，不匹配时才执行更新。OpenWrt 的 `src-git` feed 获取本身使用 `--depth 1`，不会同步完整 Git 历史。之后安装 package 索引、写入唯一的 `configs/openwrt.config`、执行 `make defconfig` 和 `make download`。因此成功返回表示补丁、DTS、rootfs 文件、feeds、配置和编译所需源码都已经准备完成；使用 GNU Make 标准参数 `make -j4 init` 控制源包并行下载数。
 
 ## 2. 项目检查
 
@@ -76,7 +78,7 @@ OpenWrt 只使用一个工作树和一个正式配置，PCIe host、RTL8822CE �
 make check
 ```
 
-该目标不下载也不编译源码。它检查 Shell 语法、Git whitespace、目录约束、正式补丁可解析性、DTS 唯一来源、OpenWrt 关键配置、feed 的 40 位 commit 锁定以及启动地址/根分区参数。若 `.work/` 已初始化，还会验证上游 HEAD、补丁反向校验、feed 仓库、OpenWrt `.config` 和 DTS 同步结果。`make init` 完成前也会自动执行同一套检查。
+该目标不下载也不编译源码。它检查 Shell 语法、Git whitespace、目录约束、正式补丁可解析性、DTS/rootfs 唯一来源、网络调优不变量、OpenWrt 关键配置、feed 的 40 位 commit 锁定以及启动地址/根分区参数。若 `.work/` 已初始化，还会验证上游 HEAD、补丁反向校验、feed 仓库、OpenWrt `.config` 以及 DTS/rootfs 同步结果。`make init` 完成前也会自动执行同一套检查。
 
 ## 3. 构建
 
@@ -105,7 +107,7 @@ make openwrt
 bash scripts/build.sh all 16
 ```
 
-`make all` 不调用初始化，只检查主机依赖、工作树、固定基线、补丁、feed、`.config` 和 DTS 状态；任一输入未准备好便要求先执行 `make init`。U-Boot 使用厂商命令 `./make.sh rk3399pro`。OpenWrt 构建阶段不执行 `feeds update/install`、`defconfig` 或 `make download`，只执行编译；并行构建失败时自动关闭标准输入并以 `-j1 V=sc` 重试，既保留命令和完整错误上下文，也确保遗漏的 Kconfig 项直接失败而不会进入交互式配置。构建完成后，脚本生成并验证 64 MiB `boot_linux.img` 与 128 MiB SquashFS `rootfs.img`，再按原厂 GPT 的相对偏移组合为 224 MiB `openwrt.img`。
+`make all` 不调用初始化，只检查主机依赖、工作树、固定基线、补丁、feed、`.config`、DTS 和 rootfs 同步状态；任一输入未准备好便要求先执行 `make init`。U-Boot 使用厂商命令 `./make.sh rk3399pro`。OpenWrt 构建阶段不执行 `feeds update/install`、`defconfig` 或 `make download`，只执行编译；并行构建失败时自动关闭标准输入并以 `-j1 V=sc` 重试，既保留命令和完整错误上下文，也确保遗漏的 Kconfig 项直接失败而不会进入交互式配置。构建完成后，脚本生成并验证 64 MiB `boot_linux.img` 与 128 MiB SquashFS `rootfs.img`，再按原厂 GPT 的相对偏移组合为 224 MiB `openwrt.img`。
 
 正式部署只需要两个镜像：
 

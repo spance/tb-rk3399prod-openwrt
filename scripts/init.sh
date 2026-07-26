@@ -31,6 +31,7 @@ ensure_checkout "$OPENWRT_URL" "refs/tags/$OPENWRT_TAG" "$OPENWRT_COMMIT" \
 openwrt_patch="$PROJECT_DIR/patches/openwrt/0001-tb-rk3399prod-board-support.patch"
 ensure_patches_applied "$WORK_DIR/openwrt" "$openwrt_patch"
 bash "$SCRIPT_DIR/sync-openwrt-dts.sh" "$WORK_DIR/openwrt"
+bash "$SCRIPT_DIR/sync-openwrt-rootfs.sh" "$WORK_DIR/openwrt"
 install -m 0644 "$PROJECT_DIR/configs/feeds.conf" \
 	"$WORK_DIR/openwrt/feeds.conf"
 cmp -s "$PROJECT_DIR/configs/feeds.conf" "$WORK_DIR/openwrt/feeds.conf" || \

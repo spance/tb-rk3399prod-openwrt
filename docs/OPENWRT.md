@@ -8,7 +8,7 @@
 - `configs/openwrt.config`：唯一正式目标配置，PCIe host/PHY/供电默认启用。
 - `configs/feeds.conf`：只启用当前软件包集合所需的 `packages` feed，并锁定到 25.12.5 官方发布使用的精确 commit；LuCI 等未使用 feed 不下载。
 
-板级 profile、持久化镜像规则、DTB Makefile 和必要的内核 binding 修改统一由 `patches/openwrt/0001-tb-rk3399prod-board-support.patch` 加入。完整板级设备树不嵌入补丁；`dts/` 是唯一权威来源，`make init` 调用 `scripts/sync-openwrt-dts.sh`，从 Rockchip target 的 `KERNEL_PATCHVER` 自动确定 `files-<版本>` 目录并逐文件覆写。修改 DTS 后重新执行 `make init` 再构建，不需要手工刷新一份重复补丁。
+板级 profile、持久化镜像规则、DTB Makefile 和必要的内核 binding 修改统一由 `patches/openwrt/0001-tb-rk3399prod-board-support.patch` 加入。完整板级设备树不嵌入补丁；`dts/` 是唯一权威来源，`make init` 调用 `scripts/sync-openwrt-dts.sh`，从 Rockchip target 的 `KERNEL_PATCHVER` 自动确定 `files-<版本>` 目录并逐文件覆写。板级启动服务和 UCI 初始值以 `rootfs/` 为唯一来源，由 `scripts/sync-openwrt-rootfs.sh` 同步到 Rockchip base-files。修改这些文件后重新执行 `make init` 再构建，不需要手工刷新重复补丁。
 
 ## 硬件范围
 
@@ -18,6 +18,7 @@
 - TF：4-bit、50 MHz、Rockchip IDMAC。
 - eMMC：HS400 Enhanced Strobe、CQE、ADMA。
 - RTL8211E 千兆以太网：RGMII，TX/RX delay `0x28/0x20`。
+- 网络调优：GMAC IRQ 动态绑定到第一颗 Cortex-A72；fw4 软件 flow offload 默认开启，硬件 flow offload 保持关闭。
 - USB2 EHCI/OHCI、USB3 xHCI、板载 Hub 电源和复位。
 - PCIe：默认启用，Gen1、x4 host，允许连接 x1 端点；无端点时 training timeout 与原厂 BSP 一致。
 - 外置 Wi-Fi：正式 profile 包含 RTL8822CE 的主线 `rtw88` PCIe 驱动；其依赖会自动带入芯片固件、mac80211、cfg80211、`iw`、无线脚本和监管数据库。
@@ -25,6 +26,8 @@
 - 板载/厂商专用无线集成、蓝牙、摄像、音频、图形桌面、GPU 和 NPU 不纳入当前目标。
 
 RTL8822CE 不需要静态 DTS 子节点，PCIe 枚举后由设备 ID 自动绑定。若以后改装 PCIe 有线网卡，仍需按具体型号增加 `igb`、`igc` 或 `r8169` 等驱动，并完成枚举、吞吐、错误计数和长时间稳定性验收。
+
+网络性能基线、flow offload 适用边界、ARMv8 AES-CE、Rockchip Crypto 取舍和未来多队列/RSS 策略见 [网络性能与加速策略](NETWORK-PERFORMANCE.md)。
 
 ## 正常启动与持久化 overlay
 

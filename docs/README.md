@@ -13,6 +13,7 @@
 - [HDMI Linux console](HDMI-CONSOLE.md)：Rockchip DRM、fbcon、双 console、键盘登录和验收。
 - [U-Boot 适配](U-BOOT.md)：厂商 U-Boot 基线、补丁和启动地址。
 - [OpenWrt 适配](OPENWRT.md)：OpenWrt profile、硬件范围、持久化 overlay 和恢复启动。
+- [网络性能与加速策略](NETWORK-PERFORMANCE.md)：千兆压测、IRQ 绑核、软件 flow offload、AES 和 PCIe RSS。
 
 ## 部署与验收
 

@@ -8,6 +8,9 @@
 *.conf text eol=lf
 *.md text eol=lf
 Makefile text eol=lf
+*.mk text eol=lf
 *.dts text eol=lf
 *.dtsi text eol=lf
 *.patch text eol=lf
+rootfs/etc/init.d/* text eol=lf
+rootfs/etc/uci-defaults/* text eol=lf

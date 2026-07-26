@@ -1,0 +1,64 @@
+#!/bin/sh /etc/rc.common
+
+START=19
+
+BOARD="rockchip,rk3399pro-toybrick-prod"
+GMAC_PLATFORM="fe300000.ethernet"
+GMAC_IRQ_CPU="4"
+
+board_name()
+{
+	cat /tmp/sysinfo/board_name 2>/dev/null
+}
+
+find_gmac_device()
+{
+	local device_path
+	for device_path in "/sys/bus/platform/devices/$GMAC_PLATFORM/net/"*; do
+		[ -e "$device_path" ] || continue
+		basename "$device_path"
+		return 0
+	done
+	return 1
+}
+
+find_device_irqs()
+{
+	awk -v device="$1" '
+		$NF == device {
+			gsub(":", "", $1)
+			print $1
+		}
+	' /proc/interrupts
+}
+
+start()
+{
+	[ "$(board_name)" = "$BOARD" ] || return 0
+	local device irq found=0
+	device=$(find_gmac_device) || {
+		logger -t tb-net-tuning "on-board GMAC netdev is unavailable"
+		return 0
+	}
+	[ -d "/sys/devices/system/cpu/cpu$GMAC_IRQ_CPU" ] || {
+		logger -t tb-net-tuning "CPU$GMAC_IRQ_CPU is unavailable; leaving $device IRQ affinity unchanged"
+		return 0
+	}
+	[ ! -f "/sys/devices/system/cpu/cpu$GMAC_IRQ_CPU/online" ] ||
+		[ "$(cat "/sys/devices/system/cpu/cpu$GMAC_IRQ_CPU/online")" = 1 ] || {
+		logger -t tb-net-tuning "CPU$GMAC_IRQ_CPU is offline; leaving $device IRQ affinity unchanged"
+		return 0
+	}
+
+	for irq in $(find_device_irqs "$device"); do
+		[ -w "/proc/irq/$irq/smp_affinity_list" ] || continue
+		echo "$GMAC_IRQ_CPU" >"/proc/irq/$irq/smp_affinity_list" || continue
+		logger -t tb-net-tuning "$device IRQ $irq assigned to CPU$GMAC_IRQ_CPU"
+		found=1
+	done
+
+	[ "$found" = 1 ] || {
+		logger -t tb-net-tuning "no writable IRQ found for $device"
+		return 0
+	}
+}

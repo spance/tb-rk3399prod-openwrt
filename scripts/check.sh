@@ -21,6 +21,10 @@ assert_exact_line()
 for script in "$SCRIPT_DIR"/*.sh; do
 	bash -n "$script"
 done
+for script in "$PROJECT_DIR"/rootfs/etc/init.d/* \
+	"$PROJECT_DIR"/rootfs/etc/uci-defaults/*; do
+	sh -n "$script"
+done
 
 if grep -Eq 'scripts/feeds|make[[:space:]]+(defconfig|download)|init\.sh' \
 	"$SCRIPT_DIR/build.sh"; then
@@ -40,15 +44,19 @@ openwrt_patch="$PROJECT_DIR/patches/openwrt/0001-tb-rk3399prod-board-support.pat
 assert_file "$openwrt_patch"
 assert_file "$PROJECT_DIR/dts/rk3399pro-toybrick-prod.dts"
 assert_file "$PROJECT_DIR/dts/rk3399pro-toybrick-prod.dtsi"
+assert_file "$PROJECT_DIR/rootfs/etc/init.d/tb-net-tuning"
+assert_file "$PROJECT_DIR/rootfs/etc/uci-defaults/99-tb-network-offload"
 assert_file "$PROJECT_DIR/configs/openwrt.config"
 assert_file "$PROJECT_DIR/configs/feeds.conf"
 assert_file "$PROJECT_DIR/boot/boot.cmd"
 assert_file "$PROJECT_DIR/scripts/clean.sh"
 assert_file "$PROJECT_DIR/scripts/make-openwrt-image.sh"
 assert_file "$PROJECT_DIR/scripts/reset.sh"
+assert_file "$PROJECT_DIR/scripts/sync-openwrt-rootfs.sh"
 assert_file "$PROJECT_DIR/scripts/verify-openwrt-image.sh"
 assert_file "$PROJECT_DIR/docs/BOOT-CHAIN.md"
 assert_file "$PROJECT_DIR/docs/HDMI-CONSOLE.md"
+assert_file "$PROJECT_DIR/docs/NETWORK-PERFORMANCE.md"
 
 grep -Fq '$(filter -j%,$(MAKEFLAGS))' "$PROJECT_DIR/Makefile" || \
 	fail "Makefile must derive parallelism from GNU Make -j"
@@ -151,6 +159,15 @@ grep -Fq 'kmod-rtw88-8822ce' "$openwrt_patch" || \
 	fail "RTL8822CE PCIe wireless driver is missing from the device profile"
 grep -Fq 'kmod-usb-hid' "$openwrt_patch" || \
 	fail "USB HID support for the HDMI console is missing from the device profile"
+grep -Fq 'GMAC_IRQ_CPU="4"' \
+	"$PROJECT_DIR/rootfs/etc/init.d/tb-net-tuning" || \
+	fail "GMAC IRQ is not assigned to the first Cortex-A72"
+grep -Fq "flow_offloading='1'" \
+	"$PROJECT_DIR/rootfs/etc/uci-defaults/99-tb-network-offload" || \
+	fail "software flow offload is not enabled by default"
+grep -Fq "flow_offloading_hw='0'" \
+	"$PROJECT_DIR/rootfs/etc/uci-defaults/99-tb-network-offload" || \
+	fail "unsupported hardware flow offload must remain disabled"
 for config in \
 	'CONFIG_DRM=y' \
 	'CONFIG_DRM_FBDEV_EMULATION=y' \
@@ -227,6 +244,12 @@ if [ -d "$WORK_DIR/openwrt/.git" ]; then
 		cmp -s "$PROJECT_DIR/dts/$name" "$dts_dest/$name" || \
 			fail "OpenWrt worktree DTS is not synchronized: $name"
 	done
+	rootfs_dest="$WORK_DIR/openwrt/target/linux/rockchip/base-files"
+	while IFS= read -r -d '' source_file; do
+		relative_path=${source_file#"$PROJECT_DIR/rootfs"/}
+		cmp -s "$source_file" "$rootfs_dest/$relative_path" || \
+			fail "OpenWrt worktree rootfs is not synchronized: $relative_path"
+	done < <(find "$PROJECT_DIR/rootfs" -type f -print0 | sort -z)
 fi
 
 if [ -d "$WORK_DIR/u-boot/.git" ]; then

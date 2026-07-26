@@ -106,7 +106,7 @@ Linux 6.12 基线中，TCS4525/TCS4526 由兼容的 `fan53555` regulator 驱动�
 | reset 时序 | assert 10 ms，deassert 50 ms |
 | PHY 供电 | `vcc_phy`，3.3 V |
 
-实机已确认协商为 1000 Mb/s、全双工并启用 RX/TX flow control。升级时不能只以“接口能 ping”作为通过标准，还应检查 30–60 分钟双向吞吐、丢包、CRC、carrier、DMA/stmmac 错误和温度。最终长期压测结果仍应更新到 `HARDWARE-STATUS.md`。
+实机已确认协商为 1000 Mb/s、全双工并启用 RX/TX flow control。两个方向各 1800 秒、4 流 TCP 测试均达到 941 Mbit/s 和 197 GiB，测试后的 CRC、carrier、DMA/stmmac 等硬件错误计数为 0。板级启动服务动态解析 GMAC IRQ 并绑定 CPU4/A72；软件 flow offload 默认开启、硬件 flow offload 关闭。详细数据、适用边界和升级后的 A/B 方法见 [网络性能与加速策略](NETWORK-PERFORMANCE.md)。
 
 ## 6. USB
 
@@ -114,7 +114,7 @@ Linux 6.12 基线中，TCS4525/TCS4526 由兼容的 `fan53555` regulator 驱动�
 - USB3：DWC3/xHCI 以 host 模式启用，Type-C PHY1 已启用。
 - USB3 host 电源使能：GPIO2_A2，输出高。
 - 板载 USB Hub 复位：GPIO4_C5，输出高。
-- 实机已确认 USB2/USB3 主控制器和板载 Hub 枚举；USB3 存储设备的持续吞吐仍需最终验收。
+- 实机已确认 USB2/USB3 主控制器和板载 Hub 枚举；ADATA USB3 存储设备以 5000 Mbit/s 连接，短时实测约 13.8 MiB/s 写、105.8 MiB/s 读。该结果确认 SuperSpeed 数据路径可用，不代表所有 USB3 介质的上限。
 
 ## 7. HDMI console
 

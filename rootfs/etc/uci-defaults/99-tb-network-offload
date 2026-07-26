@@ -1,0 +1,15 @@
+#!/bin/sh
+
+[ "$(cat /tmp/sysinfo/board_name 2>/dev/null)" = \
+	"rockchip,rk3399pro-toybrick-prod" ] || exit 0
+
+uci -q batch <<'EOF'
+set firewall.@defaults[0].flow_offloading='1'
+set firewall.@defaults[0].flow_offloading_hw='0'
+commit firewall
+EOF
+
+/etc/init.d/tb-net-tuning enable
+/etc/init.d/tb-net-tuning start
+
+exit 0

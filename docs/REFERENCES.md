@@ -19,6 +19,10 @@
 - [Linux v6.12 Rockchip DRM Kconfig](https://github.com/torvalds/linux/blob/v6.12/drivers/gpu/drm/rockchip/Kconfig)
 - [Linux v6.12 Rockchip DW-HDMI binding](https://github.com/torvalds/linux/blob/v6.12/Documentation/devicetree/bindings/display/rockchip/rockchip%2Cdw-hdmi.yaml)
 - [Linux v6.12 RK3399 HDMI/VOP board example](https://github.com/torvalds/linux/blob/v6.12/arch/arm64/boot/dts/rockchip/rk3399-rock-pi-4.dtsi)
+- [Linux v6.12 Rockchip Crypto driver](https://github.com/torvalds/linux/blob/v6.12/drivers/crypto/rockchip/rk3288_crypto.c)
+- [Linux v6.12 Rockchip Crypto binding](https://github.com/torvalds/linux/blob/v6.12/Documentation/devicetree/bindings/crypto/rockchip%2Crk3288-crypto.yaml)
+- [Linux v6.12 ARM64 AES-CE implementation](https://github.com/torvalds/linux/blob/v6.12/arch/arm64/crypto/aes-glue.c)
+- [RK3399Pro datasheet](https://opensource.rock-chips.com/images/9/9f/Rockchip_RK3399Pro_Datasheet_V1.1_20181214.pdf)
 - [OpenWrt v25.12.5 official release feed commits](https://downloads.openwrt.org/releases/25.12.5/targets/rockchip/armv8/feeds.buildinfo)
 - [OpenWrt v25.12.5 feeds implementation](https://github.com/openwrt/openwrt/blob/f0a60eee2fe051741c643ea6118718aae1ef17fb/scripts/feeds)
 
