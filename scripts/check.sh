@@ -161,7 +161,8 @@ if grep -Eq 'kmod-rtw88|rtl8822|mac80211|cfg80211' "$openwrt_patch"; then
 	fail "unused wireless drivers or firmware remain in the device profile"
 fi
 for package in blkid blockdev fdisk fstrim lsblk lscpu mount-utils wdctl \
-	ca-bundle curl htop jq lsof strace ip-full tcpdump-mini; do
+	ca-bundle curl htop jq lsof strace ip-full tcpdump-mini kmod-fs-exfat \
+	kmod-fs-vfat; do
 	grep -Eq "[[:space:]]$package([[:space:]\\\\]|$)" "$openwrt_patch" || \
 		fail "required maintenance package is missing: $package"
 done

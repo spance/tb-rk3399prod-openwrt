@@ -29,7 +29,7 @@ Mini-PCIe 插座的机械外形不代表本板提供 PCIe 电气连接：它只�
 
 ## 内置维护工具
 
-- 存储：`lsblk`、`blkid`、`blockdev`、`fdisk`、`fstrim`、`findmnt`（由 `mount-utils` 提供）、`mmc-utils`。
+- 存储：`lsblk`、`blkid`、`blockdev`、`fdisk`、`fstrim`、`findmnt`（由 `mount-utils` 提供）、`mmc-utils`；内置 FAT32 与 exFAT 文件系统驱动，覆盖常见 U 盘和移动硬盘。
 - 板级与进程：`lscpu`、`wdctl`、`htop`、`lsof`、`strace`。
 - 网络：完整功能的 `ip`（以 `ip-full` 替换默认 `ip-tiny`）、`ss`、`ethtool`、`iperf3`、`tcpdump-mini`。
 - 通用数据访问：`curl`、`ca-bundle`、`jq`。

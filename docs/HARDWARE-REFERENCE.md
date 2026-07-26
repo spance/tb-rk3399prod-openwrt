@@ -115,6 +115,7 @@ Linux 6.12 基线中，TCS4525/TCS4526 由兼容的 `fan53555` regulator 驱动�
 - USB3：DWC3/xHCI 以 host 模式启用，Type-C PHY1 已启用。
 - USB3 host 电源使能：GPIO2_A2，输出高。
 - 板载 USB Hub 复位：GPIO4_C5，输出高。
+- 正式 profile 内置 USB Mass Storage、UAS、FAT32 和 exFAT 驱动；常见 U 盘、SSD 与移动硬盘无需联网安装文件系统模块。
 - 实机已确认 USB2/USB3 主控制器和板载 Hub 枚举；ADATA USB3 存储设备以 5000 Mbit/s 连接，短时实测约 13.8 MiB/s 写、105.8 MiB/s 读。该结果确认 SuperSpeed 数据路径可用，不代表所有 USB3 介质的上限。
 
 ## 7. HDMI console

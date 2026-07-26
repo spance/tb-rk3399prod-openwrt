@@ -53,6 +53,17 @@ uci commit firewall
 
 六个 CPU 均报告 ARMv8 `aes`、`pmull`、`sha1`、`sha2` 和 `crc32` 指令特性；当前内核已经注册 `aes-ce`、`gcm-aes-ce`、`xts-aes-ce` 等实现。现代 TLS 通常由用户态密码库直接使用 ARMv8 指令；常见的 AES-GCM IPsec 则可以使用内核 AES-CE/GHASH-CE。
 
+OpenSSL 3.5.7 使用 16 KiB 数据块、固定单个 Cortex-A72 进行的实机基准如下；纯软件对照通过 `OPENSSL_armcap=0` 禁用 ARM capability，测试工具仅在 RAM 中临时运行：
+
+| 算法 | ARMv8 AES-CE | 纯软件 | 加速倍数 |
+|---|---:|---:|---:|
+| AES-128-CBC | 1.347 GB/s | 112 MB/s | 12.0× |
+| AES-256-CBC | 1.017 GB/s | 83 MB/s | 12.2× |
+| AES-128-GCM | 1.395 GB/s | 61.9 MB/s | 22.5× |
+| AES-256-GCM | 1.195 GB/s | 51.8 MB/s | 23.1× |
+
+两个 Cortex-A72 并行时，AES-128-GCM 与 AES-256-GCM 合计分别达到约 2.794 GB/s 和 2.408 GB/s。该数据证明 ARMv8 密码指令路径生效，但不等同于含协议、封装、网络和防火墙开销的 VPN 端到端吞吐。
+
 RK3399 的两个 Crypto v1 引擎确实存在，但 Linux 6.12 的 `rk3288_crypto` 驱动仅注册 AES ECB/CBC、DES/3DES、MD5、SHA-1 和 SHA-256，没有 GCM、CTR 或 XTS。它与 AES-CE 的 ECB/CBC priority 同为 300，并且 DMA 对长度、对齐和 scatterlist 有回退条件。Linux 6.12 的 RK3399 SoC DTS 没有正式启用这两个节点；直接加入节点还要承担尚未进入主线 DTS 的维护和回归成本。
 
 因此生产 profile 保留 ARMv8 AES-CE，不默认启用 Rockchip Crypto。以后只有在明确出现内核 CBC/SHA 吞吐瓶颈时才做独立实验镜像：加入两个 Crypto 节点和驱动、确认 DMA/IRQ/运行时 PM 无错误，然后用相同算法、块大小和并发度与 AES-CE 对照。它不能加速普通明文 IP 转发，也不能替代软件 flow offload。

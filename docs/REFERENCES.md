@@ -22,6 +22,7 @@
 - [OpenWrt v25.12.5 util-linux package definitions](https://github.com/openwrt/openwrt/blob/f0a60eee2fe051741c643ea6118718aae1ef17fb/package/utils/util-linux/Makefile)
 - [OpenWrt v25.12.5 iproute2 package definitions](https://github.com/openwrt/openwrt/blob/f0a60eee2fe051741c643ea6118718aae1ef17fb/package/network/utils/iproute2/Makefile)
 - [OpenWrt v25.12.5 tcpdump package definitions](https://github.com/openwrt/openwrt/blob/f0a60eee2fe051741c643ea6118718aae1ef17fb/package/network/utils/tcpdump/Makefile)
+- [OpenWrt v25.12.5 exFAT kernel package definition](https://github.com/openwrt/openwrt/blob/f0a60eee2fe051741c643ea6118718aae1ef17fb/package/kernel/linux/modules/fs.mk#L193-L208)
 - [Linux v6.12 Rockchip DRM Kconfig](https://github.com/torvalds/linux/blob/v6.12/drivers/gpu/drm/rockchip/Kconfig)
 - [Linux v6.12 Rockchip DW-HDMI binding](https://github.com/torvalds/linux/blob/v6.12/Documentation/devicetree/bindings/display/rockchip/rockchip%2Cdw-hdmi.yaml)
 - [Linux v6.12 RK3399 HDMI/VOP board example](https://github.com/torvalds/linux/blob/v6.12/arch/arm64/boot/dts/rockchip/rk3399-rock-pi-4.dtsi)
