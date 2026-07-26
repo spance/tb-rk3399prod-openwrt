@@ -194,6 +194,12 @@ grep -Fq '++	tcphy_cfg_usb3_to_usb2_only(tcphy, false);' "$openwrt_patch" || \
 if grep -Fq '++	tcphy_cfg_usb3_to_usb2_only(tcphy, true);' "$openwrt_patch"; then
 	fail "RK3399 Type-C PHY reset incorrectly enables USB2-only routing"
 fi
+grep -Fq 'PIPE becomes ready only after TCPM subsequently selects host role.' \
+	"$openwrt_patch" || \
+	fail "RK3399 Type-C orientation callback does not defer PIPE readiness to host role"
+if grep -Fq '++	for (timeout = 0; timeout < 100; timeout++) {' "$openwrt_patch"; then
+	fail "RK3399 Type-C orientation callback waits for PIPE before host role"
+fi
 grep -Fq '+CONFIG_USB_DWC3_DUAL_ROLE=y' "$openwrt_patch" || \
 	fail "DWC3 dual-role state machine is missing from the OpenWrt patch"
 grep -Fq '+CONFIG_USB_GADGET=y' "$openwrt_patch" || \

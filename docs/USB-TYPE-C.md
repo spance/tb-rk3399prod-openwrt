@@ -36,7 +36,7 @@ OpenWrt 25.12.5 的 Rockchip armv8 内核已经内建 `TYPEC`、`TYPEC_TCPM`、`
 
 工程中的 `144-phy-rockchip-typec-orientation-switch.patch` 以 Rockchip 上游 v15 orientation-switch 方案为依据，只保留本板 USB 主机所需的部分。RK3399 DWC3 在切换角色时会保持 generic PHY 上电，因此回调不能只比较新旧方向：拔出时把缓存的 orientation 标记为无效；每次重新连接时，即使插头方向与上次相同，也会同步重置活动 PHY 并按当前方向初始化 SuperSpeed lanes。
 
-重置活动 PHY 时必须保持 USB3 host 路由开启。驱动的标准 `rockchip_usb3_phy_power_off()` 路径会先调用 `tcphy_cfg_usb3_to_usb2_only(tcphy, false)`；orientation 回调也遵循同一约束。如果在 `tcphy_phy_init()` 前传入 `true`，GRF 会关闭 `usb3_host_port` 并切到 USB2-only，随后即使恢复为 `false`，已经失败的 PIPE/link 初始化也不会自行重来，最终表现为 xHCI `connect-debounce failed`。
+重置活动 PHY 时必须保持 USB3 host 路由开启。驱动的标准 `rockchip_usb3_phy_power_off()` 路径会先调用 `tcphy_cfg_usb3_to_usb2_only(tcphy, false)`，orientation 回调遵循同一约束。更重要的是，回调只能等待 `tcphy_phy_init()` 内部检查的 PMA `CMN_READY`，不能提前轮询 `pipe_status`：TCPM 在 orientation 回调成功返回之后才设置 USB host role，此前 DWC3 仍处于 peripheral/idle，PIPE 尚不具备 ready 的前提。
 
 DTS 将连接器的方向端点连接到 `tcphy0_usb3`，将角色端点连接到 DWC3_0，并为 DWC3_0 设置 `dr_mode = "otg"` 与 `usb-role-switch`。TCPM 的事件顺序是：先设置 orientation，再设置 USB role。拔出时 orientation 回调只使缓存失效，随后 DWC3 退出 host 并删除该控制器的 xHCI，避免在 host teardown 前提前关闭 PHY；再次插入时先完成活动 PHY 重初始化，再切换到 host 并创建新的 xHCI。该生命周期完全由内核状态机执行，不依赖 OpenWrt 热插拔脚本。
 
@@ -92,8 +92,10 @@ dmesg | grep -Ei 'error|fail|timeout|reset|uas|scsi|xhci|dwc3|fusb|tcpm'
 
 第一版 host-only 镜像已经确认 FUSB302 在正反两个方向都能正确报告 CC、orientation、`source`/`host` 和 5 V VBUS，但运行中的 xHCI 不会在 PHY 换向后自行恢复链路。只对 Type-C DWC3_0 执行一次驱动解绑/重绑后，同一块 Lexar E300 2 TB 移动硬盘立即以 UAS/`5000M` 枚举，4 GiB direct read 约 349 MiB/s；相同设备在蓝色 Type-A 的同条件基线约 319 MiB/s，测试后没有新增 USB、UAS 或 SCSI 错误。这已经确认 C 口的 CC、VBUS、PHY 和 SuperSpeed 物理数据通道可用，也直接验证了“重建 xHCI”这一修复方向。
 
-role-switch 镜像进一步实测确认状态机已接通：拔出时 Type-C xHCI 自动删除，插入时自动重建，CC 正确报告 orientation、`source`/`host`、1.5 A，VBUS regulator 保持 5 V。测试先后暴露了两个独立的软件问题：旧回调在同方向重插时会因 `flip` 未变化而跳过活动 PHY 重初始化；补上 detach 缓存失效后，PHY 重初始化又在开始前错误切入 USB2-only 路由，导致新建 xHCI 报 `connect-debounce failed`。
+role-switch 镜像进一步实测确认状态机已接通：拔出时 Type-C xHCI 自动删除，插入时自动重建，CC 正确报告 orientation、`source`/`host`、1.5 A，VBUS regulator 保持 5 V。测试先后暴露了两个独立的软件问题：旧回调在同方向重插时会因 `flip` 未变化而跳过活动 PHY 重初始化；补上 detach 缓存失效后，回调又在 DWC3 尚未切入 host 时等待 PIPE ready，形成不可满足的时序条件。
 
-现场对 FUSB302、DWC3 和 `tcphy0` 执行完整的驱动解绑/重绑后，同一块 Lexar E300 立即以 UAS/`5000M` 枚举；只重绑 xHCI 或 DWC3 均不能恢复。随后从 `/dev/sda` 完成 4 GiB direct read，耗时约 11.71 秒，即约 367 MB/s（350 MiB/s），全程没有新增 USB、UAS、SCSI 或 I/O 错误。这既证明完整硬件链路工作正常，也把故障定位到 tcphy 重初始化时的 GRF 路由状态。
+现场对 FUSB302、DWC3 和 `tcphy0` 执行完整的驱动解绑/重绑后，同一块 Lexar E300 立即以 UAS/`5000M` 枚举；只重绑 xHCI 或 DWC3 均不能恢复。随后从 `/dev/sda` 完成 4 GiB direct read，耗时约 11.71 秒，即约 367 MB/s（350 MiB/s），全程没有新增 USB、UAS、SCSI 或 I/O 错误。这证明 CC、供电、PHY 和 SuperSpeed 物理链路均正常。
 
-当前工程已经同时修复 orientation 缓存生命周期和 PHY 重置期间的 SuperSpeed host 路由；该版本仍需重新构建和刷机。完成两个方向交替热插拔、长时读写和 Loader 回归前，状态保持为“SuperSpeed 硬件已确认，自动热插拔修复待验收”。
+第二次修复镜像的 TCPM trace 给出了最终时序证据：`Requesting mux state` 后约 5.6 ms 即撤销 VBUS 并退回 `SRC_UNATTACHED`，表明 orientation 回调在 PIPE 轮询中失败；下一轮 attach 虽然创建 Bus 7/8，但错误路径已经物理关闭 PHY，而 DWC3 仍持有其逻辑 power reference，因此不会再次调用标准 `power_on()`，最终表现为“有 xHCI root hub、没有 USB 设备”。
+
+当前工程已经保留 orientation 缓存修复和 SuperSpeed host 路由，并移除 orientation 阶段不可能成功的 PIPE 轮询；PHY 初始化完成后立即把控制权交还 TCPM，让后续 host role 和 xHCI 建立 PIPE。该版本仍需重新构建和刷机。完成两个方向交替热插拔、长时读写和 Loader 回归前，状态保持为“SuperSpeed 硬件已确认，自动热插拔修复待验收”。
