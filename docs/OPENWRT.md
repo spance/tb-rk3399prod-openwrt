@@ -13,12 +13,13 @@
 ## 硬件范围
 
 - UART2：1500000 n8。
-- 4×Cortex-A53 + 2×Cortex-A72、cpufreq/OPP、TSADC/thermal。
+- 4×Cortex-A53 + 2×Cortex-A72、cpufreq/OPP、TSADC/thermal；强制启用 CPU frequency cooling，使 thermal zone 可以通过 cpufreq cooling device 降频。
+- RK3399 DesignWare 硬件 watchdog；`procd` 负责喂狗，板级 DTS 显式提供 16 项 timeout-period 计数表。
 - RK809、TCS4525/TCS4526、CPU/GPU/核心电源轨。
 - TF：4-bit、50 MHz、Rockchip IDMAC。
 - eMMC：HS400 Enhanced Strobe、CQE、ADMA。
 - RTL8211E 千兆以太网：RGMII，TX/RX delay `0x28/0x20`。
-- 网络调优：GMAC IRQ 动态绑定到第一颗 Cortex-A72；fw4 软件 flow offload 默认开启，硬件 flow offload 保持关闭。
+- 网络调优：GMAC IRQ 动态绑定到第一颗 Cortex-A72，并在 LAN `ifup` 后及 S99 阶段幂等恢复；fw4 软件 flow offload 默认开启，硬件 flow offload 保持关闭。
 - USB2 EHCI/OHCI、USB3 xHCI、板载 Hub 电源和复位。
 - PCIe：默认启用，Gen1、x4 host，允许连接 x1 端点；无端点时 training timeout 与原厂 BSP 一致。
 - 外置 Wi-Fi：正式 profile 包含 RTL8822CE 的主线 `rtw88` PCIe 驱动；其依赖会自动带入芯片固件、mac80211、cfg80211、`iw`、无线脚本和监管数据库。

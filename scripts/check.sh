@@ -22,7 +22,8 @@ for script in "$SCRIPT_DIR"/*.sh; do
 	bash -n "$script"
 done
 for script in "$PROJECT_DIR"/rootfs/etc/init.d/* \
-	"$PROJECT_DIR"/rootfs/etc/uci-defaults/*; do
+	"$PROJECT_DIR"/rootfs/etc/uci-defaults/* \
+	"$PROJECT_DIR"/rootfs/etc/hotplug.d/iface/*; do
 	sh -n "$script"
 done
 
@@ -45,6 +46,7 @@ assert_file "$openwrt_patch"
 assert_file "$PROJECT_DIR/dts/rk3399pro-toybrick-prod.dts"
 assert_file "$PROJECT_DIR/dts/rk3399pro-toybrick-prod.dtsi"
 assert_file "$PROJECT_DIR/rootfs/etc/init.d/tb-net-tuning"
+assert_file "$PROJECT_DIR/rootfs/etc/hotplug.d/iface/90-tb-net-tuning"
 assert_file "$PROJECT_DIR/rootfs/etc/uci-defaults/99-tb-network-offload"
 assert_file "$PROJECT_DIR/configs/openwrt.config"
 assert_file "$PROJECT_DIR/configs/feeds.conf"
@@ -162,6 +164,18 @@ grep -Fq 'kmod-usb-hid' "$openwrt_patch" || \
 grep -Fq 'GMAC_IRQ_CPU="4"' \
 	"$PROJECT_DIR/rootfs/etc/init.d/tb-net-tuning" || \
 	fail "GMAC IRQ is not assigned to the first Cortex-A72"
+grep -Fqx 'START=99' \
+	"$PROJECT_DIR/rootfs/etc/init.d/tb-net-tuning" || \
+	fail "GMAC IRQ fallback service does not run after network startup"
+grep -Fq '/etc/init.d/tb-net-tuning start' \
+	"$PROJECT_DIR/rootfs/etc/hotplug.d/iface/90-tb-net-tuning" || \
+	fail "GMAC IRQ affinity is not restored by the interface hotplug hook"
+grep -Fq '[ "$ACTION" = "ifup" ] || exit 0' \
+	"$PROJECT_DIR/rootfs/etc/hotplug.d/iface/90-tb-net-tuning" || \
+	fail "GMAC IRQ hotplug hook is not restricted to interface-up events"
+grep -Fq '[ "$INTERFACE" = "lan" ] || exit 0' \
+	"$PROJECT_DIR/rootfs/etc/hotplug.d/iface/90-tb-net-tuning" || \
+	fail "GMAC IRQ hotplug hook is not restricted to the LAN interface"
 grep -Fq "flow_offloading='1'" \
 	"$PROJECT_DIR/rootfs/etc/uci-defaults/99-tb-network-offload" || \
 	fail "software flow offload is not enabled by default"
@@ -169,6 +183,7 @@ grep -Fq "flow_offloading_hw='0'" \
 	"$PROJECT_DIR/rootfs/etc/uci-defaults/99-tb-network-offload" || \
 	fail "unsupported hardware flow offload must remain disabled"
 for config in \
+	'CONFIG_CPU_FREQ_THERMAL=y' \
 	'CONFIG_DRM=y' \
 	'CONFIG_DRM_FBDEV_EMULATION=y' \
 	'CONFIG_DRM_ROCKCHIP=y' \
@@ -202,6 +217,8 @@ done
 grep -Fq 'tty1::askfirst:/usr/libexec/login.sh' "$openwrt_patch" || \
 	fail "HDMI tty1 login entry is missing"
 for dts_setting in \
+	'&{/watchdog@ff848000} {' \
+	'snps,watchdog-tops = <0x00010000 0x00020000 0x00040000 0x00080000' \
 	'&hdmi {' \
 	'avdd-0v9-supply = <&vcca_0v9>;' \
 	'avdd-1v8-supply = <&vcca_1v8>;' \

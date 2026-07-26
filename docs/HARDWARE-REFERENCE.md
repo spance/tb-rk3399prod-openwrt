@@ -24,12 +24,13 @@
 | 项目 | 关键参数 | 当前状态 |
 |---|---|---|
 | SoC | Rockchip RK3399Pro，AArch64 | 已确认启动 |
-| CPU | 4× Cortex-A53 + 2× Cortex-A72，两个 cpufreq domain | 6 核和动态调频已确认 |
+| CPU | 4× Cortex-A53 + 2× Cortex-A72，两个 cpufreq domain；`CONFIG_CPU_FREQ_THERMAL=y` | 6 核和负载调频已确认；温控降频待新镜像验收 |
 | 内存 | 4 GiB LPDDR3，双通道；每通道 2 GiB、32-bit、双 CS，DDR 初始化日志为 800 MHz | 原厂 DDR 日志已确认 |
 | UART | UART2，`ttyS2`，1500000 baud，8N1 | 已确认 |
 | earlycon | `uart8250,mmio32,0xff1a0000` | 已确认 |
-| HDMI console | RK3399 VOPB + DW-HDMI，`tty0`/`tty1` | 软件已纳入，待实机验收 |
-| TSADC | `hw-tshut-mode=1`，`hw-tshut-polarity=1` | CPU/GPU thermal zone 已确认 |
+| HDMI console | RK3399 VOPB + DW-HDMI，`tty0`/`tty1` | 显示输出和文本 console 已确认 |
+| TSADC | `hw-tshut-mode=1`，`hw-tshut-polarity=1`；CPU cpufreq cooling | CPU/GPU thermal zone 已确认；cooling device 待新镜像验收 |
+| Watchdog | RK3399 DesignWare WDT；TOP 计数为 2^16～2^31；`procd` 30 秒超时、每 5 秒喂狗 | 驱动、设备节点和运行状态已确认；故障复位未做破坏性测试 |
 | LEDs | 蓝 GPIO2_A5、红 GPIO2_A4、绿 GPIO2_A3，均高电平有效 | DTS 固定值 |
 
 启动参数至少应保留：

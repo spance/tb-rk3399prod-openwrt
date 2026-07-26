@@ -1,6 +1,6 @@
 #!/bin/sh /etc/rc.common
 
-START=19
+START=99
 
 BOARD="rockchip,rk3399pro-toybrick-prod"
 GMAC_PLATFORM="fe300000.ethernet"
