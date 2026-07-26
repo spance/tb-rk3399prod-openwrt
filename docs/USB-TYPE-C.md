@@ -34,13 +34,13 @@ Linux 侧目标如下：
 
 Linux 6.12 的 RK3399 Type-C PHY 尚不能直接消费主线 TCPM orientation-switch 事件。`144-phy-rockchip-typec-orientation-switch.patch` 以 Rockchip 上游 v15 方案为基础，增加方向开关，并按固定主机语义处理 PHY：
 
-- 初次启动时，方向事件先被记录；DWC3 选择 host mode 后，若方向与当前 PHY 映射不同，则在 xHCI 注册前重建 PHY；
-- 拔出时只使 attachment 缓存失效，不销毁 xHCI，也不重置仍可复用的 PHY；
-- 同方向重新插入保持现有 PHY/xHCI，避免无意义的控制器生命周期切换；
-- 插头方向真正改变时，仅重建方向相关的 Type-C PHY lane mapping，并检查 PIPE ready；
-- `usb3_powered` 与 `host_ready` 防止在 generic PHY 未上电或 DWC3 尚未进入 host 时执行热重配。
+- `rockchip,usb3-host-only` 明确声明该 PHY 不承担 DisplayPort Alt Mode；
+- PHY 第一次上电时同时配置 normal 使用的 lane 0/1 与 reverse 使用的 lane 3/2；
+- 拔出和同方向重插均保持 PHY 与 xHCI，不做无意义的生命周期切换；
+- 极性真正改变时，只更新 RK3399 GRF `typec_conn_dir` 硬件方向选择，不复位运行中的 PHY/xHCI；
+- `usb3_powered` 保证只有固定主机 PHY 已经成功上电后才执行在线方向切换；若方向事件先于 PHY 上电，则只记录方向并由正常初始化路径使用。
 
-静态 host 初始化在 Linux 6.12 中本来就是 `phy_set_mode(PHY_MODE_USB_HOST)` 后再 `dwc3_host_init()`，因此不再需要修改 DWC3 动态角色路径，旧的 `145-usb-dwc3-set-host-phy-mode-before-xhci.patch` 已删除。整个方案不依赖用户态热插拔脚本、驱动重绑或固定延时。
+静态 host 初始化在 Linux 6.12 中本来就是 `phy_set_mode(PHY_MODE_USB_HOST)` 后再 `dwc3_host_init()`，因此不再需要修改 DWC3 动态角色路径，旧的 `145-usb-dwc3-set-host-phy-mode-before-xhci.patch` 已删除。方案也不在 orientation callback 中关闭、重启 PHY；整个路径不依赖用户态热插拔脚本、驱动重绑或固定延时。
 
 ## 实机证据与故障收敛
 
@@ -51,9 +51,11 @@ Linux 6.12 的 RK3399 Type-C PHY 尚不能直接消费主线 TCPM orientation-sw
 - Type-C 直读 4 GiB 约 367 MB/s（350 MiB/s），测试后无新增 USB、UAS、SCSI 或 I/O 错误；
 - 同一设备在 Type-A USB3 的对照结果约 319 MiB/s，证明 Type-C SuperSpeed 物理通道完整可用。
 
-前六轮动态 role-switch 实验依次排除了方向映射、VBUS、UAS、线材、PIPE 检查先后以及“detach 后未完整复位 PHY”等假设。最近一版在拔出后明确输出 `USB3 PHY held in reset after detach`，PHY 保持 reset 约 10 秒；重插时 PHY 在 xHCI 前恢复并输出 ready，但仍出现 `connect-debounce failed`。冷启动则在相同硬件上立即进入 UAS。
+前六轮动态 role-switch 实验依次排除了方向映射、VBUS、UAS、线材、PIPE 检查先后以及“detach 后未完整复位 PHY”等假设。旧版即使在拔出后让 PHY 保持 reset 约 10 秒、重插时在 xHCI 前恢复并输出 ready，仍会出现 `connect-debounce failed`；冷启动则在相同硬件上立即进入 UAS。
 
 失败后的关键寄存器状态是：USB3 PORTSC 报告 `Powered Connected Enabled Link:U0 PortSpeed:4 Change:CSC`，而 USB hub 层没有子设备并显示 `not attached`。标准 port disable/enable、USB3 root-hub 重绑，以及 DWC3 glue/FUSB302 完整重探测均未可靠恢复。该证据说明 SuperSpeed PHY 已完成链路训练，问题位于动态销毁/重建 xHCI 的控制路径。最终架构因此取消这条非必要路径，让固定 host 的 xHCI 常驻。
+
+常驻 xHCI 镜像进一步给出了更精确的反证：空载启动后 normal PHY 正常存在；reverse 热插入触发旧代码在线关闭并重启 PHY，`pipe_status` 超时并报 `failed to reinitialize USB3 PHY for host mode: -110`，Type-C xHCI 两个根端口均停在 `RxDetect / Not-connected`。同一硬件翻回 normal 并保持连接冷启动后，在约 2 秒即以 UAS/`5000M` 枚举。故障边界由“动态 xHCI 生命周期”继续收敛为“运行中 xHCI 下方不能安全重启该 PHY”，这正是当前双 lane 预配置加 GRF-only 换向方案要消除的操作。
 
 当前代码状态是“SuperSpeed 硬件与冷启动 UAS 已确认；固定 host 热插拔方案待新镜像验收”。在完成下列回归前，不把 Type-C 自动热插拔标记为最终通过。
 
@@ -65,10 +67,10 @@ grep -E 'CONFIG_(TYPEC|TYPEC_TCPM|TYPEC_FUSB302|PHY_ROCKCHIP_TYPEC|USB_DWC3_HOST
 
 .work/openwrt/staging_dir/host/bin/dtc -I dtb -O dts -o - \
   .work/openwrt/build_dir/target-aarch64_generic_musl/linux-rockchip_armv8/image-rk3399pro-toybrick-prod.dtb | \
-  grep -E 'fcs,fusb302|orientation-switch|dr_mode|fe800000'
+  grep -E 'fcs,fusb302|orientation-switch|usb3-host-only|dr_mode|fe800000'
 ```
 
-最终 DTB 应包含 FUSB302、orientation switch 和 `dr_mode = "host"`，不应包含该连接器的 `usb-role-switch`。
+最终 DTB 应包含 FUSB302、orientation switch、`rockchip,usb3-host-only` 和 `dr_mode = "host"`，不应包含该连接器的 `usb-role-switch`。
 
 ## 上板验收
 
@@ -84,7 +86,7 @@ lsusb -t
 
 1. normal 方向插入，确认 UAS/`5000M`，完成至少 4 GiB direct read/write。
 2. 卸载并拔出；同方向重复插入至少 5 次，每次都必须重新出现块设备，Type-C xHCI 根总线编号不应改变。
-3. 翻转插头后重复测试，确认日志中出现方向变化后的 PHY ready，且仍为 UAS/`5000M`。
+3. 翻转插头后重复测试，确认日志中出现 `USB3 host switched to reverse orientation`（或 normal），且仍为 UAS/`5000M`。
 4. 两个方向交替热插拔至少 10 次，再连续读写至少 30 分钟。
 5. 检查日志中没有 `connect-debounce failed`、PMA/PIPE timeout、xHCI、UAS、SCSI 或文件系统错误。
 6. 断电进入 Loader/Maskrom，确认 Rockchip 官方工具仍能发现设备。

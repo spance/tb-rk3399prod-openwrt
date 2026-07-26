@@ -181,47 +181,33 @@ grep -Fq '144-phy-rockchip-typec-orientation-switch.patch' \
 	fail "RK3399 Type-C orientation-switch patch is missing"
 grep -Fq 'tcphy_set_orientation' "$openwrt_patch" || \
 	fail "RK3399 Type-C orientation callback is missing"
-grep -Fq 'if (orientation == TYPEC_ORIENTATION_NONE) {' "$openwrt_patch" || \
-	fail "RK3399 Type-C detach handling is missing"
-grep -Fq 'tcphy->orientation_valid = false;' "$openwrt_patch" || \
-	fail "RK3399 Type-C detach does not invalidate cached orientation"
-grep -Fq 'if (tcphy->flip != flip) {' "$openwrt_patch" || \
+grep -Fq 'if (orientation == TYPEC_ORIENTATION_NONE)' "$openwrt_patch" || \
+	fail "RK3399 Type-C detach preserves the active fixed-host PHY"
+grep -Fq 'if (tcphy->flip == flip)' "$openwrt_patch" || \
 	fail "RK3399 Type-C polarity-change guard is missing"
-grep -Fq 'tcphy->reinit_pending = true;' "$openwrt_patch" || \
-	fail "RK3399 Type-C polarity change does not request PHY reinitialization"
-grep -Fq 'tcphy->host_ready && tcphy->usb3_powered' "$openwrt_patch" || \
-	fail "RK3399 Type-C callback does not protect the active host lifecycle"
-grep -Fq 'tcphy_reinit_usb3(tcphy, MODE_DFP_USB, "host")' \
+grep -Fq 'rockchip,usb3-host-only' "$openwrt_patch" || \
+	fail "RK3399 Type-C fixed-host PHY binding is missing"
+grep -Fq 'tcphy->usb3_host_only && tcphy->usb3_powered' \
 	"$openwrt_patch" || \
-	fail "RK3399 Type-C hot polarity reconfiguration is missing"
-grep -Fq 'rockchip_usb3_phy_set_mode' "$openwrt_patch" || \
-	fail "RK3399 Type-C generic PHY set_mode callback is missing"
-grep -Fq '++	.set_mode	= rockchip_usb3_phy_set_mode,' "$openwrt_patch" || \
-	fail "RK3399 Type-C set_mode callback is not registered in phy_ops"
-grep -Fq 'tcphy->host_ready = mode == PHY_MODE_USB_HOST;' \
+	fail "RK3399 Type-C live mux switch is not limited to an active fixed host"
+grep -Fq 'property_enable(tcphy, &cfg->typec_conn_dir, flip);' \
 	"$openwrt_patch" || \
-	fail "RK3399 Type-C static host readiness is not recorded"
+	fail "RK3399 Type-C polarity change does not update the GRF mux"
+for lane_init in \
+	'tcphy_tx_usb3_cfg_lane(tcphy, 0);' \
+	'tcphy_rx_usb3_cfg_lane(tcphy, 1);' \
+	'tcphy_rx_usb3_cfg_lane(tcphy, 2);' \
+	'tcphy_tx_usb3_cfg_lane(tcphy, 3);'; do
+	grep -Fq "$lane_init" "$openwrt_patch" || \
+		fail "RK3399 Type-C fixed-host lane initialization is missing: $lane_init"
+done
 grep -Fq 'tcphy->usb3_powered = true;' "$openwrt_patch" || \
 	fail "RK3399 Type-C logical PHY power-on state is not recorded"
 grep -Fq 'tcphy->usb3_powered = false;' "$openwrt_patch" || \
 	fail "RK3399 Type-C logical PHY power-off state is not recorded"
-grep -Fq 'property_enable(tcphy, &cfg->external_psm, true);' \
-	"$openwrt_patch" || \
-	fail "RK3399 Type-C reinitialization does not restore probe-time PSM configuration"
-grep -Fq 'tcphy->mode = MODE_DISCONNECT;' "$openwrt_patch" || \
-	fail "RK3399 Type-C reinitialization does not start from reset"
-grep -Fq 'tcphy_phy_deinit(tcphy);' "$openwrt_patch" || \
-	fail "RK3399 Type-C polarity-change PHY shutdown is missing"
-grep -Fq 'tcphy_phy_init(tcphy, new_mode);' "$openwrt_patch" || \
-	fail "RK3399 Type-C polarity-change PHY initialization is missing"
-grep -Fq 'tcphy->mode = new_mode;' "$openwrt_patch" || \
-	fail "RK3399 Type-C mode is not committed after PIPE readiness"
-grep -Fq '++	for (timeout = 0; timeout < 100; timeout++) {' "$openwrt_patch" || \
-	fail "RK3399 Type-C reinitialization does not validate PIPE readiness"
-grep -Fq 'failed to reinitialize USB3 PHY for %s mode' "$openwrt_patch" || \
-	fail "RK3399 Type-C PHY failure path is missing"
-grep -Fq 'USB3 PHY ready for %s orientation' "$openwrt_patch" || \
-	fail "RK3399 Type-C successful PHY reinitialization marker is missing"
+if grep -Fq 'tcphy_reinit_usb3' "$openwrt_patch"; then
+	fail "unsafe live Type-C PHY reinitialization remains"
+fi
 if grep -Fq '145-usb-dwc3-set-host-phy-mode-before-xhci.patch' \
 	"$openwrt_patch"; then
 	fail "unused dynamic-role DWC3 ordering patch remains"
@@ -315,6 +301,7 @@ for typec_setting in \
 	'&tcphy0 {' \
 	'&tcphy0_usb3 {' \
 	'orientation-switch;' \
+	'rockchip,usb3-host-only;' \
 	'&usbdrd3_0 {' \
 	'&usbdrd_dwc3_0 {' \
 	'dr_mode = "host";' \

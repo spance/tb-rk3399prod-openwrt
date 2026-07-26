@@ -599,6 +599,7 @@
 
 &tcphy0_usb3 {
 	orientation-switch;
+	rockchip,usb3-host-only;
 
 	port {
 		tcphy0_orientation_switch: endpoint {

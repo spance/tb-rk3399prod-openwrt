@@ -217,31 +217,49 @@ index 0000000..a1231ad
 + };
 diff --git a/target/linux/rockchip/patches-6.12/144-phy-rockchip-typec-orientation-switch.patch b/target/linux/rockchip/patches-6.12/144-phy-rockchip-typec-orientation-switch.patch
 new file mode 100644
-index 0000000..a5e6724
+index 0000000..d88c5c0
 --- /dev/null
 +++ b/target/linux/rockchip/patches-6.12/144-phy-rockchip-typec-orientation-switch.patch
-@@ -0,0 +1,276 @@
-+From ee5f73f20fb58416c06b576d6fa646fa3cab4c18 Mon Sep 17 00:00:00 2001
+@@ -0,0 +1,220 @@
++From 24e762ba8dde1191c920496874d7aeb83f9a3ab4 Mon Sep 17 00:00:00 2001
 +From: TB-RK3399ProD OpenWrt project <noreply@example.invalid>
-+Date: Sun, 26 Jul 2026 16:21:16 +0800
-+Subject: [PATCH] phy: rockchip: support Type-C host orientation switching
++Date: Mon, 27 Jul 2026 00:46:56 +0800
++Subject: [PATCH] phy: rockchip: support fixed-host Type-C orientation
++ switching
 +
 +Backport the orientation-switch integration proposed by Rockchip for the
-+RK3399 Type-C PHY, limited to the USB host path used by this board.
++RK3399 Type-C PHY and add an explicit fixed-host mode for this board.
 +
-+The board connector is fixed to source/host, so DWC3 and xHCI remain active
-+while the connector is unattached.  Record the initial orientation until
-+DWC3 selects host mode, then reinitialize the direction-dependent lanes
-+before xHCI is registered.  During normal hotplug, preserve the active host
-+controller and PHY for same-orientation reconnects; restart only the PHY when
-+the physical connector polarity actually changes.
++A fixed source/host connector keeps DWC3 and xHCI registered while
++unattached. Configure both SuperSpeed lane pairs during PHY initialization,
++then change only the GRF orientation mux when TCPM reports a real polarity
++change. This avoids resetting an active xHCI controller and deliberately
++excludes DisplayPort alternate mode.
 +
 +Link: https://lore.kernel.org/all/20260304094152.92-5-kernel@airkyi.com/
 +---
-+ drivers/phy/rockchip/Kconfig              |   1 +
-+ drivers/phy/rockchip/phy-rockchip-typec.c | 178 ++++++++++++++++++++++++++++++
-+ 2 files changed, 179 insertions(+)
++ .../bindings/phy/phy-rockchip-typec.txt       |   6 ++
++ drivers/phy/rockchip/Kconfig                  |   1 +
++ drivers/phy/rockchip/phy-rockchip-typec.c     | 102 +++++++++++++++++-
++ 3 files changed, 108 insertions(+), 1 deletion(-)
 +
++diff --git a/Documentation/devicetree/bindings/phy/phy-rockchip-typec.txt b/Documentation/devicetree/bindings/phy/phy-rockchip-typec.txt
++index 960da7f..5c4ce92 100644
++--- a/Documentation/devicetree/bindings/phy/phy-rockchip-typec.txt
+++++ b/Documentation/devicetree/bindings/phy/phy-rockchip-typec.txt
++@@ -27,6 +27,12 @@ Required nodes : a sub-node is required for each port the phy provides.
++ Required properties (port (child) node):
++ - #phy-cells : must be 0, See ./phy-bindings.txt for details.
++ 
+++Optional properties (usb3-port child node):
+++- rockchip,usb3-host-only : configure both SuperSpeed lane pairs for a
+++  fixed USB host connector, allowing the hardware orientation mux to switch
+++  polarity without cycling the PHY. DisplayPort alternate mode must not use
+++  this PHY when the property is present.
+++
++ Deprecated properties, do not use in new device tree sources, these
++ properties are determined by the compatible value:
++  - rockchip,typec-conn-dir
 +diff --git a/drivers/phy/rockchip/Kconfig b/drivers/phy/rockchip/Kconfig
 +index dcb8e16..3677bfe 100644
 +--- a/drivers/phy/rockchip/Kconfig
@@ -255,7 +273,7 @@ index 0000000..a5e6724
 + 	select GENERIC_PHY
 + 	select RESET_CONTROLLER
 +diff --git a/drivers/phy/rockchip/phy-rockchip-typec.c b/drivers/phy/rockchip/phy-rockchip-typec.c
-+index 4efcb78..c41ef1f 100644
++index 4efcb78..1d53806 100644
 +--- a/drivers/phy/rockchip/phy-rockchip-typec.c
 ++++ b/drivers/phy/rockchip/phy-rockchip-typec.c
 +@@ -54,6 +54,7 @@
@@ -274,27 +292,43 @@ index 0000000..a5e6724
 + 	struct regmap *grf_regs;
 + 	struct clk *clk_core;
 + 	struct clk *clk_ref;
-+@@ -383,6 +385,10 @@ struct rockchip_typec_phy {
++@@ -383,6 +385,8 @@ struct rockchip_typec_phy {
 + 	struct mutex lock;
 + 
 + 	bool flip;
-++	bool host_ready;
-++	bool orientation_valid;
-++	bool reinit_pending;
+++	bool usb3_host_only;
 ++	bool usb3_powered;
 + 	u8 mode;
 + };
 + 
-+@@ -898,6 +904,8 @@ static int rockchip_usb3_phy_power_on(struct phy *phy)
++@@ -753,7 +757,17 @@ static int tcphy_phy_init(struct rockchip_typec_phy *tcphy, u8 mode)
++ 	} else {
++ 		tcphy_cfg_usb3_pll(tcphy);
++ 		tcphy_cfg_dp_pll(tcphy);
++-		if (tcphy->flip) {
+++		if (tcphy->usb3_host_only) {
+++			/*
+++			 * A fixed host has no DisplayPort alternate mode.  Configure
+++			 * both Type-C lane pairs once so the GRF orientation mux can
+++			 * switch polarity without resetting an active xHCI controller.
+++			 */
+++			tcphy_tx_usb3_cfg_lane(tcphy, 0);
+++			tcphy_rx_usb3_cfg_lane(tcphy, 1);
+++			tcphy_rx_usb3_cfg_lane(tcphy, 2);
+++			tcphy_tx_usb3_cfg_lane(tcphy, 3);
+++		} else if (tcphy->flip) {
++ 			tcphy_tx_usb3_cfg_lane(tcphy, 3);
++ 			tcphy_rx_usb3_cfg_lane(tcphy, 2);
++ 			tcphy_dp_cfg_lane(tcphy, 0);
++@@ -898,6 +912,7 @@ static int rockchip_usb3_phy_power_on(struct phy *phy)
 + 		regmap_read(tcphy->grf_regs, reg->offset, &val);
 + 		if (!(val & BIT(reg->enable_bit))) {
 + 			tcphy->mode |= new_mode & (MODE_DFP_USB | MODE_UFP_USB);
-++			tcphy->reinit_pending = false;
 ++			tcphy->usb3_powered = true;
 + 
 + 			/* enable usb3 host */
 + 			tcphy_cfg_usb3_to_usb2_only(tcphy, false);
-+@@ -908,6 +916,7 @@ static int rockchip_usb3_phy_power_on(struct phy *phy)
++@@ -908,6 +923,7 @@ static int rockchip_usb3_phy_power_on(struct phy *phy)
 + 
 + 	if (tcphy->mode == MODE_DISCONNECT)
 + 		tcphy_phy_deinit(tcphy);
@@ -302,7 +336,7 @@ index 0000000..a5e6724
 + 
 + 	ret = -ETIMEDOUT;
 + 
-+@@ -922,6 +931,7 @@ static int rockchip_usb3_phy_power_off(struct phy *phy)
++@@ -922,6 +938,7 @@ static int rockchip_usb3_phy_power_off(struct phy *phy)
 + 
 + 	mutex_lock(&tcphy->lock);
 + 	tcphy_cfg_usb3_to_usb2_only(tcphy, false);
@@ -310,90 +344,36 @@ index 0000000..a5e6724
 + 
 + 	if (tcphy->mode == MODE_DISCONNECT)
 + 		goto unlock;
-+@@ -935,9 +945,171 @@ unlock:
++@@ -935,6 +952,83 @@ unlock:
 + 	return 0;
 + }
 + 
 ++#if IS_ENABLED(CONFIG_TYPEC)
-++/*
-++ * Rebuild the lane mapping after a real orientation change.  The caller holds
-++ * tcphy->lock.  Keeping the host controller alive across an unattached Type-C
-++ * state lets xHCI observe the next connection in the same way as a fixed host
-++ * port; only a polarity change requires the PHY itself to be restarted.
-++ */
-++static int tcphy_reinit_usb3(struct rockchip_typec_phy *tcphy, u8 new_mode,
-++			     const char *role)
-++{
-++	const struct rockchip_usb3phy_port_cfg *cfg = tcphy->port_cfgs;
-++	const struct usb3phy_reg *reg = &cfg->pipe_status;
-++	int timeout;
-++	int ret;
-++	u32 val;
-++
-++	if (tcphy->mode != MODE_DISCONNECT) {
-++		tcphy_cfg_usb3_to_usb2_only(tcphy, false);
-++		tcphy_phy_deinit(tcphy);
-++	}
-++	property_enable(tcphy, &cfg->external_psm, true);
-++	property_enable(tcphy, &cfg->usb3tousb2_en, false);
-++	tcphy->mode = MODE_DISCONNECT;
-++
-++	ret = tcphy_phy_init(tcphy, new_mode);
-++	if (ret)
-++		goto err_disconnected;
-++
-++	for (timeout = 0; timeout < 100; timeout++) {
-++		regmap_read(tcphy->grf_regs, reg->offset, &val);
-++		if (!(val & BIT(reg->enable_bit))) {
-++			tcphy_cfg_usb3_to_usb2_only(tcphy, false);
-++			tcphy->mode = new_mode;
-++			tcphy->reinit_pending = false;
-++			dev_info(tcphy->dev,
-++				 "USB3 PHY ready for %s orientation in %s mode\n",
-++				 tcphy->flip ? "reverse" : "normal", role);
-++			return 0;
-++		}
-++		usleep_range(10, 20);
-++	}
-++
-++	tcphy_phy_deinit(tcphy);
-++	ret = -ETIMEDOUT;
-++
-++err_disconnected:
-++	dev_err(tcphy->dev, "failed to reinitialize USB3 PHY for %s mode: %d\n",
-++		role, ret);
-++	tcphy->reinit_pending = false;
-++	tcphy->mode = MODE_DISCONNECT;
-++	return ret;
-++}
-++
 ++static int tcphy_set_orientation(struct typec_switch_dev *sw,
 ++				 enum typec_orientation orientation)
 ++{
 ++	struct rockchip_typec_phy *tcphy = typec_switch_get_drvdata(sw);
+++	const struct rockchip_usb3phy_port_cfg *cfg = tcphy->port_cfgs;
 ++	bool flip;
-++	int ret = 0;
 ++
 ++	mutex_lock(&tcphy->lock);
-++	if (orientation == TYPEC_ORIENTATION_NONE) {
-++		tcphy->orientation_valid = false;
-++		tcphy->reinit_pending = false;
+++	if (orientation == TYPEC_ORIENTATION_NONE)
 ++		goto out_unlock;
-++	}
 ++
 ++	flip = orientation == TYPEC_ORIENTATION_REVERSE;
-++	if (tcphy->flip != flip) {
-++		tcphy->flip = flip;
-++		tcphy->reinit_pending = true;
-++	}
-++	tcphy->orientation_valid = true;
+++	if (tcphy->flip == flip)
+++		goto out_unlock;
 ++
-++	if (tcphy->host_ready && tcphy->usb3_powered &&
-++	    tcphy->reinit_pending)
-++		ret = tcphy_reinit_usb3(tcphy, MODE_DFP_USB, "host");
+++	tcphy->flip = flip;
+++	if (tcphy->usb3_host_only && tcphy->usb3_powered) {
+++		property_enable(tcphy, &cfg->typec_conn_dir, flip);
+++		tcphy_dp_aux_set_flip(tcphy);
+++		dev_info(tcphy->dev, "USB3 host switched to %s orientation\n",
+++			 flip ? "reverse" : "normal");
+++	}
 ++out_unlock:
 ++	mutex_unlock(&tcphy->lock);
-++	return ret;
+++	return 0;
 ++}
 ++
 ++static void tcphy_unregister_orientation_switch(void *data)
@@ -415,6 +395,9 @@ index 0000000..a5e6724
 ++
 ++	if (!of_property_read_bool(np, "orientation-switch"))
 ++		goto out_put_node;
+++
+++	tcphy->usb3_host_only =
+++		of_property_read_bool(np, "rockchip,usb3-host-only");
 ++
 ++	desc.drvdata = tcphy;
 ++	desc.fwnode = of_fwnode_handle(np);
@@ -442,47 +425,10 @@ index 0000000..a5e6724
 ++}
 ++#endif
 ++
-++static int rockchip_usb3_phy_set_mode(struct phy *phy, enum phy_mode mode,
-++				      int submode)
-++{
-++	struct rockchip_typec_phy *tcphy = phy_get_drvdata(phy);
-++	const char *role;
-++	u8 new_mode;
-++	int ret = 0;
-++
-++	if (mode == PHY_MODE_USB_HOST) {
-++		new_mode = MODE_DFP_USB;
-++		role = "host";
-++	} else if (mode == PHY_MODE_USB_DEVICE) {
-++		new_mode = MODE_UFP_USB;
-++		role = "device";
-++	} else {
-++		return 0;
-++	}
-++
-++	mutex_lock(&tcphy->lock);
-++	tcphy->host_ready = mode == PHY_MODE_USB_HOST;
-++
-++	if (!tcphy->orientation_valid)
-++		goto out_unlock;
-++
-++	if (!tcphy->reinit_pending && tcphy->mode == new_mode)
-++		goto out_unlock;
-++
-++	ret = tcphy_reinit_usb3(tcphy, new_mode, role);
-++out_unlock:
-++	mutex_unlock(&tcphy->lock);
-++	return ret;
-++}
-++
 + static const struct phy_ops rockchip_usb3_phy_ops = {
 + 	.power_on	= rockchip_usb3_phy_power_on,
 + 	.power_off	= rockchip_usb3_phy_power_off,
-++	.set_mode	= rockchip_usb3_phy_set_mode,
-+ 	.owner		= THIS_MODULE,
-+ };
-+ 
-+@@ -1183,6 +1355,12 @@ static int rockchip_typec_phy_probe(struct platform_device *pdev)
++@@ -1183,6 +1277,12 @@ static int rockchip_typec_phy_probe(struct platform_device *pdev)
 + 		phy_set_drvdata(phy, tcphy);
 + 	}
 + 
@@ -495,5 +441,3 @@ index 0000000..a5e6724
 + 	phy_provider = devm_of_phy_provider_register(dev, of_phy_simple_xlate);
 + 	if (IS_ERR(phy_provider)) {
 + 		dev_err(dev, "Failed to register phy provider\n");
-+-- 
-+2.54.0
