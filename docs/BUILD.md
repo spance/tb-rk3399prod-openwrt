@@ -60,7 +60,7 @@ make init
 | OpenWrt | `v25.12.5` / `f0a60eee2fe051741c643ea6118718aae1ef17fb` |
 | Linux | OpenWrt 官方 `6.12.94` |
 
-OpenWrt 只使用一个工作树和一个正式配置，PCIe host、RTL8822CE 和 HDMI Linux console 默认启用。
+OpenWrt 只使用一个工作树和一个正式配置，独立 x4 插座的 PCIe host、RTL8822CE 驱动和 HDMI Linux console 默认启用；板载 Mini-PCIe 插座仅接 USB2。
 
 初始化是幂等的。网络 fetch 会自动重试三次；中断后再次执行可以继续未完成的初始 checkout。补丁状态只由 Git 判断，不写额外状态文件；每个补丁必须是“可应用”或“已完整应用”，其他状态立即失败。所有上游仓库固定到精确 commit；`configs/feeds.conf` 只保留当前固件所需的 `packages` feed，并固定到 OpenWrt 25.12.5 官方发布使用的 commit，不会因远端分支变化而漂移。当前配置未启用 LuCI，因此不会下载 `luci`、`routing`、`telephony` 或 `video` feed。
 

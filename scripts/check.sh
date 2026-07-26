@@ -159,6 +159,14 @@ grep -Fq 'root=PARTLABEL=rootfs' "$PROJECT_DIR/boot/boot.cmd" || \
 	fail "boot script persistent rootfs argument is missing"
 grep -Fq 'kmod-rtw88-8822ce' "$openwrt_patch" || \
 	fail "RTL8822CE PCIe wireless driver is missing from the device profile"
+grep -Fq '143-mmc-sdhci-of-arasan-disable-rk3399-cqe.patch' \
+	"$openwrt_patch" || \
+	fail "RK3399 eMMC CQE reliability patch is missing"
+grep -Fq 'SDHCI_QUIRK_BROKEN_CQE' "$openwrt_patch" || \
+	fail "RK3399 eMMC CQE is not disabled with the standard SDHCI quirk"
+grep -Fq 'Mini-PCIe 插座只接 USB2' \
+	"$PROJECT_DIR/docs/HARDWARE-REFERENCE.md" || \
+	fail "Mini-PCIe USB-only wiring constraint is not documented"
 grep -Fq 'kmod-usb-hid' "$openwrt_patch" || \
 	fail "USB HID support for the HDMI console is missing from the device profile"
 grep -Fq 'GMAC_IRQ_CPU="4"' \

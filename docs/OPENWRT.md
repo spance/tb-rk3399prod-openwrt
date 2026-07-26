@@ -17,16 +17,16 @@
 - RK3399 DesignWare 硬件 watchdog；`procd` 负责喂狗，板级 DTS 显式提供 16 项 timeout-period 计数表。
 - RK809、TCS4525/TCS4526、CPU/GPU/核心电源轨。
 - TF：4-bit、50 MHz、Rockchip IDMAC。
-- eMMC：HS400 Enhanced Strobe、CQE、ADMA。
+- eMMC：HS400 Enhanced Strobe、ADMA；为避免写入负载下反复进入 CQE recovery，使用 Linux 已有的 `SDHCI_QUIRK_BROKEN_CQE` 默认关闭 CQE。
 - RTL8211E 千兆以太网：RGMII，TX/RX delay `0x28/0x20`。
 - 网络调优：GMAC IRQ 动态绑定到第一颗 Cortex-A72，并在 LAN `ifup` 后及 S99 阶段幂等恢复；fw4 软件 flow offload 默认开启，硬件 flow offload 保持关闭。
 - USB2 EHCI/OHCI、USB3 xHCI、板载 Hub 电源和复位。
-- PCIe：默认启用，Gen1、x4 host，允许连接 x1 端点；无端点时 training timeout 与原厂 BSP 一致。
-- 外置 Wi-Fi：正式 profile 包含 RTL8822CE 的主线 `rtw88` PCIe 驱动；其依赖会自动带入芯片固件、mac80211、cfg80211、`iw`、无线脚本和监管数据库。
+- PCIe：默认启用，Gen1、x4 host，位于独立的 x4 板对板插座，并允许通过合适的转接板连接 x1 端点；无端点时 training timeout 与原厂 BSP 一致。
+- 外置 Wi-Fi：正式 profile 包含 RTL8822CE 的主线 `rtw88` PCIe 驱动；其依赖会自动带入芯片固件、mac80211、cfg80211、`iw`、无线脚本和监管数据库。板载 Mini-PCIe 插座是 LTE/USB2 插座，没有连接 PCIe lane，不能用于 RTL8822CE 的 Wi-Fi 功能。
 - HDMI console：内建 Rockchip DRM、VOPB、DW-HDMI、fbdev/fbcon，保留 UART2 并增加 `tty1` 键盘登录；详细设计和验收见 [HDMI Linux console](HDMI-CONSOLE.md)。
 - 板载/厂商专用无线集成、蓝牙、摄像、音频、图形桌面、GPU 和 NPU 不纳入当前目标。
 
-RTL8822CE 不需要静态 DTS 子节点，PCIe 枚举后由设备 ID 自动绑定。若以后改装 PCIe 有线网卡，仍需按具体型号增加 `igb`、`igc` 或 `r8169` 等驱动，并完成枚举、吞吐、错误计数和长时间稳定性验收。
+RTL8822CE 不需要静态 DTS 子节点；把它接到独立 x4 PCIe 插座后，PCIe 枚举会按设备 ID 自动绑定。Mini-PCIe 插座的机械外形不代表本板提供 PCIe 电气连接：它只适用于走 USB2 的 LTE 模块。若以后改装 PCIe 有线网卡，仍需按具体型号增加 `igb`、`igc` 或 `r8169` 等驱动，并完成枚举、吞吐、错误计数和长时间稳定性验收。
 
 网络性能基线、flow offload 适用边界、ARMv8 AES-CE、Rockchip Crypto 取舍和未来多队列/RSS 策略见 [网络性能与加速策略](NETWORK-PERFORMANCE.md)。
 

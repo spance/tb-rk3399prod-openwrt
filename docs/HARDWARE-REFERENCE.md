@@ -17,19 +17,19 @@
 | Toybrick linux-x86 工具链 | commit `32505a8032d04e9320dbdb817b08bf67bdfb5a0c` |
 | OpenWrt target | `rockchip/armv8`，profile `toybrick_tb-rk3399prod` |
 
-当前正式 profile 默认启用 PCIe、外置 RTL8822CE Wi-Fi 和 HDMI Linux 文本 console。板载/厂商专用无线集成、蓝牙、摄像、音频、图形桌面、GPU 功能和 NPU 不属于本阶段的完成条件。
+当前正式 profile 默认启用独立 x4 插座的 PCIe host、RTL8822CE 驱动和 HDMI Linux 文本 console。板载 Mini-PCIe 只接 USB2；板载/厂商专用无线集成、蓝牙、摄像、音频、图形桌面、GPU 功能和 NPU 不属于本阶段的完成条件。
 
 ## 2. SoC、内存与控制台
 
 | 项目 | 关键参数 | 当前状态 |
 |---|---|---|
 | SoC | Rockchip RK3399Pro，AArch64 | 已确认启动 |
-| CPU | 4× Cortex-A53 + 2× Cortex-A72，两个 cpufreq domain；`CONFIG_CPU_FREQ_THERMAL=y` | 6 核和负载调频已确认；温控降频待新镜像验收 |
+| CPU | 4× Cortex-A53 + 2× Cortex-A72，两个 cpufreq domain；`CONFIG_CPU_FREQ_THERMAL=y` | 6 核、负载调频和 cpufreq cooling device 已确认；未故意加热到降频点 |
 | 内存 | 4 GiB LPDDR3，双通道；每通道 2 GiB、32-bit、双 CS，DDR 初始化日志为 800 MHz | 原厂 DDR 日志已确认 |
 | UART | UART2，`ttyS2`，1500000 baud，8N1 | 已确认 |
 | earlycon | `uart8250,mmio32,0xff1a0000` | 已确认 |
 | HDMI console | RK3399 VOPB + DW-HDMI，`tty0`/`tty1` | 显示输出和文本 console 已确认 |
-| TSADC | `hw-tshut-mode=1`，`hw-tshut-polarity=1`；CPU cpufreq cooling | CPU/GPU thermal zone 已确认；cooling device 待新镜像验收 |
+| TSADC | `hw-tshut-mode=1`，`hw-tshut-polarity=1`；CPU cpufreq cooling | CPU/GPU thermal zone 与两个 CPU cooling device 的 trip 绑定已确认 |
 | Watchdog | RK3399 DesignWare WDT；TOP 计数为 2^16～2^31；`procd` 30 秒超时、每 5 秒喂狗 | 驱动、设备节点和运行状态已确认；故障复位未做破坏性测试 |
 | LEDs | 蓝 GPIO2_A5、红 GPIO2_A4、绿 GPIO2_A3，均高电平有效 | DTS 固定值 |
 
@@ -88,7 +88,7 @@ Linux 6.12 基线中，TCS4525/TCS4526 由兼容的 `fan53555` regulator 驱动�
 
 - 控制器别名 `mmc1 = &sdhci`，硬件节点 `sdhci@fe330000`，8-bit、不可移除。
 - HS400 1.8 V、Enhanced Strobe、eMMC PHY 均启用。
-- 实机容量约 29.1 GiB；HS400 Enhanced Strobe、CQE 和 ADMA 已识别。
+- 实机容量约 29.1 GiB；HS400 Enhanced Strobe 和 ADMA 已确认。CQE 曾正常识别为深度 16，但连续写入会反复触发无数据损坏的 recovery；正式配置通过 Linux 现有 `SDHCI_QUIRK_BROKEN_CQE` 将其关闭，以稳定性优先。该 quirk 不关闭 HS400、Enhanced Strobe 或 ADMA。
 - Linux 下可作为普通块设备读写，但管理命令应按容量、CID/名称或 GPT `PARTLABEL` 识别设备，不要依赖 `mmcblkN` 编号。
 - 当前部署 GPT 使用 512-byte sector：`uboot@0x2000` 为 4 MiB，`trust@0x4000` 为 4 MiB，`boot_linux@0x6000` 为 96 MiB，`rootfs@0x36000` 占用剩余空间。前两项属于厂商 miniloader 启动链约束；后两项是当前工程镜像和启动脚本共同采用的发布约定，并非 RK3399Pro 不可改变的硬件地址。边界和替代方案见 [启动链设计](BOOT-CHAIN.md)。
 - 工程将内部的 64 MiB 启动容器和 128 MiB rootfs 载体组合为 224 MiB `openwrt.img`，从 LBA `0x6000` 连续写入后，rootfs 自动落在 LBA `0x36000`。启动参数使用 `root=PARTLABEL=rootfs` 和 `fstools_overlay_fstype=ext4`；SquashFS 后面的全部剩余空间由 OpenWrt `fstools` 在首次启动时格式化为 ext4 `/overlay`。该设计不调整 GPT，也不依赖 eMMC 的动态设备编号。完整映射、持久化和重装边界见 `EMMC-INSTALL.md`。
@@ -138,13 +138,15 @@ HDMI 只承担 Linux 文本 console；U-Boot 显示、HDMI 音频、桌面和 GP
 | PHY / host | 默认 `okay` |
 | 最大链路速率 | Gen1，`max-link-speed = 1` |
 | Root Complex lanes | x4，`num-lanes = 4` |
-| 插槽用途 | x1 PCIe 端点；当前目标为 RTL8822CE Wi-Fi 卡 |
+| 物理出口 | 独立 PCIe x4 板对板插座；允许通过合适转接板连接 x1 端点 |
 | ASPM | 禁用 L0s（`aspm-no-l0s`） |
 | EP GPIO | GPIO0_B4，高有效 |
 | CLKREQ# pinctrl | `pcie_clkreqn_cpm` |
 | 电源 | 0.9 V、1.8 V、3.3 V；3.3 V 由 GPIO2_A6 使能 |
 
-无端点时出现链路训练超时与厂商 BSP 行为一致，不代表供电或控制器必然故障。RTL8822CE 的 Wi-Fi 功能通过 PCIe 枚举，Linux 6.12 `rtw88_8822ce` 支持 PCI ID `10ec:c822` 和 `10ec:c82f`；正式 profile 选择 `kmod-rtw88-8822ce`，其 OpenWrt 依赖自动包含 `rtl8822ce-firmware`。蓝牙功能通常使用卡上的独立 USB 接口，本工程保持禁用。安装后必须验证 `lspci -nnk`、实际链路宽度/速率、AER 错误、固件加载、无线 PHY、吞吐与重启稳定性。
+本板有两个容易混淆的插座：上述 SoC PCIe host 只连接到独立 x4 板对板插座；板载 Mini-PCIe 插座只接 USB2，面向 LTE 模块，没有 PCIe lane。因而把 RTL8822CE 插入 Mini-PCIe 后不会出现在 `lspci`，DTS 或驱动无法弥补缺失的电气连线；当前 `pcie@f8000000` 的 Gen1 training timeout 来自独立 x4 插座没有端点，与 Mini-PCIe 中是否插卡无关。
+
+若使用匹配 x4 板对板插座的转接板把 RTL8822CE 接到真正的 PCIe lane，Linux 6.12 `rtw88_8822ce` 支持 PCI ID `10ec:c822` 和 `10ec:c82f`；正式 profile 已选择 `kmod-rtw88-8822ce`，其 OpenWrt 依赖自动包含 `rtl8822ce-firmware`。蓝牙功能通常使用卡上的独立 USB 接口，本工程保持禁用。安装后必须验证 `lspci -nnk`、实际链路宽度/速率、AER 错误、固件加载、无线 PHY、吞吐与重启稳定性。
 
 ## 9. 升级回归清单
 
