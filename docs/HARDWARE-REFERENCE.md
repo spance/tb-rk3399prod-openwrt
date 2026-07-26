@@ -118,7 +118,7 @@ Linux 6.12 基线中，TCS4525/TCS4526 由兼容的 `fan53555` regulator 驱动�
 - 正式 profile 内置 USB Mass Storage、UAS、FAT32 和 exFAT 驱动；常见 U 盘、SSD 与移动硬盘无需联网安装文件系统模块。
 - 蓝色 Type-A 口已由多种设备确认工作在 `5000M`；Lexar E300 2 TB M.2 移动硬盘使用 UAS，4 GiB direct read 约 319 MiB/s，测试后无新增 USB/UAS/SCSI 错误，已经证明该物理口的 SuperSpeed 路径可达到正常高速区间。
 - Type-C USB3：DWC3_0 `fe800000.usb`、`tcphy0`，连接器固定为 source/host；FUSB302 位于 I2C8 `0x22`，中断 GPIO1_A2 低有效，VBUS 由 GPIO0_A1 低电平使能，对外声明 5 V/1.5 A。DWC3 内部使用 `dr_mode = "otg"` 和 `usb-role-switch`，仅用于在插拔/换向时退出并重建 host/xHCI。
-- Linux 6.12 的 RK3399 Type-C PHY 缺少 TCPM orientation-switch 支持；工程回移 Rockchip 2026 年 v15 方案的 USB 部分，使每次新 attachment（包括同方向重插）都重新初始化活动 SuperSpeed PHY，并在重置期间保持 USB3 host GRF 路由开启。orientation 阶段只等待 PMA `CMN_READY`，PIPE readiness 留给随后发生的 DWC3 host/xHCI 阶段。自动 role-switch 已确认能删除/重建 xHCI；完整重绑 FUSB302、DWC3 和 `tcphy0` 后，C 口用 Lexar E300 确认 UAS/`5000M`，4 GiB direct read 约 367 MB/s（350 MiB/s）且无新增 USB/UAS/SCSI/I/O 错误。自动重连修复仍需刷机回归，设计和测试方法见 [USB Type-C SuperSpeed 主机](USB-TYPE-C.md)。
+- Linux 6.12 的 RK3399 Type-C PHY 缺少 TCPM orientation-switch 支持；工程回移 Rockchip 2026 年 v15 方案的 USB 部分。每次新 attachment（包括同方向重插）都记录方向、停止旧 PHY 并保持 USB3 host GRF 路由开启；真正的方向相关初始化延后到 DWC3 创建 host core 后调用的 generic PHY `.set_mode(PHY_MODE_USB_HOST)`，并在该阶段验证 PIPE ready。自动 role-switch 已确认能删除/重建 xHCI；完整重绑 FUSB302、DWC3 和 `tcphy0` 后，C 口用 Lexar E300 确认 UAS/`5000M`，4 GiB direct read 约 367 MB/s（350 MiB/s）且无新增 USB/UAS/SCSI/I/O 错误。上一版在 host role 前初始化 PHY，虽已不再触发 TCPM 回退，仍以 `connect-debounce failed` 告终；延后初始化的新版本仍需刷机回归，设计和测试方法见 [USB Type-C SuperSpeed 主机](USB-TYPE-C.md)。
 - Type-C 的 Linux 配置不修改 BootROM/U-Boot；Loader/Maskrom 刷机接口继续保留。
 
 ## 7. HDMI console

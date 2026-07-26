@@ -189,16 +189,30 @@ grep -Fq 'tcphy->orientation_valid = false;' "$openwrt_patch" || \
 	fail "RK3399 Type-C detach does not invalidate cached orientation"
 grep -Fq 'tcphy->orientation_valid && tcphy->flip == flip' "$openwrt_patch" || \
 	fail "RK3399 Type-C same-orientation reconnect guard is missing"
+grep -Fq 'tcphy->reinit_pending = true;' "$openwrt_patch" || \
+	fail "RK3399 Type-C orientation callback does not defer PHY reinitialization"
 grep -Fq '++	tcphy_cfg_usb3_to_usb2_only(tcphy, false);' "$openwrt_patch" || \
 	fail "RK3399 Type-C PHY reset does not preserve SuperSpeed host routing"
 if grep -Fq '++	tcphy_cfg_usb3_to_usb2_only(tcphy, true);' "$openwrt_patch"; then
 	fail "RK3399 Type-C PHY reset incorrectly enables USB2-only routing"
 fi
-grep -Fq 'PIPE becomes ready only after TCPM subsequently selects host role.' \
-	"$openwrt_patch" || \
-	fail "RK3399 Type-C orientation callback does not defer PIPE readiness to host role"
-if grep -Fq '++	for (timeout = 0; timeout < 100; timeout++) {' "$openwrt_patch"; then
-	fail "RK3399 Type-C orientation callback waits for PIPE before host role"
+grep -Fq 'rockchip_usb3_phy_set_mode' "$openwrt_patch" || \
+	fail "RK3399 Type-C deferred generic PHY set_mode callback is missing"
+orientation_callback=$(sed -n \
+	'/++static int tcphy_set_orientation/,/++static void tcphy_unregister_orientation_switch/p' \
+	"$openwrt_patch")
+if printf '%s\n' "$orientation_callback" | grep -Fq 'tcphy_phy_init'; then
+	fail "RK3399 Type-C orientation callback still initializes the PHY before host role"
+fi
+grep -Fq '++	.set_mode	= rockchip_usb3_phy_set_mode,' "$openwrt_patch" || \
+	fail "RK3399 Type-C deferred callback is not registered in phy_ops"
+grep -Fq '++	for (timeout = 0; timeout < 100; timeout++) {' "$openwrt_patch" || \
+	fail "RK3399 Type-C host set_mode does not validate PIPE readiness"
+grep -Fq 'failed to reinitialize USB3 PHY for host' "$openwrt_patch" || \
+	fail "RK3399 Type-C deferred PHY failure path is missing"
+if grep -Fq 'PIPE becomes ready only after TCPM subsequently selects host role.' \
+	"$openwrt_patch"; then
+	fail "obsolete in-orientation PHY initialization remains in the OpenWrt patch"
 fi
 grep -Fq '+CONFIG_USB_DWC3_DUAL_ROLE=y' "$openwrt_patch" || \
 	fail "DWC3 dual-role state machine is missing from the OpenWrt patch"

@@ -34,6 +34,8 @@
 - [Linux v6.12.94 RK3399 Type-C PHY implementation](https://github.com/gregkh/linux/blob/v6.12.94/drivers/phy/rockchip/phy-rockchip-typec.c)
 - [Linux v6.12.94 TCPM attach and mux/role ordering](https://github.com/gregkh/linux/blob/v6.12.94/drivers/usb/typec/tcpm/tcpm.c)
 - [Linux v6.12.94 DWC3 dual-role implementation](https://github.com/gregkh/linux/blob/v6.12.94/drivers/usb/dwc3/drd.c)
+- [Linux v6.12.94 DWC3 host transition and generic PHY `set_mode` ordering](https://github.com/gregkh/linux/blob/v6.12.94/drivers/usb/dwc3/core.c)
+- [Apple DWC3 fix documenting that USB3 PHY configuration must follow DWC3 initialization](https://patchew.org/linux/20260109-dwc3-apple-usb2phy-fix-v2-1-ab6b041e3b26%40kernel.org/)
 - [Linux v6.12 DWC3 `usb-role-switch` binding](https://github.com/torvalds/linux/blob/v6.12/Documentation/devicetree/bindings/usb/snps%2Cdwc3.yaml)
 - [Linux USB Type-C connector class](https://docs.kernel.org/driver-api/usb/typec.html)
 - [Linux v6.12 Rockchip Crypto driver](https://github.com/torvalds/linux/blob/v6.12/drivers/crypto/rockchip/rk3288_crypto.c)
