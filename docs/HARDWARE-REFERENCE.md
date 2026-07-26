@@ -117,8 +117,8 @@ Linux 6.12 基线中，TCS4525/TCS4526 由兼容的 `fan53555` regulator 驱动�
 - 板载 USB Hub 复位：GPIO4_C5，输出高。
 - 正式 profile 内置 USB Mass Storage、UAS、FAT32 和 exFAT 驱动；常见 U 盘、SSD 与移动硬盘无需联网安装文件系统模块。
 - 蓝色 Type-A 口已由多种设备确认工作在 `5000M`；Lexar E300 2 TB M.2 移动硬盘使用 UAS，4 GiB direct read 约 319 MiB/s，测试后无新增 USB/UAS/SCSI 错误，已经证明该物理口的 SuperSpeed 路径可达到正常高速区间。
-- Type-C USB3：DWC3_0 `fe800000.usb`、`tcphy0`，连接器固定为 source/host；FUSB302 位于 I2C8 `0x22`，中断 GPIO1_A2 低有效，VBUS 由 GPIO0_A1 低电平使能，对外声明 5 V/1.5 A。DWC3 内部使用 `dr_mode = "otg"` 和 `usb-role-switch`，仅用于在插拔/换向时退出并重建 host/xHCI。
-- Linux 6.12 的 RK3399 Type-C PHY 缺少 TCPM orientation-switch 支持；工程以 Rockchip 2026 年 v15 方案为基础补齐动态角色生命周期。orientation 回调只记录 attachment 和方向，不在旧 xHCI 退出前重置 PHY；真正 detach 时，DWC3 先删除 xHCI，再由 generic PHY `.set_mode()` 完成 deinit、恢复 external PSM/GRF 初始值并保持 reset。下一次 host attachment 从 reset 按方向重建 PHY、验证 PIPE ready，之后才创建 xHCI。两次带设备冷启动以及一次完整驱动重建中，C 口已用 Lexar E300 确认 UAS/`5000M`，4 GiB direct read 约 367 MB/s（350 MiB/s）且无新增 USB/UAS/SCSI/I/O 错误；完整重建后续未能稳定复现，不能作为正式恢复办法。第五版虽已确认 PHY ready 早于 xHCI，但 FUSB302-only 热切换仍复现 `connect-debounce failed`，促成当前“detach 后保持 reset”修复。新代码仍需正反插和长时读写回归，设计与证据见 [USB Type-C SuperSpeed 主机](USB-TYPE-C.md)。
+- Type-C USB3：DWC3_0 `fe800000.usb`、`tcphy0`，连接器固定为 source/host；FUSB302 位于 I2C8 `0x22`，中断 GPIO1_A2 低有效，VBUS 由 GPIO0_A1 低电平使能，对外声明 5 V/1.5 A。DWC3 使用 `dr_mode = "host"`，没有 Linux gadget 和动态角色端点；xHCI 在空载与插拔期间常驻。
+- Linux 6.12 的 RK3399 Type-C PHY 缺少 TCPM orientation-switch 支持；工程以 Rockchip 2026 年 v15 方案为基础补齐方向事件。同方向重插保留活动 PHY/xHCI，只有正反极性真正改变时才重建 Type-C lane mapping 并验证 PIPE ready。带设备冷启动已用 Lexar E300 确认 UAS/`5000M`，4 GiB direct read 约 367 MB/s（350 MiB/s）且无新增 USB/UAS/SCSI/I/O 错误；六轮动态 role-switch 实验最终证明该控制器生命周期不适合本板的固定 host 产品边界。新代码仍需正反插和长时读写回归，设计与证据见 [USB Type-C SuperSpeed 主机](USB-TYPE-C.md)。
 - Type-C 的 Linux 配置不修改 BootROM/U-Boot；Loader/Maskrom 刷机接口继续保留。
 
 ## 7. HDMI console

@@ -185,70 +185,50 @@ grep -Fq 'if (orientation == TYPEC_ORIENTATION_NONE) {' "$openwrt_patch" || \
 	fail "RK3399 Type-C detach handling is missing"
 grep -Fq 'tcphy->orientation_valid = false;' "$openwrt_patch" || \
 	fail "RK3399 Type-C detach does not invalidate cached orientation"
-grep -Fq 'tcphy->orientation_valid && tcphy->flip == flip' "$openwrt_patch" || \
-	fail "RK3399 Type-C same-orientation reconnect guard is missing"
+grep -Fq 'if (tcphy->flip != flip) {' "$openwrt_patch" || \
+	fail "RK3399 Type-C polarity-change guard is missing"
 grep -Fq 'tcphy->reinit_pending = true;' "$openwrt_patch" || \
-	fail "RK3399 Type-C orientation callback does not defer PHY reinitialization"
-grep -Fq 'rockchip_usb3_phy_set_mode' "$openwrt_patch" || \
-	fail "RK3399 Type-C deferred generic PHY set_mode callback is missing"
-orientation_callback=$(sed -n \
-	'/++static int tcphy_set_orientation/,/++static void tcphy_unregister_orientation_switch/p' \
-	"$openwrt_patch")
-if printf '%s\n' "$orientation_callback" | grep -Eq 'tcphy_phy_(init|deinit)'; then
-	fail "RK3399 Type-C orientation callback still changes PHY power before role teardown"
-fi
-grep -Fq '++	.set_mode	= rockchip_usb3_phy_set_mode,' "$openwrt_patch" || \
-	fail "RK3399 Type-C deferred callback is not registered in phy_ops"
-grep -Fq 'mode == PHY_MODE_USB_DEVICE && !tcphy->orientation_valid' \
+	fail "RK3399 Type-C polarity change does not request PHY reinitialization"
+grep -Fq 'tcphy->host_ready && tcphy->usb3_powered' "$openwrt_patch" || \
+	fail "RK3399 Type-C callback does not protect the active host lifecycle"
+grep -Fq 'tcphy_reinit_usb3(tcphy, MODE_DFP_USB, "host")' \
 	"$openwrt_patch" || \
-	fail "RK3399 Type-C disconnect is not distinguished from an attached UFP"
+	fail "RK3399 Type-C hot polarity reconfiguration is missing"
+grep -Fq 'rockchip_usb3_phy_set_mode' "$openwrt_patch" || \
+	fail "RK3399 Type-C generic PHY set_mode callback is missing"
+grep -Fq '++	.set_mode	= rockchip_usb3_phy_set_mode,' "$openwrt_patch" || \
+	fail "RK3399 Type-C set_mode callback is not registered in phy_ops"
+grep -Fq 'tcphy->host_ready = mode == PHY_MODE_USB_HOST;' \
+	"$openwrt_patch" || \
+	fail "RK3399 Type-C static host readiness is not recorded"
+grep -Fq 'tcphy->usb3_powered = true;' "$openwrt_patch" || \
+	fail "RK3399 Type-C logical PHY power-on state is not recorded"
+grep -Fq 'tcphy->usb3_powered = false;' "$openwrt_patch" || \
+	fail "RK3399 Type-C logical PHY power-off state is not recorded"
 grep -Fq 'property_enable(tcphy, &cfg->external_psm, true);' \
 	"$openwrt_patch" || \
-	fail "RK3399 Type-C detach does not restore probe-time PSM configuration"
+	fail "RK3399 Type-C reinitialization does not restore probe-time PSM configuration"
 grep -Fq 'tcphy->mode = MODE_DISCONNECT;' "$openwrt_patch" || \
-	fail "RK3399 Type-C detach does not hold the PHY in reset"
-grep -Fq 'USB3 PHY held in reset after detach' "$openwrt_patch" || \
-	fail "RK3399 Type-C detach verification marker is missing"
+	fail "RK3399 Type-C reinitialization does not start from reset"
 grep -Fq 'tcphy_phy_deinit(tcphy);' "$openwrt_patch" || \
-	fail "RK3399 Type-C ordered PHY shutdown is missing"
+	fail "RK3399 Type-C polarity-change PHY shutdown is missing"
 grep -Fq 'tcphy_phy_init(tcphy, new_mode);' "$openwrt_patch" || \
-	fail "RK3399 Type-C attached-role PHY initialization is missing"
+	fail "RK3399 Type-C polarity-change PHY initialization is missing"
 grep -Fq 'tcphy->mode = new_mode;' "$openwrt_patch" || \
-	fail "RK3399 Type-C attached role is not committed after PIPE readiness"
+	fail "RK3399 Type-C mode is not committed after PIPE readiness"
 grep -Fq '++	for (timeout = 0; timeout < 100; timeout++) {' "$openwrt_patch" || \
-	fail "RK3399 Type-C set_mode does not validate PIPE readiness"
+	fail "RK3399 Type-C reinitialization does not validate PIPE readiness"
 grep -Fq 'failed to reinitialize USB3 PHY for %s mode' "$openwrt_patch" || \
-	fail "RK3399 Type-C deferred PHY failure path is missing"
+	fail "RK3399 Type-C PHY failure path is missing"
 grep -Fq 'USB3 PHY ready for %s orientation' "$openwrt_patch" || \
 	fail "RK3399 Type-C successful PHY reinitialization marker is missing"
-if grep -Fq 'PIPE becomes ready only after TCPM subsequently selects host role.' \
+if grep -Fq '145-usb-dwc3-set-host-phy-mode-before-xhci.patch' \
 	"$openwrt_patch"; then
-	fail "obsolete in-orientation PHY initialization remains in the OpenWrt patch"
+	fail "unused dynamic-role DWC3 ordering patch remains"
 fi
-grep -Fq '145-usb-dwc3-set-host-phy-mode-before-xhci.patch' \
-	"$openwrt_patch" || \
-	fail "DWC3 host PHY/xHCI ordering patch is missing"
-dwc3_order_patch=$(sed -n \
-	'/145-usb-dwc3-set-host-phy-mode-before-xhci.patch/,/2.54.0.windows.1/p' \
-	"$openwrt_patch")
-printf '%s\n' "$dwc3_order_patch" | \
-	grep -Fq '++			phy_set_mode(dwc->usb3_generic_phy[i], PHY_MODE_USB_HOST);' || \
-	fail "DWC3 does not select USB3 host PHY mode before xHCI registration"
-printf '%s\n' "$dwc3_order_patch" | \
-	grep -Fq '+ 		ret = dwc3_host_init(dwc);' || \
-	fail "DWC3 host initialization ordering context is missing"
-grep -Fq '+CONFIG_USB_DWC3_DUAL_ROLE=y' "$openwrt_patch" || \
-	fail "DWC3 dual-role state machine is missing from the OpenWrt patch"
-grep -Fq '+CONFIG_USB_GADGET=y' "$openwrt_patch" || \
-	fail "DWC3 dual-role build dependency USB_GADGET is missing"
-for disabled_dwc3_mode in \
-	'+# CONFIG_USB_DWC3_GADGET is not set' \
-	'+# CONFIG_USB_DWC3_HOST is not set'; do
-	grep -Fq "$disabled_dwc3_mode" "$openwrt_patch" || \
-		fail "DWC3 choice is incomplete: $disabled_dwc3_mode"
-done
-if grep -Fq '+CONFIG_USB_DWC3_HOST=y' "$openwrt_patch"; then
-	fail "OpenWrt patch must not restore host-only DWC3 mode"
+if grep -Eq '^\+CONFIG_USB_DWC3_(DUAL_ROLE|GADGET)=y|^\+CONFIG_USB_GADGET=y' \
+	"$openwrt_patch"; then
+	fail "host-only product image unexpectedly enables DWC3 gadget/dual-role"
 fi
 grep -Fq 'Mini-PCIe 插座只接 USB2' \
 	"$PROJECT_DIR/docs/HARDWARE-REFERENCE.md" || \
@@ -337,14 +317,9 @@ for typec_setting in \
 	'orientation-switch;' \
 	'&usbdrd3_0 {' \
 	'&usbdrd_dwc3_0 {' \
-	'dr_mode = "otg";' \
-	'usb-role-switch;' \
-	'usbc0_role_sw: endpoint {' \
-	'dwc3_0_role_switch: endpoint {' \
+	'dr_mode = "host";' \
 	'remote-endpoint = <&tcphy0_orientation_switch>;' \
-	'remote-endpoint = <&dwc3_0_role_switch>;' \
-	'remote-endpoint = <&usbc0_orien_sw>;' \
-	'remote-endpoint = <&usbc0_role_sw>;'; do
+	'remote-endpoint = <&usbc0_orien_sw>;'; do
 	grep -Fq "$typec_setting" \
 		"$PROJECT_DIR/dts/rk3399pro-toybrick-prod.dtsi" || \
 		fail "USB Type-C device-tree setting is missing: $typec_setting"
@@ -353,6 +328,10 @@ for vendor_typec_setting in \
 	'compatible = "fairchild,fusb302";' \
 	'vbus-5v-gpios' \
 	'extcon = <&fusb0>' \
+	'dr_mode = "otg";' \
+	'usb-role-switch;' \
+	'usbc0_role_sw' \
+	'dwc3_0_role_switch' \
 	'u2phy0_typec_hs' \
 	'usbc0_hs' \
 	'tcphy0_typec_ss' \
@@ -396,20 +375,14 @@ if [ -d "$WORK_DIR/openwrt/.git" ]; then
 		'CONFIG_TYPEC_FUSB302=y' \
 		'CONFIG_TYPEC_TCPM=y' \
 		'CONFIG_USB_DWC3=y' \
-		'CONFIG_USB_DWC3_DUAL_ROLE=y' \
-		'CONFIG_USB_GADGET=y' \
+		'CONFIG_USB_DWC3_HOST=y' \
 		'CONFIG_USB_ROLE_SWITCH=y'; do
 		grep -Fqx "$required_kernel_config" "$rockchip_kernel_config" || \
 			fail "required Type-C kernel setting is missing: $required_kernel_config"
 	done
-	for disabled_dwc3_mode in \
-		'# CONFIG_USB_DWC3_GADGET is not set' \
-		'# CONFIG_USB_DWC3_HOST is not set'; do
-		grep -Fqx "$disabled_dwc3_mode" "$rockchip_kernel_config" || \
-			fail "DWC3 choice is incomplete: $disabled_dwc3_mode"
-	done
-	if grep -Fqx 'CONFIG_USB_DWC3_HOST=y' "$rockchip_kernel_config"; then
-		fail "Type-C DWC3 still uses host-only mode; role-switch cannot rebuild xHCI"
+	if grep -Eq '^CONFIG_USB_DWC3_(DUAL_ROLE|GADGET)=y$|^CONFIG_USB_GADGET=y$' \
+		"$rockchip_kernel_config"; then
+		fail "host-only product kernel unexpectedly enables DWC3 gadget/dual-role"
 	fi
 	dts_dest="$WORK_DIR/openwrt/target/linux/rockchip/files-$kernel_patchver/arch/arm64/boot/dts/rockchip"
 	for name in rk3399pro-toybrick-prod.dts rk3399pro-toybrick-prod.dtsi; do

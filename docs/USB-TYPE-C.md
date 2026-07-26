@@ -1,67 +1,78 @@
 # USB Type-C SuperSpeed 主机设计与验收
 
-## 目标与边界
+## 产品边界
 
-TB-RK3399ProD 的 Type-C 插座在 BootROM/U-Boot 阶段继续承担 Rockchip Loader/Maskrom 刷机设备接口；进入 Linux 后，同一插座由 OpenWrt 初始化为固定的 USB 主机和 5 V 电源源端。两个阶段使用各自的设备树和驱动，OpenWrt 的修改不改变 BootROM、miniloader 或 U-Boot 的恢复能力。
+TB-RK3399ProD 的 Type-C 插座在 BootROM/U-Boot 阶段继续作为 Rockchip Loader/Maskrom 刷机接口；进入 Linux 后，同一插座只作为 USB 主机和 5 V 电源源端使用。OpenWrt 不提供 Type-C 充电输入、USB gadget 或 DisplayPort Alt Mode，也不改变 BootROM、miniloader 和 U-Boot 的刷机能力。
 
-Linux 阶段只把 USB2/USB3 主机作为产品功能，不提供充电输入或 DisplayPort Alt Mode。DWC3 内核配置使用 dual-role，是为了接入标准 `usb-role-switch` 状态机；连接器仍固定为 `source`/`host`，不会对外提供 USB gadget。验收标准是：
+Linux 侧目标如下：
 
-- C-C 或合规的 Type-C 转接连接能够枚举存储设备；
-- 插头正反两个方向都能达到 `5000M`；
-- 启动后热插拔和交替方向重插均能恢复；
-- UAS 大文件读写期间没有 xHCI、DWC3、SCSI、UAS 或文件系统错误；
-- Type-A USB3、Rockchip Loader 刷机和其他既有硬件不回归。
+- FUSB302/TCPM 正确识别正反插，角色固定为 `source`/`host`；
+- USB2 和 USB3 均可热插拔，SuperSpeed 设备显示 `5000M`；
+- UAS 存储可在两个方向枚举并完成长时间读写；
+- Type-A USB3、Loader 刷机和其他板载硬件不回归。
 
 ## 硬件链路
 
 | 部件 | 固定参数 |
 |---|---|
 | Type-C 控制器 | FUSB302，I2C8 地址 `0x22` |
-| FUSB302 中断 | GPIO1_A2，低电平触发，管脚上拉 |
+| FUSB302 中断 | GPIO1_A2，低电平触发、上拉 |
 | Type-C VBUS | GPIO0_A1，低电平使能的 5 V 固定稳压器 |
-| 供电/数据角色 | Linux 固定 `source` / `host` |
-| 对外声明 | 5 V、1.5 A，支持 USB 通信 |
+| Linux 角色 | `source` / `host`，对外声明 5 V、1.5 A |
 | USB2 数据 | `u2phy0_otg` → DWC3_0 |
 | USB3 数据 | `tcphy0_usb3` → DWC3_0/xHCI，5 Gbit/s |
-| 控制器地址 | DWC3_0 `fe800000.usb` |
-| 独立 Type-A USB3 | DWC3_1 `fe900000.usb` / `tcphy1`，不受本修改影响 |
+| DWC3 地址 | `fe800000.usb` |
+| 独立 Type-A USB3 | DWC3_1 `fe900000.usb` / `tcphy1`，不受本设计影响 |
 
-原厂 BSP 使用私有的 `fairchild,fusb302`、GPIO 和 extcon 接口。Linux 6.12 使用主线 `fcs,fusb302`、TCPM、regulator 和 Type-C connector 描述；不能把原厂节点逐字复制到新内核。
+原厂 BSP 使用私有 `fairchild,fusb302`、GPIO 和 extcon 接口。Linux 6.12 使用主线 `fcs,fusb302`、TCPM、regulator 与 Type-C connector 绑定，不能逐字移植旧节点。
 
-改造前镜像的现场基线只有 `fe900000.usb` 对应的 Type-A xHCI，`/sys/class/typec` 为空，I2C8、`fe800000.usb` 和 `tcphy0` 的设备树节点均未启用。因此此前 Type-C 转接器无枚举属于软件链路未启用，不能据此判定 Type-C 物理 SuperSpeed 链路不可用。
+## 最终软件架构
 
-## PHY 换向与 DWC3 生命周期
+连接器在产品定义中始终是主机，因此 DWC3_0 使用 `dr_mode = "host"`，内核使用 `CONFIG_USB_DWC3_HOST=y`。FUSB302 仍负责 CC、方向检测和 VBUS，但 DTS 不再建立 DWC3 `usb-role-switch` 端点。这样空载、拔出和重新插入期间 xHCI 始终存在，行为与固定 Type-A 主机端口一致。
 
-OpenWrt 25.12.5 的 Rockchip armv8 内核已经内建 `TYPEC`、`TYPEC_TCPM`、`TYPEC_FUSB302`、`USB_ROLE_SWITCH` 和 `PHY_ROCKCHIP_TYPEC`。Linux 6.12 的 RK3399 Type-C PHY 驱动却只从旧式 extcon 读取插头方向，无法接收主线 TCPM 的 orientation-switch 事件。仅打开 DTS 节点会形成“默认方向可能工作、反插或重插不可靠”的半成品。
+这一选择解决了一个不必要的状态机错配：旧实现虽然把连接器声明为 `data-role = "host"`，却把 DWC3 配置成 dual-role；`USB_ROLE_NONE` 又默认映射为 peripheral。每次拔出都会删除 xHCI，每次插入都会在 M.2 桥刚上电时重新创建 xHCI。实机已证明这条动态 device→host 路径会留下 USB 核心与 xHCI 端口状态不一致，而不是产品真正需要的功能。
 
-工程中的 `144-phy-rockchip-typec-orientation-switch.patch` 以 Rockchip 上游 v15 orientation-switch 方案为依据，并补齐 DWC3 动态角色切换所需的 PHY 生命周期。RK3399 DWC3 在切换角色时保持 generic PHY 的逻辑 power reference，因此不能依赖下一次标准 `power_on()`。orientation 回调只记录方向和 attachment 状态：拔出时使缓存失效；每次重新连接时，即使插头方向与上次相同，也记录当前方向并标记待重建。回调本身不再停止或初始化 PHY，避免在旧 xHCI/gadget 尚未退出时改变物理链路。
+Linux 6.12 的 RK3399 Type-C PHY 尚不能直接消费主线 TCPM orientation-switch 事件。`144-phy-rockchip-typec-orientation-switch.patch` 以 Rockchip 上游 v15 方案为基础，增加方向开关，并按固定主机语义处理 PHY：
 
-DTS 将连接器的方向端点连接到 `tcphy0_usb3`，将角色端点连接到 DWC3_0，并为 DWC3_0 设置 `dr_mode = "otg"` 与 `usb-role-switch`。TCPM 先设置 orientation，再设置 USB role。拔出时，DWC3 先退出 host 并删除 xHCI；随后 Linux 6.12 把 `USB_ROLE_NONE` 映射为默认 device role，Rockchip PHY 的 `.set_mode(PHY_MODE_USB_DEVICE)` 利用此前的 orientation NONE 状态识别“真正断开”，执行有序 deinit、恢复 probe 阶段的 external PSM/GRF 配置，并让 PHY 保持 `MODE_DISCONNECT`/reset。这样不会把上一次连接的接收器状态带入下一次 attachment。
+- 初次启动时，方向事件先被记录；DWC3 选择 host mode 后，若方向与当前 PHY 映射不同，则在 xHCI 注册前重建 PHY；
+- 拔出时只使 attachment 缓存失效，不销毁 xHCI，也不重置仍可复用的 PHY；
+- 同方向重新插入保持现有 PHY/xHCI，避免无意义的控制器生命周期切换；
+- 插头方向真正改变时，仅重建方向相关的 Type-C PHY lane mapping，并检查 PIPE ready；
+- `usb3_powered` 与 `host_ready` 防止在 generic PHY 未上电或 DWC3 尚未进入 host 时执行热重配。
 
-再次插入时，orientation 回调只记录正反方向；DWC3 完成角色 core reset 并选择 host port capability 后，`.set_mode(PHY_MODE_USB_HOST)` 从 reset 状态按当前方向执行 `tcphy_phy_init()`，在 PMA ready 后验证 PIPE ready，最后 DWC3 才注册 xHCI。代码也保留 attached UFP 的 `PHY_MODE_USB_DEVICE` 初始化语义，但本板 DTS 固定为 source/host，不把 Linux gadget 作为产品功能。整个过程由内核状态机完成，不依赖 OpenWrt 热插拔脚本、用户态驱动重绑或固定延时。
+静态 host 初始化在 Linux 6.12 中本来就是 `phy_set_mode(PHY_MODE_USB_HOST)` 后再 `dwc3_host_init()`，因此不再需要修改 DWC3 动态角色路径，旧的 `145-usb-dwc3-set-host-phy-mode-before-xhci.patch` 已删除。整个方案不依赖用户态热插拔脚本、驱动重绑或固定延时。
 
-Linux 6.12 的静态 host 初始化本来就是“`phy_set_mode()` → `dwc3_host_init()`”，动态 role-switch 路径却采用相反顺序。`145-usb-dwc3-set-host-phy-mode-before-xhci.patch` 将动态路径与静态路径对齐；它不把 PHY 初始化提前到 TCPM orientation 阶段，而只从“xHCI 注册之后”移动到“DWC3 已选定 host、xHCI 注册之前”。这一顺序也符合其他 DWC3 平台对 USB3 PHY 的要求：DWC3 core 必须先可用，但 host controller 不应在无效 PIPE 上启动。
+## 实机证据与故障收敛
 
-`CONFIG_USB_DWC3_DUAL_ROLE` 依赖 `CONFIG_USB_GADGET`，所以后者也会编入内核；它只是 DWC3 标准角色切换实现的构建依赖。本板连接器的 `data-role = "host"`、`power-role = "source"` 未改变，不把 gadget/受电端作为受支持功能，也不添加任何 gadget function 或用户空间配置。Linux 把 DWC3 的 host-only、gadget-only 和 dual-role 定义为一个 Kconfig choice，因此目标配置还必须显式记录前两项为 `not set`；只加入 dual-role 正选项会使 `syncconfig` 将其余选项标成 `NEW` 并进入交互，破坏无人值守构建。
+已经确认的硬件能力：
 
-该补丁属于 Linux 6.12 的板级回移，不应在升级内核时机械沿用。升级流程必须先检查新内核的 `phy-rockchip-typec.c` 是否已经原生支持 `orientation-switch`，若已支持则删除补丁并按新绑定调整 DTS；若仍未支持，则重新审查上游最新版本并完成正反插回归。
+- FUSB302 在 normal/reverse 两个方向均正确报告 orientation、`source`/`host` 和 5 V VBUS；
+- 保持 Lexar E300 2 TB M.2 已连接再启动时，可稳定以 UAS/`5000M` 枚举；
+- Type-C 直读 4 GiB 约 367 MB/s（350 MiB/s），测试后无新增 USB、UAS、SCSI 或 I/O 错误；
+- 同一设备在 Type-A USB3 的对照结果约 319 MiB/s，证明 Type-C SuperSpeed 物理通道完整可用。
+
+前六轮动态 role-switch 实验依次排除了方向映射、VBUS、UAS、线材、PIPE 检查先后以及“detach 后未完整复位 PHY”等假设。最近一版在拔出后明确输出 `USB3 PHY held in reset after detach`，PHY 保持 reset 约 10 秒；重插时 PHY 在 xHCI 前恢复并输出 ready，但仍出现 `connect-debounce failed`。冷启动则在相同硬件上立即进入 UAS。
+
+失败后的关键寄存器状态是：USB3 PORTSC 报告 `Powered Connected Enabled Link:U0 PortSpeed:4 Change:CSC`，而 USB hub 层没有子设备并显示 `not attached`。标准 port disable/enable、USB3 root-hub 重绑，以及 DWC3 glue/FUSB302 完整重探测均未可靠恢复。该证据说明 SuperSpeed PHY 已完成链路训练，问题位于动态销毁/重建 xHCI 的控制路径。最终架构因此取消这条非必要路径，让固定 host 的 xHCI 常驻。
+
+当前代码状态是“SuperSpeed 硬件与冷启动 UAS 已确认；固定 host 热插拔方案待新镜像验收”。在完成下列回归前，不把 Type-C 自动热插拔标记为最终通过。
 
 ## 构建后静态检查
 
 ```sh
-grep -E 'CONFIG_(TYPEC|TYPEC_TCPM|TYPEC_FUSB302|PHY_ROCKCHIP_TYPEC|USB_ROLE_SWITCH|USB_DWC3|USB_DWC3_DUAL_ROLE|USB_GADGET)=y' \
+grep -E 'CONFIG_(TYPEC|TYPEC_TCPM|TYPEC_FUSB302|PHY_ROCKCHIP_TYPEC|USB_DWC3_HOST)=y' \
   .work/openwrt/build_dir/target-aarch64_generic_musl/linux-rockchip_armv8/linux-6.12.94/.config
 
 .work/openwrt/staging_dir/host/bin/dtc -I dtb -O dts -o - \
   .work/openwrt/build_dir/target-aarch64_generic_musl/linux-rockchip_armv8/image-rk3399pro-toybrick-prod.dtb | \
-  grep -E 'fcs,fusb302|orientation-switch|usb-role-switch|fe800000'
+  grep -E 'fcs,fusb302|orientation-switch|dr_mode|fe800000'
 ```
 
-第二条使用 OpenWrt 构建出的 host `dtc` 反编译最终 DTB，避免直接对二进制文件执行文本搜索。
+最终 DTB 应包含 FUSB302、orientation switch 和 `dr_mode = "host"`，不应包含该连接器的 `usb-role-switch`。
 
 ## 上板验收
 
-先在 Type-C 口不接设备的情况下启动，再执行：
+空载启动后先确认两个 xHCI 始终存在：
 
 ```sh
 dmesg | grep -Ei 'fusb|type-c|typec|tcpm|fe800000|dwc3|xhci'
@@ -69,41 +80,25 @@ ls -l /sys/class/typec
 lsusb -t
 ```
 
-预期能看到 FUSB302/TCPM 的 Type-C port 和 DWC3 role switch，并且没有 probe defer、I2C、regulator 或 PHY timeout。空载时 `fe800000.usb` 的 host/xHCI 可以不存在；插入 host 外设后才创建，拔出后应删除。`fe900000.usb` 的 Type-A xHCI 始终存在且不应受影响。
+随后使用已经在 Type-A 口确认可达 SuperSpeed 的同一块 M.2、线材和转接器：
 
-随后使用已经在蓝色 Type-A 口确认能跑 SuperSpeed 的同一套移动硬盘、线材和转接器作 A/B 测试：
-
-1. 正向插入，确认 `lsusb -t` 为 `5000M`，完成至少 4 GiB 直接读写并检查 `dmesg`。
-2. 卸载并拔出，翻转 Type-C 插头后重复相同测试。
-3. 两个方向交替热插拔至少 10 次，每次确认设备节点能够消失并重新出现。
-4. 连续读写至少 30 分钟，再检查内核日志和存储错误计数。
-5. 断电进入 Loader/Maskrom，确认 Rockchip 官方工具仍能发现设备。
+1. normal 方向插入，确认 UAS/`5000M`，完成至少 4 GiB direct read/write。
+2. 卸载并拔出；同方向重复插入至少 5 次，每次都必须重新出现块设备，Type-C xHCI 根总线编号不应改变。
+3. 翻转插头后重复测试，确认日志中出现方向变化后的 PHY ready，且仍为 UAS/`5000M`。
+4. 两个方向交替热插拔至少 10 次，再连续读写至少 30 分钟。
+5. 检查日志中没有 `connect-debounce failed`、PMA/PIPE timeout、xHCI、UAS、SCSI 或文件系统错误。
+6. 断电进入 Loader/Maskrom，确认 Rockchip 官方工具仍能发现设备。
 
 推荐记录：
 
 ```sh
 lsusb -t
-cat /sys/class/typec/port0/orientation 2>/dev/null
-cat /sys/class/typec/port0/data_role 2>/dev/null
-cat /sys/class/typec/port0/power_role 2>/dev/null
-find /sys/class/usb_role -maxdepth 2 -type f -name role -exec sh -c 'printf "%s: " "$1"; cat "$1"' sh {} \; 2>/dev/null
-dmesg | grep -Ei 'error|fail|timeout|reset|uas|scsi|xhci|dwc3|fusb|tcpm'
+cat /sys/class/typec/port0/orientation
+cat /sys/class/typec/port0/data_role
+cat /sys/class/typec/port0/power_role
+dmesg | grep -Ei 'error|fail|timeout|uas|scsi|xhci|dwc3|fusb|tcpm'
 ```
 
-## 当前实机结论
+## 内核升级注意事项
 
-第一版 host-only 镜像已经确认 FUSB302 在正反两个方向都能正确报告 CC、orientation、`source`/`host` 和 5 V VBUS，但运行中的 xHCI 不会在 PHY 换向后自行恢复链路。只对 Type-C DWC3_0 执行一次驱动解绑/重绑后，同一块 Lexar E300 2 TB 移动硬盘立即以 UAS/`5000M` 枚举，4 GiB direct read 约 349 MiB/s；相同设备在蓝色 Type-A 的同条件基线约 319 MiB/s，测试后没有新增 USB、UAS 或 SCSI 错误。这已经确认 C 口的 CC、VBUS、PHY 和 SuperSpeed 物理数据通道可用，也直接验证了“重建 xHCI”这一修复方向。
-
-role-switch 镜像进一步实测确认状态机已接通：拔出时 Type-C xHCI 自动删除，插入时自动重建，CC 正确报告 orientation、`source`/`host`、1.5 A，VBUS regulator 保持 5 V。测试先后暴露了两个独立的软件问题：旧回调在同方向重插时会因 `flip` 未变化而跳过活动 PHY 重初始化；补上 detach 缓存失效后，回调又在 DWC3 尚未切入 host 时等待 PIPE ready，形成不可满足的时序条件。
-
-现场对 FUSB302、DWC3 和 `tcphy0` 执行完整的驱动解绑/重绑后，同一块 Lexar E300 立即以 UAS/`5000M` 枚举；只重绑 xHCI 或 DWC3 均不能恢复。随后从 `/dev/sda` 完成 4 GiB direct read，耗时约 11.71 秒，即约 367 MB/s（350 MiB/s），全程没有新增 USB、UAS、SCSI 或 I/O 错误。这证明 CC、供电、PHY 和 SuperSpeed 物理链路均正常。
-
-第二次修复镜像的 TCPM trace 给出了关键时序证据：`Requesting mux state` 后约 5.6 ms 即撤销 VBUS 并退回 `SRC_UNATTACHED`，表明 orientation 回调在 PIPE 轮询中失败；下一轮 attach 虽然创建 Bus 7/8，但错误路径已经物理关闭 PHY，而 DWC3 仍持有其逻辑 power reference，因此不会再次调用标准 `power_on()`，最终表现为“有 xHCI root hub、没有 USB 设备”。
-
-第三次镜像移除了过早的 PIPE 轮询：TCPM 不再回退，单次 attach 正确进入 `host`/`source`，DWC3 也创建了 Bus 7/8；但约 3.49 秒后仍出现 `usb usb8-port1: connect-debounce failed`，设备没有以 UAS 枚举。这进一步把问题收敛为：不仅 PIPE 轮询，连 PHY 重初始化本身也不能发生在 host role 之前。单独重绑 DWC3 或先后重绑 DWC3/FUSB302 仍会复现同一过早初始化路径，不能作为正式修复。
-
-第四次镜像已确认运行内核中存在新的 `rockchip_usb3_phy_set_mode`，PHY clocks 保持启用，且没有 PMA/PIPE timeout；但是 Linux 6.12 动态角色路径先运行 `dwc3_host_init()` 注册 xHCI，之后才调用该回调。实机在 `normal` 和 `reverse` 两个方向均创建 Bus 7/8，随后同样以 `connect-debounce failed` 告终，排除了单一方向映射问题，也证明仅把初始化延后到现有 `set_mode` 调用点仍然太晚。
-
-第五次镜像确认了 `set_mode → xHCI` 的新顺序，成功日志总是在 xHCI 注册之前出现；但从空载运行状态进行三次物理插拔（normal 两次、reverse 一次）均只建立 Bus 7/8，没有枚举存储设备，其中一次明确报告 `connect-debounce failed`。保持 M.2 已插入进行冷启动的两次试验中，设备均立即以 UAS/`5000M` 枚举；从这一成功状态只重绑 FUSB302，又稳定复现失败。完整重绑 FUSB302、DWC3 与 `tcphy0` 曾成功恢复一次，但在同一镜像的后续重复试验中没有再次恢复，因此它只能证明完整生命周期可能恢复链路，不能作为可靠方案。综合结果排除了 UAS、线材、方向映射、VBUS 和 xHCI 创建先后，根因进一步收敛到“动态断开时 PHY 没有进入可供下一次连接复用的完整 reset 状态”。
-
-当前待构建代码因此把 teardown 从 orientation 阶段移到 DWC3 role 阶段：orientation 回调只记录状态；DWC3 先删除旧 xHCI；断开对应的 `.set_mode(PHY_MODE_USB_DEVICE)` 再关闭 PHY、恢复 probe-time PSM/GRF 状态并保持 reset；下次 `.set_mode(PHY_MODE_USB_HOST)` 才按方向重建 PHY、检查 PIPE，然后创建 xHCI。拔出和成功重建分别输出 `USB3 PHY held in reset after detach` 与 `USB3 PHY ready for normal/reverse orientation in host mode`，可直接验证事件顺序。完成新镜像的空载启动后正反插、同方向重插、长时读写和 Loader 回归前，状态仍保持为“SuperSpeed 硬件已确认，自动热插拔修复待验收”。
+此补丁是 Linux 6.12 的板级回移。升级内核时先检查 `phy-rockchip-typec.c` 是否已合入 TCPM orientation-switch 支持：若已合入，应删除回移并按新绑定调整 DTS；若尚未合入，则以当时最新的 Rockchip 上游版本重新审查。无论驱动来源如何，产品边界仍是 Linux host-only，升级后必须重新完成正反插、同方向重插、长时 UAS 读写和 Loader 回归。

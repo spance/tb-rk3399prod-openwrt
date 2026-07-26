@@ -219,14 +219,6 @@
 						remote-endpoint = <&tcphy0_orientation_switch>;
 					};
 				};
-
-				port@1 {
-					reg = <1>;
-
-					usbc0_role_sw: endpoint {
-						remote-endpoint = <&dwc3_0_role_switch>;
-					};
-				};
 			};
 		};
 	};
@@ -676,16 +668,9 @@
 };
 
 &usbdrd_dwc3_0 {
-	dr_mode = "otg";
+	dr_mode = "host";
 	snps,dis-u3-autosuspend-quirk;
 	status = "okay";
-	usb-role-switch;
-
-	port {
-		dwc3_0_role_switch: endpoint {
-			remote-endpoint = <&usbc0_role_sw>;
-		};
-	};
 };
 
 &usbdrd3_1 {

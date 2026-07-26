@@ -2,7 +2,7 @@
 
 面向 Toybrick TB-RK3399ProD 的 OpenWrt 25.12.5 板级适配。仓库只保存可维护的 DTS、U-Boot/OpenWrt 补丁、固定配置、构建脚本和设计文档；上游源码、工具链、调试日志、设备信息与编译产物均不提交。
 
-正式 profile 包含串口/HDMI 双 Linux console、千兆以太网、USB、TF、eMMC 持久化 overlay、FAT32/exFAT 移动存储、独立 x4 插座的 PCIe host，以及存储、网络和系统排障工具。蓝色 Type-A USB3 已确认高速工作；Type-C 的 FUSB302/TCPM、固定 source/host、PHY 换向和 DWC3 role-switch 已纳入，SuperSpeed 硬件通道已经实测，自动换向重连等待新镜像验收。板载 Mini-PCIe 插座仅接 USB2；无线、蓝牙、HDMI 音频、图形桌面、GPU 和 NPU 不在当前范围内。
+正式 profile 包含串口/HDMI 双 Linux console、千兆以太网、USB、TF、eMMC 持久化 overlay、FAT32/exFAT 移动存储、独立 x4 插座的 PCIe host，以及存储、网络和系统排障工具。蓝色 Type-A USB3 已确认高速工作；Type-C 的 FUSB302/TCPM、固定 source/host、常驻 xHCI 和 PHY 换向已纳入，SuperSpeed 硬件通道已经实测，固定 host 热插拔等待新镜像验收。板载 Mini-PCIe 插座仅接 USB2；无线、蓝牙、HDMI 音频、图形桌面、GPU 和 NPU 不在当前范围内。
 
 ## 构建
 
