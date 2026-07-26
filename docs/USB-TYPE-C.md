@@ -34,9 +34,9 @@ Linux 阶段只把 USB2/USB3 主机作为产品功能，不提供充电输入或
 
 OpenWrt 25.12.5 的 Rockchip armv8 内核已经内建 `TYPEC`、`TYPEC_TCPM`、`TYPEC_FUSB302`、`USB_ROLE_SWITCH` 和 `PHY_ROCKCHIP_TYPEC`。Linux 6.12 的 RK3399 Type-C PHY 驱动却只从旧式 extcon 读取插头方向，无法接收主线 TCPM 的 orientation-switch 事件。仅打开 DTS 节点会形成“默认方向可能工作、反插或重插不可靠”的半成品。
 
-工程中的 `144-phy-rockchip-typec-orientation-switch.patch` 以 Rockchip 上游 v15 orientation-switch 方案为依据，只保留本板 USB 主机所需的部分。RK3399 DWC3 在切换角色时会保持 generic PHY 上电，因此回调不仅保存方向，还会在方向改变时同步重置并按新方向初始化空闲的 SuperSpeed lanes。
+工程中的 `144-phy-rockchip-typec-orientation-switch.patch` 以 Rockchip 上游 v15 orientation-switch 方案为依据，只保留本板 USB 主机所需的部分。RK3399 DWC3 在切换角色时会保持 generic PHY 上电，因此回调不能只比较新旧方向：拔出时把缓存的 orientation 标记为无效；每次重新连接时，即使插头方向与上次相同，也会同步重置活动 PHY 并按当前方向初始化 SuperSpeed lanes。
 
-DTS 将连接器的方向端点连接到 `tcphy0_usb3`，将角色端点连接到 DWC3_0，并为 DWC3_0 设置 `dr_mode = "otg"` 与 `usb-role-switch`。TCPM 的事件顺序是：先设置 orientation，再设置 USB role。拔出时 DWC3 退出 host 并删除该控制器的 xHCI；再次插入时先完成 PHY 换向，再切换到 host 并创建新的 xHCI。这个生命周期与实机上有效的 DWC3 手工解绑/重绑一致，但由内核状态机自动执行，不依赖 OpenWrt 热插拔脚本。
+DTS 将连接器的方向端点连接到 `tcphy0_usb3`，将角色端点连接到 DWC3_0，并为 DWC3_0 设置 `dr_mode = "otg"` 与 `usb-role-switch`。TCPM 的事件顺序是：先设置 orientation，再设置 USB role。拔出时 orientation 回调只使缓存失效，随后 DWC3 退出 host 并删除该控制器的 xHCI，避免在 host teardown 前提前关闭 PHY；再次插入时先完成活动 PHY 重初始化，再切换到 host 并创建新的 xHCI。这个生命周期与实机上有效的 DWC3 手工解绑/重绑一致，但由内核状态机自动执行，不依赖 OpenWrt 热插拔脚本。
 
 `CONFIG_USB_DWC3_DUAL_ROLE` 依赖 `CONFIG_USB_GADGET`，所以后者也会编入内核；它只是 DWC3 标准角色切换实现的构建依赖。本板连接器的 `data-role = "host"`、`power-role = "source"` 未改变，不把 gadget/受电端作为受支持功能，也不添加任何 gadget function 或用户空间配置。Linux 把 DWC3 的 host-only、gadget-only 和 dual-role 定义为一个 Kconfig choice，因此目标配置还必须显式记录前两项为 `not set`；只加入 dual-role 正选项会使 `syncconfig` 将其余选项标成 `NEW` 并进入交互，破坏无人值守构建。
 
@@ -90,4 +90,6 @@ dmesg | grep -Ei 'error|fail|timeout|reset|uas|scsi|xhci|dwc3|fusb|tcpm'
 
 第一版 host-only 镜像已经确认 FUSB302 在正反两个方向都能正确报告 CC、orientation、`source`/`host` 和 5 V VBUS，但运行中的 xHCI 不会在 PHY 换向后自行恢复链路。只对 Type-C DWC3_0 执行一次驱动解绑/重绑后，同一块 Lexar E300 2 TB 移动硬盘立即以 UAS/`5000M` 枚举，4 GiB direct read 约 349 MiB/s；相同设备在蓝色 Type-A 的同条件基线约 319 MiB/s，测试后没有新增 USB、UAS 或 SCSI 错误。这已经确认 C 口的 CC、VBUS、PHY 和 SuperSpeed 物理数据通道可用，也直接验证了“重建 xHCI”这一修复方向。
 
-当前工程已改为内核原生 role-switch 生命周期，但该版本尚待重新构建和刷机。完成两个方向交替热插拔、长时读写和 Loader 回归前，状态保持为“SuperSpeed 硬件已确认，自动热插拔修复待验收”。
+第一版 role-switch 镜像进一步实测确认状态机已接通：拔出时 Type-C xHCI 自动删除，插入时自动重建，CC 始终正确报告 `reverse`、`source`/`host`、1.5 A，VBUS regulator 保持 5 V。但同方向重新插入时 M.2 没有枚举；日志显示原因是旧回调在 `flip` 未变化时跳过了仍处于活动状态的 PHY 重初始化，而不是 role-switch、供电或设备树连接失败。
+
+当前工程已经增加 detach orientation 失效状态，并在每次新 attachment 时重初始化活动 PHY；该版本仍需重新构建和刷机。完成两个方向交替热插拔、长时读写和 Loader 回归前，状态保持为“SuperSpeed 硬件已确认，自动热插拔修复待验收”。
