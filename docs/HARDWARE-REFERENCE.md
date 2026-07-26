@@ -17,7 +17,7 @@
 | Toybrick linux-x86 工具链 | commit `32505a8032d04e9320dbdb817b08bf67bdfb5a0c` |
 | OpenWrt target | `rockchip/armv8`，profile `toybrick_tb-rk3399prod` |
 
-当前正式 profile 默认启用独立 x4 插座的 PCIe host、RTL8822CE 驱动和 HDMI Linux 文本 console。板载 Mini-PCIe 只接 USB2；板载/厂商专用无线集成、蓝牙、摄像、音频、图形桌面、GPU 功能和 NPU 不属于本阶段的完成条件。
+当前正式 profile 默认启用独立 x4 插座的 PCIe host 和 HDMI Linux 文本 console。板载 Mini-PCIe 只接 USB2；无线、蓝牙、摄像、音频、图形桌面、GPU 功能和 NPU 不属于本阶段的完成条件，相关无线驱动和固件也不纳入镜像。
 
 ## 2. SoC、内存与控制台
 
@@ -144,9 +144,9 @@ HDMI 只承担 Linux 文本 console；U-Boot 显示、HDMI 音频、桌面和 GP
 | CLKREQ# pinctrl | `pcie_clkreqn_cpm` |
 | 电源 | 0.9 V、1.8 V、3.3 V；3.3 V 由 GPIO2_A6 使能 |
 
-本板有两个容易混淆的插座：上述 SoC PCIe host 只连接到独立 x4 板对板插座；板载 Mini-PCIe 插座只接 USB2，面向 LTE 模块，没有 PCIe lane。因而把 RTL8822CE 插入 Mini-PCIe 后不会出现在 `lspci`，DTS 或驱动无法弥补缺失的电气连线；当前 `pcie@f8000000` 的 Gen1 training timeout 来自独立 x4 插座没有端点，与 Mini-PCIe 中是否插卡无关。
+本板有两个容易混淆的插座：上述 SoC PCIe host 只连接到独立 x4 板对板插座；板载 Mini-PCIe 插座只接 USB2，面向 LTE 模块，没有 PCIe lane。标准 PCIe 端点插入 Mini-PCIe 后不会出现在 `lspci`，DTS 或驱动无法弥补缺失的电气连线；`pcie@f8000000` 的 Gen1 training timeout 表示独立 x4 插座没有建立端点链路，与 Mini-PCIe 中是否插卡无关。
 
-若使用匹配 x4 板对板插座的转接板把 RTL8822CE 接到真正的 PCIe lane，Linux 6.12 `rtw88_8822ce` 支持 PCI ID `10ec:c822` 和 `10ec:c82f`；正式 profile 已选择 `kmod-rtw88-8822ce`，其 OpenWrt 依赖自动包含 `rtl8822ce-firmware`。蓝牙功能通常使用卡上的独立 USB 接口，本工程保持禁用。安装后必须验证 `lspci -nnk`、实际链路宽度/速率、AER 错误、固件加载、无线 PHY、吞吐与重启稳定性。
+独立 x4 插座仍保持启用，供未来通过匹配其板对板定义的转接板安装 PCIe 网卡或其他端点。具体设备驱动应在确定型号后按需加入，不预装当前没有硬件用途的无线驱动。安装端点后必须验证 `lspci -nnk`、实际链路宽度/速率、AER 错误、吞吐与重启稳定性。
 
 ## 9. 升级回归清单
 

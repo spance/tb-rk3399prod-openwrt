@@ -18,8 +18,8 @@
 | USB3 | 已确认读写 | ADATA 设备以 5000 Mbit/s 枚举；实测约 13.8 MiB/s 写、105.8 MiB/s 读 |
 | HDMI console | 已确认 | DRM/VOPB/DW-HDMI、fbcon 和 Linux 文本 console 已在显示器输出；串口继续保留 |
 | PCIe | 控制器确认，端点待验收 | host/PHY/电源正常进入 probe；当前独立 x4 插座没有端点，training timeout 符合预期 |
-| RTL8822CE Wi-Fi | 驱动已纳入，当前插槽不可用 | 实物插在板载 Mini-PCIe，但该插槽只接 USB2、没有 PCIe lane，因此无法枚举；需使用独立 x4 插座的合适转接板后再验收 |
+| Mini-PCIe | USB2-only | 面向 LTE 模块，没有 PCIe lane；不作为 PCIe 端点插槽使用 |
 | NPU | 不要求 | 未纳入 OpenWrt 完成条件 |
-| 板载 Wi-Fi/蓝牙 | 不要求 | 保持禁用；RTL8822CE 的蓝牙 USB 功能也不启用 |
+| Wi-Fi/蓝牙 | 不要求 | 保持禁用，不打包无线驱动或固件 |
 
-尚未完成的最终验收：禁用 CQE 后的 eMMC 长时间读写、HDMI 拔插与反复重启、通过真正 PCIe x4 插座转接后的 RTL8822CE 枚举和无线压力测试、overlay 回滚，以及安装第二网卡后的真实 LAN/WAN NAT 与软件 flow offload A/B 测试。
+尚未完成的最终验收：禁用 CQE 后的 eMMC 长时间读写、HDMI 拔插与反复重启、overlay 回滚，以及在独立 x4 插座安装第二网卡后的 PCIe 枚举、真实 LAN/WAN NAT 与软件 flow offload A/B 测试。

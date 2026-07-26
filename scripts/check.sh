@@ -157,8 +157,18 @@ grep -Fq 'console=tty0 console=ttyS2,1500000n8' "$PROJECT_DIR/boot/boot.cmd" || 
 	fail "boot script HDMI/serial dual console arguments are missing"
 grep -Fq 'root=PARTLABEL=rootfs' "$PROJECT_DIR/boot/boot.cmd" || \
 	fail "boot script persistent rootfs argument is missing"
-grep -Fq 'kmod-rtw88-8822ce' "$openwrt_patch" || \
-	fail "RTL8822CE PCIe wireless driver is missing from the device profile"
+if grep -Eq 'kmod-rtw88|rtl8822|mac80211|cfg80211' "$openwrt_patch"; then
+	fail "unused wireless drivers or firmware remain in the device profile"
+fi
+for package in blkid blockdev fdisk fstrim lsblk lscpu mount-utils wdctl \
+	ca-bundle curl htop jq lsof strace ip-full tcpdump-mini; do
+	grep -Eq "[[:space:]]$package([[:space:]\\\\]|$)" "$openwrt_patch" || \
+		fail "required maintenance package is missing: $package"
+done
+grep -Eq '[[:space:]]-ip-tiny([[:space:]\\]|$)' "$openwrt_patch" || \
+	fail "ip-tiny is not removed when ip-full is selected"
+grep -Eq '[[:space:]]ss([[:space:]\\]|$)' "$openwrt_patch" || \
+	fail "socket diagnostics utility is missing: ss"
 grep -Fq '143-mmc-sdhci-of-arasan-disable-rk3399-cqe.patch' \
 	"$openwrt_patch" || \
 	fail "RK3399 eMMC CQE reliability patch is missing"

@@ -5,7 +5,7 @@
  * This description contains the hardware required for the OpenWrt router and
  * HDMI text console. Camera, audio, on-board/vendor wireless, Bluetooth and
  * the external NPU firmware interface are left disabled.
- * External PCIe endpoints such as RTL8822CE are discovered by PCI enumeration.
+ * External endpoints on the independent x4 connector use PCI enumeration.
  */
 
 #include "rk3399.dtsi"
