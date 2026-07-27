@@ -48,6 +48,11 @@ git -C "$PROJECT_DIR" diff --check -- . \
 git -C "$PROJECT_DIR" diff --cached --check -- . \
 	':(exclude,glob)patches/**/*.patch'
 
+if git -C "$PROJECT_DIR" ls-files | grep -Eq \
+	'(^|/)(debug|logs?|captures?)(/|$)|(^|/)(dmesg|info|eth[0-9]+|iperf|ethtool).*\.txt$|\.(log|dump|trace)$'; then
+	fail "tracked debug capture or device-state file found"
+fi
+
 openwrt_patch="$PROJECT_DIR/patches/openwrt/0001-tb-rk3399prod-board-support.patch"
 kernel_patch_dir="$PROJECT_DIR/patches/kernel"
 typec_phy_patch="$kernel_patch_dir/144-phy-rockchip-typec-orientation-switch.patch"
@@ -74,6 +79,16 @@ assert_file "$PROJECT_DIR/docs/BOOT-CHAIN.md"
 assert_file "$PROJECT_DIR/docs/HDMI-CONSOLE.md"
 assert_file "$PROJECT_DIR/docs/NETWORK-PERFORMANCE.md"
 assert_file "$PROJECT_DIR/docs/USB-TYPE-C.md"
+
+grep -Fq '## 适配分层与改造点' "$PROJECT_DIR/README.md" || \
+	fail "README does not describe the project adaptation layers"
+grep -Fq '达到板级工程交付条件' \
+	"$PROJECT_DIR/docs/USB-TYPE-C.md" || \
+	fail "Type-C acceptance result is missing from the canonical document"
+if grep -R -Eq '待新镜像验收|重构后的热插拔待|Type-C.*生命周期重构待验收' \
+	"$PROJECT_DIR/README.md" "$PROJECT_DIR/docs"; then
+	fail "stale Type-C pre-acceptance wording remains in project documentation"
+fi
 
 grep -Fq '$(filter -j%,$(MAKEFLAGS))' "$PROJECT_DIR/Makefile" || \
 	fail "Makefile must derive parallelism from GNU Make -j"
@@ -309,6 +324,9 @@ grep -Fq 'kmod-usb-hid' "$openwrt_patch" || \
 grep -Fq 'GMAC_IRQ_CPU="4"' \
 	"$PROJECT_DIR/rootfs/etc/init.d/tb-net-tuning" || \
 	fail "GMAC IRQ is not assigned to the first Cortex-A72"
+grep -Fq 'current_affinity=$(cat "$affinity_file"' \
+	"$PROJECT_DIR/rootfs/etc/init.d/tb-net-tuning" || \
+	fail "GMAC IRQ tuning is not idempotent"
 grep -Fqx 'START=99' \
 	"$PROJECT_DIR/rootfs/etc/init.d/tb-net-tuning" || \
 	fail "GMAC IRQ fallback service does not run after network startup"

@@ -60,18 +60,21 @@ DTS 中连接器仍固定声明 `data-role = "host"`、`power-role = "source"`�
 
 这条路径不同时配置两组 USB3 lanes，不在活动 xHCI 下方重启 PHY，也不依赖用户态热插拔脚本或驱动重绑。
 
-## 已有证据和当前状态
+## 验收证据与结论
 
-已经确认：
+当前实现已经确认：
 
-- FUSB302 在 normal/reverse 两个方向均能正确报告 CC、方向、`source`/`host` 和 5 V VBUS；
-- 保持 Lexar E300 2 TB M.2 已连接再启动，可稳定以 UAS/`5000M` 枚举；
-- Type-C 直读 4 GiB 约 367 MB/s（350 MiB/s），无新增 USB、UAS、SCSI 或 I/O 错误；
-- 同一设备在 Type-A USB3 的对照约 319 MiB/s，证明 Type-C SuperSpeed 物理通道完整可用。
+- FUSB302 在 normal/reverse 两个方向均正确报告 CC、方向、`source`/`host` 和 5 V VBUS；
+- 空载时 Type-C DWC3/xHCI 关闭，连接后恢复；detach 按 xHCI → child core/PHY → parent glue 的顺序关闭，PM usage 最终回到 0；
+- 首次插入、同方向拔插和翻转后重插均在一次 PHY 尝试内恢复，Lexar E300 2 TB M.2 以 UAS/`5000M` 枚举；
+- exFAT 分区完成 8 GiB `O_DIRECT` 写入并 `fsync`，约 300～320 MiB/s；8 GiB `O_DIRECT` 读取约 340 MiB/s；完整 8 GiB 数据比较通过；
+- 测试窗口没有出现 `connect-debounce failed`、PMA/PIPE timeout、PHY `-110`、xHCI reset、UAS、SCSI、I/O 或 exFAT 错误；既有 SCSI `ioerr_cnt` 在追加读取前后保持不变；
+- 同一设备在蓝色 Type-A USB3 约为 340～360 MB/s，两个接口均落在这套 RK3399 USB 3.0、硬盘盒和存储组合的正常高速区间；
+- 本版镜像通过 Type-C Loader 路径完成刷写，说明 Linux 侧修改没有破坏 Rockchip 刷机入口。
 
-旧实验在运行中的 xHCI 下重启 PHY 时出现 `failed to reinitialize USB3 PHY for host mode: -110`，并停在 `RxDetect`；设备随冷启动则立即进入 UAS。这证明故障在软件生命周期，不是 FUSB302、VBUS、线材或 SuperSpeed 物理通道本身。
+早期实验曾在运行中的常驻 xHCI 下直接重启 PHY，出现 `failed to reinitialize USB3 PHY for host mode: -110` 并停在 `RxDetect`；设备随冷启动则立即进入 UAS。这一对照把故障定位到软件生命周期，而不是 FUSB302、VBUS、线材或 SuperSpeed 物理通道，也构成当前设计不允许在线重启 PHY 的原因。
 
-当前状态是“物理高速与冷启动 UAS 已确认；按 Toybrick stable 4.4 板级时序、使用 Linux 6.12 API 重构后的热插拔待新镜像验收”。
+因此当前 Type-C 功能已经达到板级工程交付条件。量产前的剩余工作是耐久性扩展，而不是功能阻断：建议执行 20～50 次方向交替/快速重插，以及至少 1～4 小时或 100 GiB 连续 I/O。
 
 ## 构建后静态检查
 
@@ -106,7 +109,7 @@ tb-typec-diag
 tb-typec-diag 180 /tmp/typec-run.log
 ```
 
-针对“带盘冷启动成功、运行中重插失败”的当前故障，最有效的一次采集方式是：刷机后先保持已知可用的 M.2 连接并启动，进入系统后执行 `tb-typec-diag 240`，确认冷启动枚举仍在，然后卸载并拔出，依次完成同向重插、翻转重插。这样一份文件同时包含冷启动成功链和热插拔失败链，可直接做边界对比，不需要针对每个猜测重新刷机。
+若未来内核升级后出现“带盘冷启动成功、运行中重插失败”，最有效的一次采集方式是：先保持已知可用的 M.2 连接并启动，进入系统后执行 `tb-typec-diag 240`，确认冷启动枚举仍在，然后卸载并拔出，依次完成同向重插、翻转重插。这样一份文件同时包含成功链和回归链，可直接做边界对比，不需要针对每个猜测重新刷机。
 
 驱动的事件日志覆盖以下关键边界：
 
@@ -131,7 +134,7 @@ tb-typec-diag 180 /tmp/typec-run.log
 
 正常 attach 的关键日志顺序应为：父 reset pulse → 父 clocks on → PHY ready → child core resume → role transition → xHCI created；正常 detach 应为：orientation none → role NONE → xHCI removed → child core/PHY off → parent clocks off。成功 attach 后 PM usage count 应保留一个连接期引用；detach 完成后应回到 `pm_usage=0 suspended=1`。时间戳、事件环和 PM 计数足以判断顺序与引用平衡，不需要为每一个猜测重新编译固件。
 
-## 上板验收
+## 回归与耐久验收
 
 空载启动后检查 Type-C、角色开关和运行时电源状态：
 
@@ -144,12 +147,12 @@ lsusb -t
 
 空载约 100 ms 后，Type-C DWC3 应为 suspended，且它的 xHCI 可以消失；插入后应恢复 active 并重新出现。独立 Type-A 的 xHCI 必须始终存在。
 
-使用已在 Type-A 确认可达 SuperSpeed 的同一块 M.2、线材和转接器：
+每次升级内核、DTS 或 Type-C 补丁后，使用已在 Type-A 确认可达 SuperSpeed 的同一块 M.2、线材和转接器。步骤 1～3 和一次 8 GiB 完整校验已在当前版本通过；步骤 4～5 是量产前建议追加的耐久边界：
 
 1. normal 方向插入，确认 UAS/`5000M`，完成至少 4 GiB direct read/write。
-2. 卸载并拔出，等待 1 秒；同方向重复插入至少 5 次。
-3. 翻转插头后重复，确认仍为 UAS/`5000M`。
-4. 两个方向交替至少 10 次，再连续读写至少 30 分钟。
+2. 卸载并拔出，等待 1 秒；同方向重新插入并确认 UAS/`5000M`。
+3. 再次卸载、拔出并翻转插头，确认仍为 UAS/`5000M`。
+4. 量产前把两个方向交替扩展到 20～50 次，并连续读写至少 1～4 小时或 100 GiB。
 5. 基础测试通过后缩短拔插间隔，验证快速重连边界。
 6. 日志不得新增 `connect-debounce failed`、PMA/PIPE timeout、xHCI、UAS、SCSI 或文件系统错误。
 7. 断电进入 Loader/Maskrom，确认 Rockchip 官方工具仍能发现设备。

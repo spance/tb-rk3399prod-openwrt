@@ -25,6 +25,14 @@
 *~
 core
 core.*
+/debug/
+/logs/
+/captures/
+dmesg*.txt
+*debug*.txt
+ethtool*.txt
+iperf*.txt
+eth[0-9]*.txt
 
 # Host/editor state and local configuration
 .DS_Store

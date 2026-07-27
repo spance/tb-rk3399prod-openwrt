@@ -119,9 +119,9 @@ Linux 6.12 基线中，TCS4525/TCS4526 由兼容的 `fan53555` regulator 驱动�
 - Type-A USB3 host 电源使能：GPIO2_A2，输出高。
 - 板载 USB Hub 复位：GPIO4_C5，输出高。
 - 正式 profile 内置 USB Mass Storage、UAS、FAT32 和 exFAT 驱动；常见 U 盘、SSD 与移动硬盘无需联网安装文件系统模块。
-- 蓝色 Type-A 口已由多种设备确认工作在 `5000M`；Lexar E300 2 TB M.2 移动硬盘使用 UAS，4 GiB direct read 约 319 MiB/s，测试后无新增 USB/UAS/SCSI 错误，已经证明该物理口的 SuperSpeed 路径可达到正常高速区间。
+- 蓝色 Type-A 口已由多种设备确认工作在 `5000M`；Lexar E300 2 TB M.2 移动硬盘使用 UAS，实测约 340～360 MB/s，测试后无新增 USB/UAS/SCSI 错误，已经证明该物理口的 SuperSpeed 路径可达到正常高速区间。
 - Type-C USB3：DWC3_0 `fe800000.usb`、`tcphy0`，连接器固定为 source/host；FUSB302 位于 I2C8 `0x22`，中断 GPIO1_A2 低有效，VBUS 由 GPIO0_A1 低电平使能，对外声明 5 V/1.5 A。DWC3 使用 `dr_mode = "otg"` 和 `usb-role-switch` 取得正确的断开/重连生命周期，但连接器不会请求 gadget 角色。
-- 本板 Type-C 的行为基线是 Toybrick stable Linux 4.4；Linux 6.12 只提供当前 API，Rockchip 6.6 只作现代实现参考。工程按 4.4 时序实现 PHY 方向记录/5 次上电重试，以及 detach 时删除 xHCI 并关闭 core/PHY；attach 时先脉冲父节点 `SRST_A_USB3_OTG0`，再由 DWC3 子核心恢复并给 PHY 上电，等待 10–11 ms 后才创建 xHCI。方向回调不在线重置 PHY，只由后续 `power_on()` 配置当前方向的一对 lanes。带设备冷启动已用 Lexar E300 确认 UAS/`5000M`，4 GiB direct read 约 367 MB/s（350 MiB/s）且无新增 USB/UAS/SCSI/I/O 错误；重构后的热插拔仍需正反插和长时读写回归，设计与证据见 [USB Type-C SuperSpeed 主机](USB-TYPE-C.md)。
+- 本板 Type-C 的行为基线是 Toybrick stable Linux 4.4；Linux 6.12 只提供当前 API，Rockchip 6.6 只作现代实现参考。工程按 4.4 时序实现 PHY 方向记录/5 次上电重试，以及 detach 时删除 xHCI 并关闭 core/PHY；attach 时先脉冲父节点 `SRST_A_USB3_OTG0`，再由 DWC3 子核心恢复并给 PHY 上电，等待 10–11 ms 后才创建 xHCI。方向回调不在线重置 PHY，只由后续 `power_on()` 配置当前方向的一对 lanes。Lexar E300 已在首次插入、同向重插和翻转重插中确认 UAS/`5000M`；exFAT 上 8 GiB direct 写约 300～320 MiB/s、direct 读约 340 MiB/s，并通过完整数据比较，测试窗口没有新增 USB/UAS/SCSI/I/O/文件系统错误。设计与完整证据见 [USB Type-C SuperSpeed 主机](USB-TYPE-C.md)。
 - Type-C 的 Linux 配置不修改 BootROM/U-Boot；Loader/Maskrom 刷机接口继续保留。
 
 ## 7. HDMI console

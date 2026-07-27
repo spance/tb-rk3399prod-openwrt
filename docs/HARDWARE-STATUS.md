@@ -1,6 +1,8 @@
 # 硬件状态
 
-本表依据适配期间采集的原厂和 OpenWrt 启动日志整理；原始调试日志不纳入清理后的工程。板级固定参数和以后升级时的回归检查项见 `HARDWARE-REFERENCE.md`。
+本表只记录可复现的实机结论；原始调试日志和设备唯一信息不纳入工程。固定连线、参数和升级不变量见 [硬件参考](HARDWARE-REFERENCE.md)，专项测试方法见相应设计文档。
+
+当前结论：本板的 OpenWrt 基础硬件使能已经达到工程交付条件。PCIe 第二网卡、真实双口 NAT 属于尚无实物端点的扩展能力，不能由“控制器 probe 成功”替代验收；硬件 watchdog 故障复位和更长周期耐久测试属于量产前补充验证。
 
 | 项目 | 状态 | 关键结果 |
 |---|---|---|
@@ -15,12 +17,21 @@
 | 千兆网 | 已确认 | RTL8211E，1000/full；两个方向各 1800 秒均为 941 Mbit/s、197 GiB，硬件错误计数为 0 |
 | 网络调优 | 已确认 | GMAC IRQ 在开机及接口 `ifup` 后均绑定 CPU4/A72，复测 942/941 Mbit/s、0 重传；S99 服务作为兜底，fw4 软件 flowtable 正常生成 |
 | USB2 | 已确认枚举 | 两组 EHCI/OHCI 和板载 Hub |
-| USB3 Type-A | 已确认高速读写 | 多种设备以 `5000M` 枚举；Lexar E300 2 TB/UAS 的 4 GiB direct read 约 319 MiB/s，测试后无新增 USB/UAS/SCSI 错误 |
-| USB3 Type-C | 硬件高速已确认，DWC3/PHY 生命周期重构待验收 | 正反插 CC/角色/VBUS 正常；带 M.2 冷启动可用 UAS/5000M，4 GiB direct read 约 367 MB/s（350 MiB/s），无 USB/UAS/SCSI/I/O 错误。旧实验在常驻 xHCI 下在线重启 PHY 会报 `-110`/`RxDetect`。重新逐项对照 Toybrick stable 4.4 后，当前代码使用真实 `USB_ROLE_NONE`，连接期持续持有 runtime PM，detach 先删除 xHCI 再同步关闭 core/PHY，attach 才脉冲父 `usb3-otg` 复位并恢复子核心/PHY；固件集成一次性全链路诊断工具，待正反插、长时读写和 Loader 回归 |
+| USB3 Type-A | 已确认高速读写 | 多种设备以 `5000M` 枚举；M.2/UAS 实测约 340–360 MB/s，测试后无新增 USB/UAS/SCSI 错误 |
+| USB3 Type-C | 已确认热插拔和高速读写 | 首次插入、同向重插和翻转重插均以 UAS/`5000M` 枚举；方向、角色、xHCI 创建/销毁、父子 runtime PM 和 PHY 收放顺序正确。exFAT 上 8 GiB direct 写约 300–320 MiB/s、direct 读约 340 MiB/s，完整数据比较通过；测试窗口无 `connect-debounce`、PHY timeout、xHCI/UAS/SCSI/I/O/exFAT 错误，SCSI I/O 错误计数未增长 |
 | HDMI console | 已确认 | DRM/VOPB/DW-HDMI、fbcon 和 Linux 文本 console 已在显示器输出；串口继续保留 |
 | PCIe | 控制器确认，端点待验收 | host/PHY/电源正常进入 probe；当前独立 x4 插座没有端点，training timeout 符合预期 |
 | Mini-PCIe | USB2-only | 面向 LTE 模块，没有 PCIe lane；不作为 PCIe 端点插槽使用 |
 | NPU | 不要求 | 未纳入 OpenWrt 完成条件 |
 | Wi-Fi/蓝牙 | 不要求 | 保持禁用，不打包无线驱动或固件 |
 
-尚未完成的最终验收：新版 Type-C DWC3/PHY 生命周期的正反插、热插拔、快速重插、长时 SuperSpeed 读写及 Loader 回归；eMMC 更长时间读写、HDMI 拔插与反复重启、overlay 回滚，以及在独立 x4 插座安装第二网卡后的 PCIe 枚举、真实 LAN/WAN NAT 与软件 flow offload A/B 测试。
+## 已知边界
+
+- Type-C 在当前测试范围内已通过工程验收；量产前仍建议执行 20～50 次方向交替/快速重插，以及至少 1～4 小时或 100 GiB 连续 I/O。Loader 刷写本版镜像后仍正常，Linux 侧改造不触及 BootROM、miniloader 或 U-Boot 的刷机协议。
+- PCIe host 已启用，但独立 x4 插座未安装端点；启动时的 link training timeout 在此条件下符合预期。安装第二网卡后必须另做枚举、AER/错误计数、IRQ/RSS、双向吞吐和真实 LAN/WAN NAT 验收。
+- watchdog 驱动和 `procd` 喂狗链已运行，尚未故意停止喂狗确认整机复位。eMMC 更长时间读写、HDMI 多次拔插/重启及 overlay 备份恢复流程也可在量产验收中补充。
+- 无线/蓝牙、GPU 图形桌面、HDMI 音频和 NPU 是明确的非目标，不应作为当前固件缺陷。
+
+## 允许的预期日志
+
+在没有 PCIe 端点时可以出现 PCIe link training timeout；`gpio_button_hotplug` 的 out-of-tree taint、旧式 GPIO API 提示也不影响当前功能。除此之外，电源/regulator probe、eMMC/MMC I/O、GMAC/PHY、Type-C PMA/PIPE、xHCI/UAS/SCSI 和文件系统错误都应视为回归并调查。

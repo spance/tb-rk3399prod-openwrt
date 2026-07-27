@@ -10,6 +10,8 @@
 
 板级 profile、持久化镜像规则、DTB Makefile 和必要的内核 binding 修改统一由 `patches/openwrt/0001-tb-rk3399prod-board-support.patch` 加入。完整板级设备树不嵌入补丁；`dts/` 是唯一权威来源，`make init` 调用 `scripts/sync-openwrt-dts.sh`，从 Rockchip target 的 `KERNEL_PATCHVER` 自动确定 `files-<版本>` 目录并逐文件覆写。板级启动服务和 UCI 初始值以 `rootfs/` 为唯一来源，由 `scripts/sync-openwrt-rootfs.sh` 同步到 Rockchip base-files。修改这些文件后重新执行 `make init` 再构建，不需要手工刷新重复补丁。
 
+`configs/openwrt.config` 刻意只保留 target、正式设备 profile、SquashFS 和强制 initramfs 六项选择：板级软件包、内核选项和镜像规则属于 profile 的组成部分，应由同一份 OpenWrt 补丁原子维护，避免 `.config` 再保存一份容易漂移的展开结果。`CONFIG_TARGET_INITRAMFS_FORCE` 只保证每次同时生成 TF/串口恢复 FIT，不会让正式 `openwrt.img` 使用易失的 initramfs 根文件系统。
+
 ## 硬件范围
 
 - UART2：1500000 n8。
@@ -20,12 +22,14 @@
 - eMMC：HS400 Enhanced Strobe、ADMA；为避免写入负载下反复进入 CQE recovery，使用 Linux 已有的 `SDHCI_QUIRK_BROKEN_CQE` 默认关闭 CQE。
 - RTL8211E 千兆以太网：RGMII，TX/RX delay `0x28/0x20`。
 - 网络调优：GMAC IRQ 动态绑定到第一颗 Cortex-A72，并在 LAN `ifup` 后及 S99 阶段幂等恢复；fw4 软件 flow offload 默认开启，硬件 flow offload 保持关闭。
-- USB2 EHCI/OHCI、两组 USB3 控制器、板载 Hub 电源和复位；蓝色 Type-A 口已实测高速读写。Type-C 连接器对外固定为 5 V source/host，DWC3_0 内部使用 role-switch 管理断开时的 xHCI/core/PHY 关闭与重连恢复；TCPM 先给出方向，PHY 再在上电路径中配置对应 lanes。C 口冷启动 UAS/`5000M` 已实测，重构后的热插拔待新镜像验收，详见 [USB Type-C SuperSpeed 主机](USB-TYPE-C.md)。
+- USB2 EHCI/OHCI、两组 USB3 控制器、板载 Hub 电源和复位；蓝色 Type-A 口已实测高速读写。Type-C 连接器对外固定为 5 V source/host，DWC3_0 内部使用 role-switch 管理断开时的 xHCI/core/PHY 关闭与重连恢复；TCPM 先给出方向，PHY 再在上电路径中配置对应 lanes。C 口首次插入、同向重插、翻转重插、UAS/`5000M` 和 exFAT 高速读写均已通过，详见 [USB Type-C SuperSpeed 主机](USB-TYPE-C.md)。
 - PCIe：默认启用，Gen1、x4 host，位于独立的 x4 板对板插座，并允许通过合适的转接板连接 x1 端点；无端点时 training timeout 与原厂 BSP 一致。
 - HDMI console：内建 Rockchip DRM、VOPB、DW-HDMI、fbdev/fbcon，保留 UART2 并增加 `tty1` 键盘登录；详细设计和验收见 [HDMI Linux console](HDMI-CONSOLE.md)。
 - 无线、蓝牙、摄像、音频、图形桌面、GPU 和 NPU 不纳入当前目标，也不打包 `rtw88`、mac80211 或无线固件。
 
 Mini-PCIe 插座的机械外形不代表本板提供 PCIe 电气连接：它只适用于走 USB2 的 LTE 模块。若以后在独立 x4 插座改装 PCIe 有线网卡，应按具体型号增加 `igb`、`igc` 或 `r8169` 等驱动，并完成枚举、吞吐、错误计数和长时间稳定性验收。
+
+两个容易被误判为冗余的内核选项需要保留：`CONFIG_USB_GADGET=y` 是 DWC3 dual-role 框架的构建依赖，但连接器 DTS 固定为 host/source 且 gadget-only 模式关闭，产品不会暴露 USB gadget；`CONFIG_DEBUG_FS=y` 用于 FUSB302/TCPM 事件环和 `tb-typec-diag` 的升级排障，只向本机 root 提供诊断接口。若未来删除 Type-C 板外补丁且不再需要事件环，才应一起评估移除 debugfs 和诊断工具。
 
 ## 内置维护工具
 

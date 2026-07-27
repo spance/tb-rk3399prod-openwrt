@@ -35,7 +35,7 @@ find_device_irqs()
 start()
 {
 	[ "$(board_name)" = "$BOARD" ] || return 0
-	local device irq found=0
+	local device irq affinity_file current_affinity found=0
 	device=$(find_gmac_device) || {
 		logger -t tb-net-tuning "on-board GMAC netdev is unavailable"
 		return 0
@@ -51,10 +51,16 @@ start()
 	}
 
 	for irq in $(find_device_irqs "$device"); do
-		[ -w "/proc/irq/$irq/smp_affinity_list" ] || continue
-		echo "$GMAC_IRQ_CPU" >"/proc/irq/$irq/smp_affinity_list" || continue
-		logger -t tb-net-tuning "$device IRQ $irq assigned to CPU$GMAC_IRQ_CPU"
+		affinity_file="/proc/irq/$irq/smp_affinity_list"
+		[ -w "$affinity_file" ] || continue
 		found=1
+		current_affinity=$(cat "$affinity_file" 2>/dev/null)
+		[ "$current_affinity" = "$GMAC_IRQ_CPU" ] && continue
+		echo "$GMAC_IRQ_CPU" >"$affinity_file" || {
+			logger -t tb-net-tuning "failed to assign $device IRQ $irq to CPU$GMAC_IRQ_CPU"
+			continue
+		}
+		logger -t tb-net-tuning "$device IRQ $irq assigned to CPU$GMAC_IRQ_CPU"
 	done
 
 	[ "$found" = 1 ] || {

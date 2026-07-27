@@ -4,7 +4,9 @@
 
 板级行为以 Toybrick 官方 `rockchip-toybrick/kernel` 的 stable Linux 4.4 为基线；OpenWrt 使用的 Linux 6.12 负责承载现代内核 API，其他 Rockchip 6.x 分支只作移植参考，不视为 TB-RK3399ProD 的官方支持版本。
 
-正式 profile 包含串口/HDMI 双 Linux console、千兆以太网、USB、TF、eMMC 持久化 overlay、FAT32/exFAT 移动存储、独立 x4 插座的 PCIe host，以及存储、网络和系统排障工具。蓝色 Type-A USB3 已确认高速工作；Type-C 的 FUSB302/TCPM、固定 source/host 和 Rockchip DWC3/PHY 断开重连生命周期已纳入，SuperSpeed 硬件通道已经实测，重构后的热插拔等待新镜像验收。板载 Mini-PCIe 插座仅接 USB2；无线、蓝牙、HDMI 音频、图形桌面、GPU 和 NPU 不在当前范围内。
+正式 profile 包含串口/HDMI 双 Linux console、千兆以太网、USB、TF、eMMC 持久化 overlay、FAT32/exFAT 移动存储、独立 x4 插座的 PCIe host，以及存储、网络和系统排障工具。蓝色 Type-A USB3 与 Type-C 均已用 UAS 存储确认 SuperSpeed；Type-C 还完成了同向重插、翻转重插、runtime-PM 收放和 exFAT 读写校验。板载 Mini-PCIe 插座仅接 USB2；无线、蓝牙、HDMI 音频、图形桌面、GPU 和 NPU 不在当前范围内。
+
+当前版本可作为本板的 OpenWrt 硬件使能版本交付。独立 x4 插座尚未安装 PCIe 端点，因此“第二网卡及双口路由”不是当前验收结论；硬件 watchdog 的故障超时复位和更长周期的存储/插拔耐久测试也保留为量产前验证项。
 
 ## 构建
 
@@ -57,6 +59,18 @@ scripts/          检查、初始化、构建和打包脚本
 ```
 
 `.work/`、`out/` 和 `dist/` 均为可重新生成且不纳入版本控制的目录。板级参数和升级回归基线见 [硬件参考](docs/HARDWARE-REFERENCE.md)，当前验收状态见 [硬件状态](docs/HARDWARE-STATUS.md)，Type-C 的阶段切换、驱动设计和验收步骤见 [USB Type-C SuperSpeed 主机](docs/USB-TYPE-C.md)，IRQ、flow offload、密码加速和 PCIe 网卡策略见 [网络性能与加速策略](docs/NETWORK-PERFORMANCE.md)。
+
+## 适配分层与改造点
+
+| 层次 | 本工程承担的改造 | 权威来源 |
+|---|---|---|
+| U-Boot | 保留 Toybrick/Rockchip 2017.09 启动链；修复现代 Linux x86_64 主机构建兼容性，并将 TF 路径限制为 25 MHz、PIO、单次最多 1 MiB，以可靠加载恢复 FIT | `patches/u-boot/` |
+| Linux 驱动 | 为 RK3399 Type-C PHY 接入标准 orientation switch；为 DWC3 实现真实 `NONE ↔ HOST`、xHCI 创建/销毁、父子 runtime PM 与 OTG reset 生命周期；用标准 SDHCI quirk 禁用本板不稳定的 eMMC CQE | `patches/kernel/` 与 OpenWrt 板级补丁中的小型 CQE backport |
+| 板级描述与配置 | 固化 RK809/电源、CPU/温控、存储、GMAC、USB、HDMI、PCIe 等连线和参数；选择 Linux Kconfig、OpenWrt profile、软件包和镜像规则 | `dts/`、`patches/openwrt/`、`configs/` |
+| 运行策略 | 启用 ext4 overlay、把 GMAC IRQ 幂等绑定到 CPU4/A72、启用软件 flow offload，并提供一次性 Type-C 诊断工具 | `rootfs/` |
+| 构建与发布 | 固定全部上游 commit，下载到 `.work/`，同步唯一来源，执行检查并生成 `uboot.img`、`openwrt.img` 和发布包 | `scripts/`、`Makefile` |
+
+Type-C 不是把 Linux 4.4 代码逐行复制到 6.12：板级时序和生命周期以 Toybrick stable 4.4 为行为基线，再用 Linux 6.12 的 TCPM、role-switch、generic PHY、runtime PM 和 reset API 表达。FUSB302/TCPM 使用未修改的 Linux 6.12 标准驱动；工程的实质驱动改造集中在 Rockchip Type-C PHY 与 DWC3 两个补丁。其余大多数硬件沿用上游驱动，通过 DTS、Kconfig 和 profile 完成板级集成。
 
 `make clean` 只删除 `out/` 和 `dist/`。若上游工作树被中断的补丁或人工修改污染，使用显式的 `make reset`；它会丢弃 `.work` 内的 Git 修改，但保留已下载和已编译的 ignored cache。`make -j2 reinit` 可以完成工作树复位并重新初始化。Type-C 的一次性诊断使用固件内置 `tb-typec-diag`，具体测试窗口和日志判读见 [USB Type-C SuperSpeed 主机](docs/USB-TYPE-C.md)。
 
