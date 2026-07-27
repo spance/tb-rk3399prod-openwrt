@@ -76,6 +76,15 @@ OpenWrt 只使用一个工作树和一个正式配置，独立 x4 插座的 PCIe
 
 `make init` 随后验证 feed 仓库的 origin、HEAD、索引、干净状态和仓库数量；精确匹配时不访问 feed 远端，不匹配时才执行更新。OpenWrt 的 `src-git` feed 获取本身使用 `--depth 1`，不会同步完整 Git 历史。之后安装 package 索引、写入唯一的 `configs/openwrt.config`、执行 `make defconfig` 和 `make download`。因此成功返回表示 OpenWrt/U-Boot 补丁、直接内核补丁、DTS、rootfs 文件、feeds、配置和编译所需源码都已经准备完成；使用 GNU Make 标准参数 `make -j4 init` 控制源包并行下载数。
 
+若准备让某些非启动关键驱动以后通过 APK 按需安装，可在初始化时建立模块池：
+
+```sh
+make -j4 init KMODS="kmod-dummy kmod-veth"
+make -j4 all
+```
+
+这些包以 OpenWrt `<M>` 状态参与内核和 APK 构建，不进入正式 SquashFS。模块池是本次工作树的构建输入，排序后的值记录在 `.work/BASELINES`；再次执行 `init` 或 `reinit` 时必须重复提供同一组 `KMODS`，否则会恢复不含可选模块的正式基础配置。只有工作树本身需要复位时才使用 `reinit`。
+
 ## 2. 项目检查
 
 ```sh
@@ -122,7 +131,17 @@ out/openwrt/openwrt.img
 
 `openwrt.img` 从 eMMC LBA `0x6000` 连续写入：开头是包含正常 FIT 与 `boot.scr` 的 ext2 启动容器，96 MiB 偏移处是 SquashFS rootfs；首次启动会使用 grow `rootfs` 分区剩余空间建立 ext4 `/overlay`。`out/openwrt/` 同时保留 FIT、initramfs、manifest、独立 `boot_linux.img` 和 `rootfs.img` 等诊断/恢复产物；它们不进入 `dist` 发布包。
 
-## 4. 打包
+## 4. 按需构建内核模块
+
+完成匹配模块池的 `make all` 后执行：
+
+```sh
+make -j4 kmod KMODS="kmod-dummy"
+```
+
+该目标临时选择指定模块，下载所需源码，先编译 `target/linux`，再调用定义这些模块的 OpenWrt package 目标。它从 `out/openwrt/*.manifest` 取得固件的 kernel package 版本，并与候选构建生成的 `staging_dir/.../kernel.version` 精确比较；只有完全一致才把请求模块及其 kmod 依赖复制到 `out/kmods/`。正式 `.config` 在成功或失败后都会恢复。若 ABI 不一致，脚本拒绝 APK 输出并清除候选内核/kmod 缓存，下一次正常构建会重新生成它们。完整设计、首次扩展流程和设备安装方法见 [按需 kmod 构建器](KMOD-BUILDER.md)。
+
+## 5. 打包
 
 ```sh
 make package
@@ -137,7 +156,7 @@ dist/tb-rk3399prod-openwrt-25.12.5.tar.gz.sha256
 
 包内只发布 `firmware/uboot.img`、`firmware/openwrt.img`、逐文件 `SHA256SUMS` 和固定上游版本信息。`openwrt.img` 是按当前 GPT 布局生成的原始连续写入镜像，不是 Rockchip `update.img`；打包使用 GNU tar sparse 格式，避免镜像中的清零间隙和 rootfs 补零区无谓占用归档空间。
 
-## 5. 清理与工作树恢复
+## 6. 清理与工作树恢复
 
 ```sh
 make clean

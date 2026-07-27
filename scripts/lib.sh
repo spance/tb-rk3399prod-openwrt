@@ -32,6 +32,47 @@ OPENWRT_IMAGE_SIZE=$((OPENWRT_ROOTFS_OFFSET + ROOTFS_IMAGE_SIZE))
 
 fail() { echo "ERROR: $*" >&2; exit 1; }
 
+normalize_kmod_names()
+{
+	local raw package
+	local -a input
+	raw=$1
+	[ -n "$raw" ] || return 0
+	read -r -a input <<< "$raw"
+	for package in "${input[@]}"; do
+		printf '%s\n' "$package" | grep -Eq \
+			'^kmod-[a-z0-9][a-z0-9+._-]*$' || \
+			fail "invalid kmod package name: $package"
+	done
+	printf '%s\n' "${input[@]}" | LC_ALL=C sort -u
+}
+
+openwrt_package_source_makefile()
+{
+	local openwrt_dir package_name metadata
+	openwrt_dir=$1
+	package_name=$2
+	metadata=$openwrt_dir/tmp/.packageinfo
+	[ -f "$metadata" ] || return 1
+	awk -v wanted="$package_name" '
+		/^Source-Makefile:[[:space:]]*/ {
+			source = $0
+			sub(/^Source-Makefile:[[:space:]]*/, "", source)
+			next
+		}
+		$1 == "Package:" && $2 == wanted {
+			count++
+			answer = source
+		}
+		END {
+			if (count == 1 && answer != "")
+				print answer
+			else
+				exit 1
+		}
+	' "$metadata"
+}
+
 retry()
 {
 	attempts=$1

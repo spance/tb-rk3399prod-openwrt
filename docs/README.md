@@ -10,6 +10,7 @@
 ## 构建与维护
 
 - [构建说明](BUILD.md)：Linux x86_64 项目检查、初始化、构建和打包。
+- [按需 kmod 构建器](KMOD-BUILDER.md)：模块池、严格 ABI 校验、APK 输出和安装边界。
 - [硬件参考](HARDWARE-REFERENCE.md)：板级硬件、关键电气/总线参数和升级回归基线。
 - [硬件状态](HARDWARE-STATUS.md)：当前交付结论、实机证据和后续耐久/扩展验收项。
 

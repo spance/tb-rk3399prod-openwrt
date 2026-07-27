@@ -38,6 +38,11 @@ grep -Fq 'make defconfig' "$SCRIPT_DIR/init.sh" || \
 	fail "init stage does not generate the OpenWrt configuration"
 grep -Fq 'make download' "$SCRIPT_DIR/init.sh" || \
 	fail "init stage does not download OpenWrt source archives"
+grep -Fq 'normalize_kmod_names "$kmods_raw"' "$SCRIPT_DIR/init.sh" || \
+	fail "init stage does not validate the optional kmod pool"
+grep -Fq 'kmod package is already built into the firmware' \
+	"$SCRIPT_DIR/init.sh" || \
+	fail "init stage can demote an in-firmware driver into the optional kmod pool"
 
 # A patch file's own context lines intentionally begin with one space.  When a
 # new patch is itself shown in a repository diff, Git's outer whitespace check
@@ -70,6 +75,7 @@ assert_file "$PROJECT_DIR/configs/openwrt.config"
 assert_file "$PROJECT_DIR/configs/feeds.conf"
 assert_file "$PROJECT_DIR/boot/boot.cmd"
 assert_file "$PROJECT_DIR/scripts/clean.sh"
+assert_file "$PROJECT_DIR/scripts/build-kmod.sh"
 assert_file "$PROJECT_DIR/scripts/make-openwrt-image.sh"
 assert_file "$PROJECT_DIR/scripts/reset.sh"
 assert_file "$PROJECT_DIR/scripts/sync-openwrt-rootfs.sh"
@@ -77,6 +83,7 @@ assert_file "$PROJECT_DIR/scripts/sync-openwrt-kernel-patches.sh"
 assert_file "$PROJECT_DIR/scripts/verify-openwrt-image.sh"
 assert_file "$PROJECT_DIR/docs/BOOT-CHAIN.md"
 assert_file "$PROJECT_DIR/docs/HDMI-CONSOLE.md"
+assert_file "$PROJECT_DIR/docs/KMOD-BUILDER.md"
 assert_file "$PROJECT_DIR/docs/NETWORK-PERFORMANCE.md"
 assert_file "$PROJECT_DIR/docs/USB-TYPE-C.md"
 
@@ -110,6 +117,12 @@ grep -Fq 'bash scripts/clean.sh' "$PROJECT_DIR/Makefile" || \
 	fail "Makefile clean target is missing"
 grep -Fq 'bash scripts/reset.sh' "$PROJECT_DIR/Makefile" || \
 	fail "Makefile reset target is missing"
+grep -Fq 'bash scripts/build-kmod.sh "$(MAKE_JOBS)" "$(KMODS)"' \
+	"$PROJECT_DIR/Makefile" || \
+	fail "Makefile kmod target is missing"
+grep -Fq 'bash scripts/init.sh "$(MAKE_JOBS)" "$(KMODS)"' \
+	"$PROJECT_DIR/Makefile" || \
+	fail "Makefile does not pass the optional kmod pool to init"
 grep -Fq 'mark_managed_dir "$OUT_DIR" out' "$PROJECT_DIR/scripts/build.sh" || \
 	fail "custom output directories are not marked as project-managed"
 grep -Fq 'mark_managed_dir "$DIST_DIR" dist' \
@@ -121,6 +134,21 @@ grep -Fq '"$SCRIPT_DIR/make-openwrt-image.sh"' \
 grep -Fq '"$OUT_DIR/openwrt/openwrt.img"' \
 	"$PROJECT_DIR/scripts/package.sh" || \
 	fail "release package does not require the combined OpenWrt image"
+grep -Fq 'candidate_kernel_version' "$PROJECT_DIR/scripts/build-kmod.sh" || \
+	fail "kmod builder does not validate the candidate kernel"
+grep -Fq 'baseline_kernel_version' "$PROJECT_DIR/scripts/build-kmod.sh" || \
+	fail "kmod builder does not validate against the firmware manifest"
+grep -Fq 'refusing standalone APK output' \
+	"$PROJECT_DIR/scripts/build-kmod.sh" || \
+	fail "kmod builder does not reject a changed kernel ABI"
+grep -Fq 'restore_config' "$PROJECT_DIR/scripts/build-kmod.sh" || \
+	fail "kmod builder does not restore the formal OpenWrt configuration"
+grep -Fq 'out/kmods/' "$PROJECT_DIR/docs/KMOD-BUILDER.md" || \
+	fail "kmod output layout is not documented"
+if grep -Eq -- '--force-depends|insmod[[:space:]]+-f|\.vermagic.*(printf|echo|sed)' \
+	"$PROJECT_DIR/scripts/build-kmod.sh"; then
+	fail "unsafe kmod compatibility override is present"
+fi
 for layout in \
 	'SECTOR_SIZE=512' \
 	'UBOOT_LBA=$((0x2000))' \
@@ -481,6 +509,24 @@ if [ -d "$WORK_DIR/openwrt/.git" ]; then
 		fail "OpenWrt worktree does not use musl"
 	if grep -Fqx 'CONFIG_USE_GLIBC=y' "$WORK_DIR/openwrt/.config"; then
 		fail "OpenWrt worktree unexpectedly selects glibc"
+	fi
+	[ -f "$WORK_DIR/BASELINES" ] || \
+		fail "initialization baseline record is missing"
+	[ "$(grep -c '^KMODS=' "$WORK_DIR/BASELINES")" -eq 1 ] || \
+		fail "initialization baseline does not contain exactly one kmod pool record"
+	kmod_baseline=$(sed -n 's/^KMODS=//p' "$WORK_DIR/BASELINES")
+	if [ -n "$kmod_baseline" ]; then
+		printf '%s\n' "$kmod_baseline" | grep -Eq \
+			'^kmod-[a-z0-9][a-z0-9+._-]*(,kmod-[a-z0-9][a-z0-9+._-]*)*$' || \
+			fail "invalid kmod pool baseline: $kmod_baseline"
+		old_ifs=$IFS
+		IFS=,
+		for package in $kmod_baseline; do
+			grep -Fqx "CONFIG_PACKAGE_$package=m" \
+				"$WORK_DIR/openwrt/.config" || \
+				fail "kmod pool package is not selected as a module: $package"
+		done
+		IFS=$old_ifs
 	fi
 
 	rockchip_makefile="$WORK_DIR/openwrt/target/linux/rockchip/Makefile"

@@ -12,7 +12,7 @@
 
 `configs/openwrt.config` 刻意只保留 target、正式设备 profile、SquashFS、强制 initramfs、Dropbear 外部 SFTP 和 musl 八项选择：板级软件包、内核选项和镜像规则属于 profile 的组成部分，应由同一份 OpenWrt 补丁原子维护，避免 `.config` 再保存一份容易漂移的展开结果。`CONFIG_TARGET_INITRAMFS_FORCE` 只保证每次同时生成 TF/串口恢复 FIT，不会让正式 `openwrt.img` 使用易失的 initramfs 根文件系统。
 
-官方预编译 `.ko` 与本项目内核配置不兼容，不能靠覆盖包管理哈希安全加载。工程不修改 OpenWrt 的模块 ABI 和仓库逻辑；需要增加驱动时，将对应标准 OpenWrt kmod 加入设备 profile 后重新构建完整固件。
+官方预编译 `.ko` 与本项目内核配置不兼容，不能靠覆盖包管理哈希安全加载。工程不修改 OpenWrt 的模块 ABI 和仓库逻辑；非启动关键驱动可使用 [按需 kmod 构建器](KMOD-BUILDER.md)，由同一源码、补丁、Kconfig 和工具链生成 APK，并在交付前核对真实 kernel package 依赖。启动或挂载 overlay 之前必需的驱动仍应放入设备 profile。
 
 ## 硬件范围
 

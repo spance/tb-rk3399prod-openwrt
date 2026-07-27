@@ -15,6 +15,7 @@
 - **双控制台与恢复路径**：UART2 1500000 baud、HDMI Linux console、USB 键盘登录，以及 TF/initramfs 恢复启动。
 - **内置 Web 管理**：LuCI、简体中文界面、uhttpd、Firewall 和 APK 软件包管理随镜像提供，默认使用 HTTPS。
 - **常用管理工具**：内置完整 `stat`、`file`、`find`、`xargs`、SFTP 服务端和 LuCI 简体中文界面，全部使用 OpenWrt musl 软件包。
+- **可验证的按需驱动**：可以从固定源码按包名构建 `kmod-*` APK；只有与当前固件内核依赖完全一致的模块才会交付，不覆盖 ABI，也不强制安装。
 - **面向升级维护**：DTS、Linux 补丁和 rootfs 文件各自只有一个权威来源；全部上游精确锁定到 commit，并由自动检查保护关键不变量。
 
 ## 硬件支持矩阵
@@ -123,6 +124,7 @@ make package
 | `make check` | 离线检查工程结构、脚本、补丁、配置和关键不变量 |
 | `make init` | 获取固定上游和 `packages`/`luci` feed，应用补丁、同步 DTS/内核补丁/rootfs、生成配置并下载全部源包 |
 | `make all` | 验证初始化状态，编译 U-Boot/OpenWrt 并生成部署镜像 |
+| `make kmod KMODS="kmod-..."` | 使用同一工作树构建模块及其 kmod 依赖，ABI 完全匹配才输出 APK |
 | `make package` | 校验 `out/` 并生成 `dist/` 发布包 |
 | `make clean` | 只删除 `out/` 和 `dist/` |
 | `make reset` | 校验 origin/固定 commit 后复位 `.work` 中的上游 Git 工作树 |
@@ -139,6 +141,7 @@ make package
 | `out/openwrt/boot_linux.img`、`rootfs.img` | 组合镜像的分区级组件；前者也可用于保留 rootfs/overlay 的 boot-only 更新 |
 | `out/openwrt/*initramfs-kernel.bin` | TF/串口恢复启动镜像 |
 | `out/openwrt/` 其他文件 | OpenWrt 校验、版本、manifest 和构建信息 |
+| `out/kmods/<kernel>/<request>/` | 与指定固件内核严格匹配的按需 kmod APK、依赖清单和校验文件 |
 | `dist/*.tar.gz` | 只包含两个部署镜像、版本信息和 SHA256 的发布包 |
 
 正常部署只写入 `uboot.img` 和 `openwrt.img`；原厂 `trust@0x4000` 保留不动。只更新内核/DTB 时可以单独写入 `boot_linux.img`，但必须保证它与原 rootfs 的内核模块 ABI 一致。刷写映射、SD/U-Boot 更新、恢复启动和上板验收见 [eMMC 部署与验收](docs/EMMC-INSTALL.md)，启动固件和分区设计依据见 [启动链设计](docs/BOOT-CHAIN.md)。
@@ -150,4 +153,4 @@ make package
 `make clean` 只删除发布产物。若 `.work` 因中断的补丁或人工修改而污染，使用显式的 `make reset`；它会丢弃上游工作树内的 Git 修改，但保留 ignored 下载和编译缓存。修改 DTS、Linux 补丁或 `rootfs/` 后重新运行 `make init`，再构建并按 [硬件状态](docs/HARDWARE-STATUS.md) 和各专项文档完成回归。
 
 Type-C 的一次性诊断使用固件内置 `tb-typec-diag`；设计、日志判读和升级测试见 [USB Type-C SuperSpeed 主机](docs/USB-TYPE-C.md)。
-OpenWrt 官方预编译 `.ko` 与本项目内核配置不兼容，不能靠修改包管理哈希安全加载。需要增加驱动时，应把对应的标准 OpenWrt kmod 加入 profile，并与固件一起重新构建。
+OpenWrt 官方预编译 `.ko` 与本项目内核配置不兼容，不能靠修改包管理哈希安全加载。普通扩展驱动使用 [按需 kmod 构建器](docs/KMOD-BUILDER.md)；启动和挂载 overlay 之前必需的驱动仍应内置固件。
