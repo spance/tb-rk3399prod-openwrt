@@ -38,9 +38,6 @@ grep -Fq 'make defconfig' "$SCRIPT_DIR/init.sh" || \
 	fail "init stage does not generate the OpenWrt configuration"
 grep -Fq 'make download' "$SCRIPT_DIR/init.sh" || \
 	fail "init stage does not download OpenWrt source archives"
-grep -Fq 'invalidate_stale_kernel_abi_cache "$WORK_DIR/openwrt"' \
-	"$SCRIPT_DIR/init.sh" || \
-	fail "init stage does not invalidate stale kernel ABI cache records"
 
 # A patch file's own context lines intentionally begin with one space.  When a
 # new patch is itself shown in a repository diff, Git's outer whitespace check
@@ -71,7 +68,6 @@ assert_file "$PROJECT_DIR/rootfs/etc/uci-defaults/99-tb-network-offload"
 assert_file "$PROJECT_DIR/rootfs/usr/sbin/tb-typec-diag"
 assert_file "$PROJECT_DIR/configs/openwrt.config"
 assert_file "$PROJECT_DIR/configs/feeds.conf"
-assert_file "$KERNEL_ABI_CONFIG"
 assert_file "$PROJECT_DIR/boot/boot.cmd"
 assert_file "$PROJECT_DIR/scripts/clean.sh"
 assert_file "$PROJECT_DIR/scripts/make-openwrt-image.sh"
@@ -81,7 +77,6 @@ assert_file "$PROJECT_DIR/scripts/sync-openwrt-kernel-patches.sh"
 assert_file "$PROJECT_DIR/scripts/verify-openwrt-image.sh"
 assert_file "$PROJECT_DIR/docs/BOOT-CHAIN.md"
 assert_file "$PROJECT_DIR/docs/HDMI-CONSOLE.md"
-assert_file "$PROJECT_DIR/docs/KMODS.md"
 assert_file "$PROJECT_DIR/docs/NETWORK-PERFORMANCE.md"
 assert_file "$PROJECT_DIR/docs/USB-TYPE-C.md"
 
@@ -98,10 +93,6 @@ fi
 grep -Fq '达到板级工程交付条件' \
 	"$PROJECT_DIR/docs/USB-TYPE-C.md" || \
 	fail "Type-C acceptance result is missing from the canonical document"
-grep -Fq 'docs/KMODS.md' "$PROJECT_DIR/README.md" || \
-	fail "README does not link the kernel module policy"
-grep -Fq "$TB_KERNEL_ABI" "$PROJECT_DIR/docs/KMODS.md" || \
-	fail "kernel module documentation omits the native ABI"
 if grep -R -Eq '待新镜像验收|重构后的热插拔待|Type-C.*生命周期重构待验收' \
 	"$PROJECT_DIR/README.md" "$PROJECT_DIR/docs"; then
 	fail "stale Type-C pre-acceptance wording remains in project documentation"
@@ -127,19 +118,6 @@ grep -Fq 'mark_managed_dir "$DIST_DIR" dist' \
 grep -Fq '"$SCRIPT_DIR/make-openwrt-image.sh"' \
 	"$PROJECT_DIR/scripts/build.sh" || \
 	fail "OpenWrt deployment image is not assembled by the build stage"
-grep -Fq 'native kernel ABI differs from the audited baseline' \
-	"$PROJECT_DIR/scripts/build.sh" || \
-	fail "build stage does not verify the native kernel ABI"
-grep -Fq 'manifest does not expose the audited native kernel ABI' \
-	"$PROJECT_DIR/scripts/build.sh" || \
-	fail "build stage does not verify the manifest kernel ABI"
-grep -Fq 'kernel-abi.buildinfo' "$PROJECT_DIR/scripts/build.sh" || \
-	fail "build stage does not publish the kernel ABI record"
-grep -Fq 'External kmod policy' "$PROJECT_DIR/scripts/package.sh" || \
-	fail "release metadata omits the external kmod policy"
-grep -Fq 'stale or inconsistent OpenWrt kernel ABI record' \
-	"$PROJECT_DIR/scripts/package.sh" || \
-	fail "package stage does not reject stale kernel ABI records"
 grep -Fq '"$OUT_DIR/openwrt/openwrt.img"' \
 	"$PROJECT_DIR/scripts/package.sh" || \
 	fail "release package does not require the combined OpenWrt image"
@@ -212,28 +190,9 @@ assert_exact_line "$PROJECT_DIR/configs/openwrt.config" \
 	'CONFIG_TARGET_ROOTFS_INITRAMFS=y'
 assert_exact_line "$PROJECT_DIR/configs/openwrt.config" \
 	'CONFIG_DROPBEAR_SFTPSERVER=y'
-
-[ "$TB_KERNEL_OPENWRT_COMMIT" = "$OPENWRT_COMMIT" ] || \
-	fail "kernel ABI OpenWrt commit differs from the project baseline"
-[ "$TB_KERNEL_LINUX_VERSION" = "$LINUX_VERSION" ] || \
-	fail "kernel ABI Linux version differs from the project baseline"
-[ "$TB_KERNEL_LINUX_RELEASE" = 1 ] || \
-	fail "unexpected native kernel package release"
-printf '%s\n' "$TB_KERNEL_ABI" | grep -Eq '^[0-9a-f]{32}$' || \
-	fail "invalid native kernel ABI hash: $TB_KERNEL_ABI"
-if grep -Fqx 'CONFIG_ALL_KMODS=y' "$PROJECT_DIR/configs/openwrt.config"; then
-	fail "ALL_KMODS must not be enabled implicitly in the production image build"
-fi
-if [ -e "$PROJECT_DIR/rootfs/etc/apk/repositories.d/tb-official-kmods.list" ]; then
-	fail "unsafe official prebuilt kmod repository remains in the rootfs"
-fi
-if grep -Eq 'EXPORT_SYMBOL(_GPL)?|^[-+]-- a/(include/|arch/[^/]+/include/)' \
-	"$kernel_patch_dir"/*.patch; then
-	fail "kernel patch changes exported symbols or public headers; kernel ABI requires a new audit"
-fi
-if grep -Eq 'EXPORT_SYMBOL(_GPL)?|^\+--- a/(include/|arch/[^/]+/include/)' \
-	"$openwrt_patch"; then
-	fail "embedded board kernel patch changes exported symbols or public headers; kernel ABI requires a new audit"
+assert_exact_line "$PROJECT_DIR/configs/openwrt.config" 'CONFIG_USE_MUSL=y'
+if grep -Fqx 'CONFIG_USE_GLIBC=y' "$PROJECT_DIR/configs/openwrt.config"; then
+	fail "glibc must not be selected for the OpenWrt target"
 fi
 
 [ "$(wc -l < "$PROJECT_DIR/configs/feeds.conf")" -eq 2 ] || \
@@ -518,6 +477,11 @@ if [ -d "$WORK_DIR/openwrt/.git" ]; then
 	grep -Fqx 'CONFIG_DROPBEAR_SFTPSERVER=y' \
 		"$WORK_DIR/openwrt/.config" || \
 		fail "OpenWrt worktree does not enable the Dropbear SFTP subsystem"
+	grep -Fqx 'CONFIG_USE_MUSL=y' "$WORK_DIR/openwrt/.config" || \
+		fail "OpenWrt worktree does not use musl"
+	if grep -Fqx 'CONFIG_USE_GLIBC=y' "$WORK_DIR/openwrt/.config"; then
+		fail "OpenWrt worktree unexpectedly selects glibc"
+	fi
 
 	rockchip_makefile="$WORK_DIR/openwrt/target/linux/rockchip/Makefile"
 	kernel_patchver=$(sed -n \

@@ -59,18 +59,6 @@ build_openwrt()
 		fi
 	)
 
-	mapfile -d '' kernel_abi_files < <(find "$source/build_dir" -type f \
-		-path "*/linux-rockchip_armv8/linux-$LINUX_VERSION/.vermagic" \
-		-print0)
-	[ "${#kernel_abi_files[@]}" -eq 1 ] || \
-		fail "expected exactly one kernel ABI record, found ${#kernel_abi_files[@]}"
-	kernel_build_dir=$(dirname -- "${kernel_abi_files[0]}")
-	kernel_abi=$(cat "$kernel_build_dir/.vermagic")
-	[ "$kernel_abi" = "$TB_KERNEL_ABI" ] || \
-		fail "native kernel ABI differs from the audited baseline: $kernel_abi"
-	[ -f "$kernel_build_dir/.config.set" ] || \
-		fail "final kernel configuration record is missing"
-
 	target_dir="$source/bin/targets/rockchip/armv8"
 	[ -d "$target_dir" ] || fail "OpenWrt output not found: $target_dir"
 	dest="$OUT_DIR/openwrt"
@@ -85,27 +73,6 @@ build_openwrt()
 		-name profiles.json \) \
 		-print0)
 	[ "$found" -eq 1 ] || fail "no TB-RK3399ProD OpenWrt output was found"
-
-	manifest_count=0
-	manifest=
-	while IFS= read -r -d '' file; do
-		manifest=$file
-		manifest_count=$((manifest_count + 1))
-	done < <(find "$dest" -maxdepth 1 -type f \
-		-name '*toybrick_tb-rk3399prod.manifest' -print0)
-	[ "$manifest_count" -eq 1 ] || \
-		fail "expected exactly one TB-RK3399ProD manifest, found $manifest_count"
-	grep -Fqx "kernel - $LINUX_VERSION~$TB_KERNEL_ABI-r$TB_KERNEL_LINUX_RELEASE" \
-		"$manifest" || \
-		fail "OpenWrt manifest does not expose the audited native kernel ABI"
-
-	printf '%s\n' \
-		"openwrt_commit=$OPENWRT_COMMIT" \
-		"linux_version=$LINUX_VERSION" \
-		"linux_release=$TB_KERNEL_LINUX_RELEASE" \
-		"kernel_kconfig_abi=$kernel_abi" \
-		> "$dest/kernel-abi.buildinfo"
-	cp "$kernel_build_dir/.config.set" "$dest/kernel.config"
 
 	fit_count=0
 	fit_image=

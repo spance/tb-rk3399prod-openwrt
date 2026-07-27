@@ -7,13 +7,12 @@
 - target/subtarget：`rockchip/armv8`。
 - `configs/openwrt.config`：唯一正式目标配置，PCIe host/PHY/供电默认启用。
 - `configs/feeds.conf`：只启用当前镜像需要的 `packages` 和 `luci` 两个 feed，并分别锁定到 OpenWrt 25.12.5 官方源码使用的精确 commit；routing、telephony 和 video feed 不下载。
-- `configs/kernel-abi.conf`：固定本项目真实的 Kconfig ABI。构建不会覆盖哈希伪装成 OpenWrt 官方内核。
 
 板级 profile、持久化镜像规则、DTB Makefile 和必要的内核 binding 修改统一由 `patches/openwrt/0001-tb-rk3399prod-board-support.patch` 加入。完整板级设备树不嵌入补丁；`dts/` 是唯一权威来源，`make init` 调用 `scripts/sync-openwrt-dts.sh`，从 Rockchip target 的 `KERNEL_PATCHVER` 自动确定 `files-<版本>` 目录并逐文件覆写。板级启动服务和 UCI 初始值以 `rootfs/` 为唯一来源，由 `scripts/sync-openwrt-rootfs.sh` 同步到 Rockchip base-files。修改这些文件后重新执行 `make init` 再构建，不需要手工刷新重复补丁。
 
-`configs/openwrt.config` 刻意只保留 target、正式设备 profile、SquashFS、强制 initramfs 和 Dropbear 外部 SFTP 支持七项选择：板级软件包、内核选项和镜像规则属于 profile 的组成部分，应由同一份 OpenWrt 补丁原子维护，避免 `.config` 再保存一份容易漂移的展开结果。`CONFIG_TARGET_INITRAMFS_FORCE` 只保证每次同时生成 TF/串口恢复 FIT，不会让正式 `openwrt.img` 使用易失的 initramfs 根文件系统。
+`configs/openwrt.config` 刻意只保留 target、正式设备 profile、SquashFS、强制 initramfs、Dropbear 外部 SFTP 和 musl 八项选择：板级软件包、内核选项和镜像规则属于 profile 的组成部分，应由同一份 OpenWrt 补丁原子维护，避免 `.config` 再保存一份容易漂移的展开结果。`CONFIG_TARGET_INITRAMFS_FORCE` 只保证每次同时生成 TF/串口恢复 FIT，不会让正式 `openwrt.img` 使用易失的 initramfs 根文件系统。
 
-官方预编译模块与本项目内核的 `struct module` 布局已实机确认不一致，不能靠覆盖包管理哈希安全加载。当前策略、`ALL_KMODS` 的作用和后续扩展路线见 [内核模块策略](KMODS.md)。
+官方预编译 `.ko` 与本项目内核配置不兼容，不能靠覆盖包管理哈希安全加载。工程不修改 OpenWrt 的模块 ABI 和仓库逻辑；需要增加驱动时，将对应标准 OpenWrt kmod 加入设备 profile 后重新构建完整固件。
 
 ## 硬件范围
 
@@ -44,6 +43,8 @@ Mini-PCIe 插座的机械外形不代表本板提供 PCIe 电气连接：它只�
 - 通用数据访问：`curl`、`ca-bundle`、`jq`。
 
 基础镜像只为 BusyBox 缺失或功能明显不足的文件操作引入独立 GNU 工具，不安装完整 coreutils/findutils 元包，也不预装编辑器或编译器。`dnsmasq-full` 继续使用 OpenWrt 原有 `/etc/config/dhcp` 和启动服务，其额外能力只有在对应配置中启用后才改变网络行为。
+
+正式配置显式固定 `CONFIG_USE_MUSL=y`。上述工具全部由固定的 OpenWrt 25.12.5 `packages`/`luci` feed 面向目标架构编译，依赖的 `libc` 是 OpenWrt musl 1.2.5，不安装或链接 glibc；`file` 只额外依赖 `libmagic`，`less` 依赖 `libncursesw6`，SFTP 服务端只依赖 musl `libc`。
 
 ## LuCI Web 管理
 

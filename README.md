@@ -14,7 +14,7 @@
 - **完整 USB 3.0 主机能力**：蓝色 Type-A 与 Type-C 均通过 UAS/`5000M` 高速存储测试；Type-C 支持正反插、热拔插和完整 runtime-PM 生命周期。
 - **双控制台与恢复路径**：UART2 1500000 baud、HDMI Linux console、USB 键盘登录，以及 TF/initramfs 恢复启动。
 - **内置 Web 管理**：LuCI、简体中文界面、uhttpd、Firewall 和 APK 软件包管理随镜像提供，默认使用 HTTPS。
-- **真实内核 ABI**：构建与发布均校验本项目原生 Kconfig ABI，不用修改哈希伪装官方模块兼容；额外驱动与当前内核同源构建。
+- **常用管理工具**：内置完整 `stat`、`file`、`find`、`xargs`、SFTP 服务端和 LuCI 简体中文界面，全部使用 OpenWrt musl 软件包。
 - **面向升级维护**：DTS、Linux 补丁和 rootfs 文件各自只有一个权威来源；全部上游精确锁定到 commit，并由自动检查保护关键不变量。
 
 ## 硬件支持矩阵
@@ -95,7 +95,7 @@ Type-C 不是把 Linux 4.4 代码逐行复制到 6.12：板级时序和生命周
 
 ```text
 boot/             boot_linux 容器使用的 U-Boot 启动脚本
-configs/          OpenWrt 最小配置、精确锁定的 feed 和内核 ABI 基线
+configs/          OpenWrt 最小配置和精确锁定的 feed
 docs/             架构、构建、硬件、部署和维护文档
 dts/              TB-RK3399ProD 唯一权威 DTS/DTSI
 patches/openwrt/  OpenWrt profile、内核配置和镜像规则
@@ -138,7 +138,6 @@ make package
 | `out/openwrt/openwrt.img` | 从 LBA `0x6000` 连续写入的完整 OpenWrt 镜像，包含启动容器和 SquashFS rootfs |
 | `out/openwrt/boot_linux.img`、`rootfs.img` | 组合镜像的分区级组件；前者也可用于保留 rootfs/overlay 的 boot-only 更新 |
 | `out/openwrt/*initramfs-kernel.bin` | TF/串口恢复启动镜像 |
-| `out/openwrt/kernel-abi.buildinfo`、`kernel.config` | 本项目原生 Kconfig ABI 与最终 Linux 配置，供升级审计 |
 | `out/openwrt/` 其他文件 | OpenWrt 校验、版本、manifest 和构建信息 |
 | `dist/*.tar.gz` | 只包含两个部署镜像、版本信息和 SHA256 的发布包 |
 
@@ -151,4 +150,4 @@ make package
 `make clean` 只删除发布产物。若 `.work` 因中断的补丁或人工修改而污染，使用显式的 `make reset`；它会丢弃上游工作树内的 Git 修改，但保留 ignored 下载和编译缓存。修改 DTS、Linux 补丁或 `rootfs/` 后重新运行 `make init`，再构建并按 [硬件状态](docs/HARDWARE-STATUS.md) 和各专项文档完成回归。
 
 Type-C 的一次性诊断使用固件内置 `tb-typec-diag`；设计、日志判读和升级测试见 [USB Type-C SuperSpeed 主机](docs/USB-TYPE-C.md)。
-需要增加内核模块时，先阅读 [内核模块策略](docs/KMODS.md)。官方预编译 `.ko` 已实机证明不能仅靠覆盖包管理哈希兼容；驱动应加入 profile 重编，或来自与本项目完全相同构建基线的软件仓库。
+OpenWrt 官方预编译 `.ko` 与本项目内核配置不兼容，不能靠修改包管理哈希安全加载。需要增加驱动时，应把对应的标准 OpenWrt kmod 加入 profile，并与固件一起重新构建。

@@ -10,23 +10,13 @@ bash "$SCRIPT_DIR/check-env.sh"
 
 for required in \
 	"$OUT_DIR/uboot/uboot.img" \
-	"$OUT_DIR/openwrt/openwrt.img" \
-	"$OUT_DIR/openwrt/kernel-abi.buildinfo"; do
+	"$OUT_DIR/openwrt/openwrt.img"; do
 	[ -e "$required" ] || fail "missing build output: $required; run make all first"
 done
 [ "$(stat -c '%s' "$OUT_DIR/uboot/uboot.img")" -eq 4194304 ] || \
 	fail "uboot.img is not exactly 4 MiB"
 bash "$SCRIPT_DIR/verify-openwrt-image.sh" \
 	"$OUT_DIR/openwrt/openwrt.img" >/dev/null
-abi_info="$OUT_DIR/openwrt/kernel-abi.buildinfo"
-for expected in \
-	"openwrt_commit=$OPENWRT_COMMIT" \
-	"linux_version=$LINUX_VERSION" \
-	"linux_release=$TB_KERNEL_LINUX_RELEASE" \
-	"kernel_kconfig_abi=$TB_KERNEL_ABI"; do
-	[ "$(grep -Fxc -- "$expected" "$abi_info")" -eq 1 ] || \
-		fail "stale or inconsistent OpenWrt kernel ABI record: $expected"
-done
 
 mark_managed_dir "$DIST_DIR" dist
 stage=$(mktemp -d "$DIST_DIR/.stage.XXXXXX")
@@ -45,8 +35,6 @@ printf '%s\n' \
 	"toolchain: $TOOLCHAIN_COMMIT" \
 	"OpenWrt: $OPENWRT_TAG ($OPENWRT_COMMIT)" \
 	"Linux: $LINUX_VERSION" \
-	"Kernel Kconfig ABI: $TB_KERNEL_ABI" \
-	"External kmod policy: modules must be built from this exact project kernel baseline" \
 	"uboot.img: flash at LBA 0x$(printf '%x' "$UBOOT_LBA")" \
 	"openwrt.img: flash at LBA 0x$(printf '%x' "$BOOT_LINUX_LBA")" \
 	"openwrt.img rootfs: byte offset $OPENWRT_ROOTFS_OFFSET, eMMC LBA 0x$(printf '%x' "$ROOTFS_LBA")" \
