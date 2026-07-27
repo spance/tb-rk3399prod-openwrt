@@ -38,13 +38,6 @@ grep -Fq 'make defconfig' "$SCRIPT_DIR/init.sh" || \
 	fail "init stage does not generate the OpenWrt configuration"
 grep -Fq 'make download' "$SCRIPT_DIR/init.sh" || \
 	fail "init stage does not download OpenWrt source archives"
-grep -Fq 'include/tb-kmod-compat.mk' "$SCRIPT_DIR/init.sh" || \
-	fail "init stage does not synchronize the kmod compatibility baseline"
-grep -Fq 'wget -nv -O "$destination" "$TB_KMOD_REPOSITORY"' \
-	"$SCRIPT_DIR/init.sh" || \
-	fail "init stage does not download the pinned official kmod index"
-grep -Fq '[ -s "$destination" ]' "$SCRIPT_DIR/init.sh" || \
-	fail "init stage does not reject an empty official kmod index"
 
 # A patch file's own context lines intentionally begin with one space.  When a
 # new patch is itself shown in a repository diff, Git's outer whitespace check
@@ -61,12 +54,10 @@ if git -C "$PROJECT_DIR" ls-files | grep -Eq \
 fi
 
 openwrt_patch="$PROJECT_DIR/patches/openwrt/0001-tb-rk3399prod-board-support.patch"
-kmod_compat_patch="$PROJECT_DIR/patches/openwrt/0002-tb-rk3399prod-official-kmod-abi-compat.patch"
 kernel_patch_dir="$PROJECT_DIR/patches/kernel"
 typec_phy_patch="$kernel_patch_dir/144-phy-rockchip-typec-orientation-switch.patch"
 typec_dwc_patch="$kernel_patch_dir/145-usb-dwc3-rk3399-typec-runtime-pm.patch"
 assert_file "$openwrt_patch"
-assert_file "$kmod_compat_patch"
 assert_file "$typec_phy_patch"
 assert_file "$typec_dwc_patch"
 assert_file "$PROJECT_DIR/dts/rk3399pro-toybrick-prod.dts"
@@ -77,8 +68,7 @@ assert_file "$PROJECT_DIR/rootfs/etc/uci-defaults/99-tb-network-offload"
 assert_file "$PROJECT_DIR/rootfs/usr/sbin/tb-typec-diag"
 assert_file "$PROJECT_DIR/configs/openwrt.config"
 assert_file "$PROJECT_DIR/configs/feeds.conf"
-assert_file "$KMOD_COMPAT_CONFIG"
-assert_file "$PROJECT_DIR/rootfs/etc/apk/repositories.d/tb-official-kmods.list"
+assert_file "$KERNEL_ABI_CONFIG"
 assert_file "$PROJECT_DIR/boot/boot.cmd"
 assert_file "$PROJECT_DIR/scripts/clean.sh"
 assert_file "$PROJECT_DIR/scripts/make-openwrt-image.sh"
@@ -88,7 +78,7 @@ assert_file "$PROJECT_DIR/scripts/sync-openwrt-kernel-patches.sh"
 assert_file "$PROJECT_DIR/scripts/verify-openwrt-image.sh"
 assert_file "$PROJECT_DIR/docs/BOOT-CHAIN.md"
 assert_file "$PROJECT_DIR/docs/HDMI-CONSOLE.md"
-assert_file "$PROJECT_DIR/docs/KMOD-COMPATIBILITY.md"
+assert_file "$PROJECT_DIR/docs/KMODS.md"
 assert_file "$PROJECT_DIR/docs/NETWORK-PERFORMANCE.md"
 assert_file "$PROJECT_DIR/docs/USB-TYPE-C.md"
 
@@ -105,14 +95,10 @@ fi
 grep -Fq '达到板级工程交付条件' \
 	"$PROJECT_DIR/docs/USB-TYPE-C.md" || \
 	fail "Type-C acceptance result is missing from the canonical document"
-grep -Fq 'docs/KMOD-COMPATIBILITY.md' "$PROJECT_DIR/README.md" || \
-	fail "README does not link the official kmod compatibility policy"
-grep -Fq "$TB_KMOD_NATIVE_ABI" \
-	"$PROJECT_DIR/docs/KMOD-COMPATIBILITY.md" || \
-	fail "kmod compatibility documentation omits the native ABI"
-grep -Fq "$TB_KMOD_OFFICIAL_ABI" \
-	"$PROJECT_DIR/docs/KMOD-COMPATIBILITY.md" || \
-	fail "kmod compatibility documentation omits the official ABI"
+grep -Fq 'docs/KMODS.md' "$PROJECT_DIR/README.md" || \
+	fail "README does not link the kernel module policy"
+grep -Fq "$TB_KERNEL_ABI" "$PROJECT_DIR/docs/KMODS.md" || \
+	fail "kernel module documentation omits the native ABI"
 if grep -R -Eq '待新镜像验收|重构后的热插拔待|Type-C.*生命周期重构待验收' \
 	"$PROJECT_DIR/README.md" "$PROJECT_DIR/docs"; then
 	fail "stale Type-C pre-acceptance wording remains in project documentation"
@@ -138,18 +124,19 @@ grep -Fq 'mark_managed_dir "$DIST_DIR" dist' \
 grep -Fq '"$SCRIPT_DIR/make-openwrt-image.sh"' \
 	"$PROJECT_DIR/scripts/build.sh" || \
 	fail "OpenWrt deployment image is not assembled by the build stage"
-grep -Fq '.vermagic.native' "$PROJECT_DIR/scripts/build.sh" || \
-	fail "build stage does not verify the native kmod ABI"
-grep -Fq 'manifest does not expose the pinned official kmod ABI' \
+grep -Fq 'native kernel ABI differs from the audited baseline' \
 	"$PROJECT_DIR/scripts/build.sh" || \
-	fail "build stage does not verify the package-visible kmod ABI"
-grep -Fq 'kmod-compat.buildinfo' "$PROJECT_DIR/scripts/build.sh" || \
-	fail "build stage does not publish the kmod compatibility record"
-grep -Fq 'Package-visible kmod ABI' "$PROJECT_DIR/scripts/package.sh" || \
-	fail "release metadata omits the official kmod compatibility ABI"
-grep -Fq 'stale or inconsistent OpenWrt kmod compatibility record' \
+	fail "build stage does not verify the native kernel ABI"
+grep -Fq 'manifest does not expose the audited native kernel ABI' \
+	"$PROJECT_DIR/scripts/build.sh" || \
+	fail "build stage does not verify the manifest kernel ABI"
+grep -Fq 'kernel-abi.buildinfo' "$PROJECT_DIR/scripts/build.sh" || \
+	fail "build stage does not publish the kernel ABI record"
+grep -Fq 'External kmod policy' "$PROJECT_DIR/scripts/package.sh" || \
+	fail "release metadata omits the external kmod policy"
+grep -Fq 'stale or inconsistent OpenWrt kernel ABI record' \
 	"$PROJECT_DIR/scripts/package.sh" || \
-	fail "package stage does not reject stale pre-compatibility images"
+	fail "package stage does not reject stale kernel ABI records"
 grep -Fq '"$OUT_DIR/openwrt/openwrt.img"' \
 	"$PROJECT_DIR/scripts/package.sh" || \
 	fail "release package does not require the combined OpenWrt image"
@@ -185,8 +172,8 @@ grep -Fq 'git -C "$repo" clean -fd' \
 	-type d | wc -l)" -eq 0 ] || \
 	fail "OpenWrt patch directory must not contain subdirectories"
 [ "$(find "$PROJECT_DIR/patches/openwrt" -maxdepth 1 -type f \
-	-name '*.patch' | wc -l)" -eq 2 ] || \
-	fail "exactly two current OpenWrt patches are required"
+	-name '*.patch' | wc -l)" -eq 1 ] || \
+	fail "exactly one current OpenWrt patch is required"
 for patch in "$PROJECT_DIR"/patches/openwrt/*.patch; do
 	git apply --numstat "$patch" >/dev/null
 done
@@ -220,41 +207,30 @@ assert_exact_line "$PROJECT_DIR/configs/openwrt.config" \
 	'CONFIG_TARGET_ROOTFS_SQUASHFS=y'
 assert_exact_line "$PROJECT_DIR/configs/openwrt.config" \
 	'CONFIG_TARGET_ROOTFS_INITRAMFS=y'
+assert_exact_line "$PROJECT_DIR/configs/openwrt.config" \
+	'CONFIG_DROPBEAR_SFTPSERVER=y'
 
-[ "$TB_KMOD_OPENWRT_COMMIT" = "$OPENWRT_COMMIT" ] || \
-	fail "kmod compatibility OpenWrt commit differs from the project baseline"
-[ "$TB_KMOD_LINUX_VERSION" = "$LINUX_VERSION" ] || \
-	fail "kmod compatibility Linux version differs from the project baseline"
-[ "$TB_KMOD_LINUX_RELEASE" = 1 ] || \
-	fail "unexpected official kmod Linux release"
-for abi in "$TB_KMOD_NATIVE_ABI" "$TB_KMOD_OFFICIAL_ABI"; do
-	printf '%s\n' "$abi" | grep -Eq '^[0-9a-f]{32}$' || \
-		fail "invalid kmod ABI hash: $abi"
-done
-[ "$TB_KMOD_NATIVE_ABI" != "$TB_KMOD_OFFICIAL_ABI" ] || \
-	fail "native and official kmod ABI hashes must remain distinct and explicit"
-expected_kmod_repository="https://downloads.openwrt.org/releases/$OPENWRT_VERSION/targets/rockchip/armv8/kmods/$LINUX_VERSION-$TB_KMOD_LINUX_RELEASE-$TB_KMOD_OFFICIAL_ABI/packages.adb"
-[ "$TB_KMOD_REPOSITORY" = "$expected_kmod_repository" ] || \
-	fail "official kmod repository is not derived from the pinned baseline"
-assert_exact_line \
-	"$PROJECT_DIR/rootfs/etc/apk/repositories.d/tb-official-kmods.list" \
-	"$TB_KMOD_REPOSITORY"
-grep -Fq '.vermagic.native' "$kmod_compat_patch" || \
-	fail "kmod compatibility patch does not preserve the native ABI hash"
-grep -Fq "printf '%s\\n' '\$(TB_KMOD_NATIVE_ABI)' | cmp -s - \$(LINUX_DIR)/.vermagic.native" \
-	"$kmod_compat_patch" || \
-	fail "kmod compatibility patch does not compare the native ABI without Make expansion"
-grep -Fq 'TB_KMOD_NATIVE_ABI' "$kmod_compat_patch" || \
-	fail "kmod compatibility patch does not enforce the native ABI baseline"
-grep -Fq 'TB_KMOD_OFFICIAL_ABI' "$kmod_compat_patch" || \
-	fail "kmod compatibility patch does not expose the official ABI"
+[ "$TB_KERNEL_OPENWRT_COMMIT" = "$OPENWRT_COMMIT" ] || \
+	fail "kernel ABI OpenWrt commit differs from the project baseline"
+[ "$TB_KERNEL_LINUX_VERSION" = "$LINUX_VERSION" ] || \
+	fail "kernel ABI Linux version differs from the project baseline"
+[ "$TB_KERNEL_LINUX_RELEASE" = 1 ] || \
+	fail "unexpected native kernel package release"
+printf '%s\n' "$TB_KERNEL_ABI" | grep -Eq '^[0-9a-f]{32}$' || \
+	fail "invalid native kernel ABI hash: $TB_KERNEL_ABI"
+if grep -Fqx 'CONFIG_ALL_KMODS=y' "$PROJECT_DIR/configs/openwrt.config"; then
+	fail "ALL_KMODS must not be enabled implicitly in the production image build"
+fi
+if [ -e "$PROJECT_DIR/rootfs/etc/apk/repositories.d/tb-official-kmods.list" ]; then
+	fail "unsafe official prebuilt kmod repository remains in the rootfs"
+fi
 if grep -Eq 'EXPORT_SYMBOL(_GPL)?|^[-+]-- a/(include/|arch/[^/]+/include/)' \
 	"$kernel_patch_dir"/*.patch; then
-	fail "kernel patch changes exported symbols or public headers; official kmod compatibility requires a new ABI audit"
+	fail "kernel patch changes exported symbols or public headers; kernel ABI requires a new audit"
 fi
 if grep -Eq 'EXPORT_SYMBOL(_GPL)?|^\+--- a/(include/|arch/[^/]+/include/)' \
 	"$openwrt_patch"; then
-	fail "embedded board kernel patch changes exported symbols or public headers; official kmod compatibility requires a new ABI audit"
+	fail "embedded board kernel patch changes exported symbols or public headers; kernel ABI requires a new audit"
 fi
 
 [ "$(wc -l < "$PROJECT_DIR/configs/feeds.conf")" -eq 2 ] || \
@@ -278,10 +254,13 @@ grep -Fq 'root=PARTLABEL=rootfs' "$PROJECT_DIR/boot/boot.cmd" || \
 if grep -Eq 'kmod-rtw88|rtl8822|mac80211|cfg80211' "$openwrt_patch"; then
 	fail "unused wireless drivers or firmware remain in the device profile"
 fi
-for package in bash blkid blockdev dnsmasq-full fdisk fstrim lsblk lscpu \
-	mount-utils wdctl ca-bundle curl htop jq lsof strace ip-full \
-	tcpdump-mini kmod-fs-exfat kmod-fs-vfat kmod-inet-diag \
-	kmod-nft-tproxy kmod-tun luci-ssl python3-light unzip; do
+for package in bash blkid blockdev coreutils-base64 coreutils-stat \
+	dnsmasq-full fdisk file findutils-find findutils-xargs fstrim lsblk \
+	lscpu mount-utils wdctl ca-bundle curl htop jq less lsof \
+	luci-ssl luci-i18n-base-zh-cn luci-i18n-firewall-zh-cn \
+	luci-i18n-package-manager-zh-cn openssh-sftp-server strace tree \
+	ip-full tcpdump-mini kmod-fs-exfat kmod-fs-vfat kmod-inet-diag \
+	kmod-nft-tproxy kmod-tun python3-light unzip; do
 	grep -Eq "[[:space:]]$package([[:space:]\\\\]|$)" "$openwrt_patch" || \
 		fail "required maintenance package is missing: $package"
 done
@@ -523,9 +502,6 @@ if [ -d "$WORK_DIR/openwrt/.git" ]; then
 	for patch in "$PROJECT_DIR"/patches/openwrt/*.patch; do
 		git -C "$WORK_DIR/openwrt" apply --reverse --check "$patch"
 	done
-	cmp -s "$KMOD_COMPAT_CONFIG" \
-		"$WORK_DIR/openwrt/include/tb-kmod-compat.mk" || \
-		fail "OpenWrt worktree kmod compatibility baseline is not synchronized"
 	cmp -s "$PROJECT_DIR/configs/feeds.conf" \
 		"$WORK_DIR/openwrt/feeds.conf" || \
 		fail "OpenWrt worktree feeds.conf differs from the canonical file"
@@ -536,6 +512,9 @@ if [ -d "$WORK_DIR/openwrt/.git" ]; then
 	grep -Fqx 'CONFIG_TARGET_rockchip_armv8_DEVICE_toybrick_tb-rk3399prod=y' \
 		"$WORK_DIR/openwrt/.config" || \
 		fail "OpenWrt worktree does not select the board profile"
+	grep -Fqx 'CONFIG_DROPBEAR_SFTPSERVER=y' \
+		"$WORK_DIR/openwrt/.config" || \
+		fail "OpenWrt worktree does not enable the Dropbear SFTP subsystem"
 
 	rockchip_makefile="$WORK_DIR/openwrt/target/linux/rockchip/Makefile"
 	kernel_patchver=$(sed -n \

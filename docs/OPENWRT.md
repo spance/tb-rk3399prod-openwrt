@@ -7,13 +7,13 @@
 - target/subtarget：`rockchip/armv8`。
 - `configs/openwrt.config`：唯一正式目标配置，PCIe host/PHY/供电默认启用。
 - `configs/feeds.conf`：只启用当前镜像需要的 `packages` 和 `luci` 两个 feed，并分别锁定到 OpenWrt 25.12.5 官方源码使用的精确 commit；routing、telephony 和 video feed 不下载。
-- `configs/kmod-compat.conf`：同时固定本项目原生 Kconfig ABI、向 APK 暴露的 OpenWrt 官方 ABI，以及精确到版本、target、内核和哈希的官方 kmod 仓库。构建不会根据远端目录自动追随新 ABI。
+- `configs/kernel-abi.conf`：固定本项目真实的 Kconfig ABI。构建不会覆盖哈希伪装成 OpenWrt 官方内核。
 
 板级 profile、持久化镜像规则、DTB Makefile 和必要的内核 binding 修改统一由 `patches/openwrt/0001-tb-rk3399prod-board-support.patch` 加入。完整板级设备树不嵌入补丁；`dts/` 是唯一权威来源，`make init` 调用 `scripts/sync-openwrt-dts.sh`，从 Rockchip target 的 `KERNEL_PATCHVER` 自动确定 `files-<版本>` 目录并逐文件覆写。板级启动服务和 UCI 初始值以 `rootfs/` 为唯一来源，由 `scripts/sync-openwrt-rootfs.sh` 同步到 Rockchip base-files。修改这些文件后重新执行 `make init` 再构建，不需要手工刷新重复补丁。
 
-`configs/openwrt.config` 刻意只保留 target、正式设备 profile、SquashFS 和强制 initramfs 六项选择：板级软件包、内核选项和镜像规则属于 profile 的组成部分，应由同一份 OpenWrt 补丁原子维护，避免 `.config` 再保存一份容易漂移的展开结果。`CONFIG_TARGET_INITRAMFS_FORCE` 只保证每次同时生成 TF/串口恢复 FIT，不会让正式 `openwrt.img` 使用易失的 initramfs 根文件系统。
+`configs/openwrt.config` 刻意只保留 target、正式设备 profile、SquashFS、强制 initramfs 和 Dropbear 外部 SFTP 支持七项选择：板级软件包、内核选项和镜像规则属于 profile 的组成部分，应由同一份 OpenWrt 补丁原子维护，避免 `.config` 再保存一份容易漂移的展开结果。`CONFIG_TARGET_INITRAMFS_FORCE` 只保证每次同时生成 TF/串口恢复 FIT，不会让正式 `openwrt.img` 使用易失的 initramfs 根文件系统。
 
-`patches/openwrt/0002-tb-rk3399prod-official-kmod-abi-compat.patch` 保存真实配置哈希并对 APK 暴露固定官方哈希，使经过验收的通用官方模块可以安装；详细机制、支持边界和升级审计见 [官方 kmod 兼容层](KMOD-COMPATIBILITY.md)。
+官方预编译模块与本项目内核的 `struct module` 布局已实机确认不一致，不能靠覆盖包管理哈希安全加载。当前策略、`ALL_KMODS` 的作用和后续扩展路线见 [内核模块策略](KMODS.md)。
 
 ## 硬件范围
 
@@ -36,18 +36,18 @@ Mini-PCIe 插座的机械外形不代表本板提供 PCIe 电气连接：它只�
 
 ## 内置维护工具
 
-- 存储：`lsblk`、`blkid`、`blockdev`、`fdisk`、`fstrim`、`findmnt`（由 `mount-utils` 提供）、`mmc-utils`；内置 FAT32 与 exFAT 文件系统驱动，覆盖常见 U 盘和移动硬盘。
+- 存储与文件：`lsblk`、`blkid`、`blockdev`、`fdisk`、`fstrim`、`findmnt`（由 `mount-utils` 提供）、`mmc-utils`、GNU `stat`、`file`、`find`、`xargs`、`tree`、`less` 和 `base64`；内置 FAT32 与 exFAT 文件系统驱动，覆盖常见 U 盘和移动硬盘。
 - 板级与进程：`lscpu`、`wdctl`、`htop`、`lsof`、`strace`。
 - 网络：完整功能的 `ip`（以 `ip-full` 替换默认 `ip-tiny`）、`ss`、`ethtool`、`iperf3`、`tcpdump-mini`，以及 TUN、INET socket diagnostics 和 nftables TPROXY 内核模块。
 - DNS/DHCP：以 `dnsmasq-full` 替换默认 `dnsmasq`，保留 UCI 配置路径，并提供 DHCPv6、DNSSEC、authoritative DNS、nftset、conntrack 和 TFTP 能力。
-- Shell、脚本与归档：`bash`、`python3-light`、`unzip`；`python3-light` 提供 Python 解释器和常用标准库，并保持与 OpenWrt 的 musl ABI 和软件包生命周期一致。
+- Shell、脚本、传输与归档：`bash`、`python3-light`、`openssh-sftp-server`、`unzip`；SFTP 子系统与系统现有 Dropbear SSH 服务配合，不额外引入完整 OpenSSH daemon。`python3-light` 提供 Python 解释器和常用标准库，并保持与 OpenWrt 的 musl ABI 和软件包生命周期一致。
 - 通用数据访问：`curl`、`ca-bundle`、`jq`。
 
-BusyBox 已能满足的基础命令不重复引入 GNU coreutils；不预装编辑器或编译器。`dnsmasq-full` 继续使用 OpenWrt 原有 `/etc/config/dhcp` 和启动服务，其额外能力只有在对应配置中启用后才改变网络行为。
+基础镜像只为 BusyBox 缺失或功能明显不足的文件操作引入独立 GNU 工具，不安装完整 coreutils/findutils 元包，也不预装编辑器或编译器。`dnsmasq-full` 继续使用 OpenWrt 原有 `/etc/config/dhcp` 和启动服务，其额外能力只有在对应配置中启用后才改变网络行为。
 
 ## LuCI Web 管理
 
-正式 profile 内置 `luci-ssl`。它通过依赖带入 `luci-light`、完整管理页面、Firewall 页面、Bootstrap 主题、APK 软件包管理、`uhttpd`、`uhttpd-mod-ubus` 和 RPC 组件。首次启动完成后可通过 LAN 地址访问：
+正式 profile 内置 `luci-ssl`，以及 Base、Firewall、APK 软件包管理三个界面的简体中文语言包。它通过依赖带入 `luci-light`、完整管理页面、Firewall 页面、Bootstrap 主题、APK 软件包管理、`uhttpd`、`uhttpd-mod-ubus` 和 RPC 组件。首次启动完成后可通过 LAN 地址访问：
 
 ```text
 https://192.168.1.1/

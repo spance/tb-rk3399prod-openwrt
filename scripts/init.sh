@@ -12,17 +12,6 @@ case "$jobs" in
 esac
 [ "$jobs" -gt 0 ] || fail "jobs must be greater than zero"
 
-verify_kmod_repository()
-{
-	local destination=$1
-	rm -f -- "$destination"
-	wget -nv -O "$destination" "$TB_KMOD_REPOSITORY" || return 1
-	[ -s "$destination" ] || {
-		echo "Downloaded official kmod index is empty: $TB_KMOD_REPOSITORY" >&2
-		return 1
-	}
-}
-
 bash "$SCRIPT_DIR/check-env.sh"
 require_case_sensitive_dir "$WORK_DIR"
 
@@ -41,14 +30,8 @@ ensure_checkout "$OPENWRT_URL" "refs/tags/$OPENWRT_TAG" "$OPENWRT_COMMIT" \
 	"$WORK_DIR/openwrt"
 openwrt_patches=(
 	"$PROJECT_DIR/patches/openwrt/0001-tb-rk3399prod-board-support.patch"
-	"$PROJECT_DIR/patches/openwrt/0002-tb-rk3399prod-official-kmod-abi-compat.patch"
 )
 ensure_patches_applied "$WORK_DIR/openwrt" "${openwrt_patches[@]}"
-install -m 0644 "$KMOD_COMPAT_CONFIG" \
-	"$WORK_DIR/openwrt/include/tb-kmod-compat.mk"
-cmp -s "$KMOD_COMPAT_CONFIG" \
-	"$WORK_DIR/openwrt/include/tb-kmod-compat.mk" || \
-	fail "kmod compatibility baseline synchronization failed"
 bash "$SCRIPT_DIR/sync-openwrt-kernel-patches.sh" "$WORK_DIR/openwrt"
 bash "$SCRIPT_DIR/sync-openwrt-dts.sh" "$WORK_DIR/openwrt"
 bash "$SCRIPT_DIR/sync-openwrt-rootfs.sh" "$WORK_DIR/openwrt"
@@ -66,11 +49,6 @@ if ! feeds_match_config "$WORK_DIR/openwrt" \
 fi
 feeds_match_config "$WORK_DIR/openwrt" "$PROJECT_DIR/configs/feeds.conf" || \
 	fail "OpenWrt feeds do not match the pinned configuration; use an empty TB_WORK_DIR"
-kmod_index_probe=$(mktemp "$WORK_DIR/.tb-kmod-index.XXXXXX")
-trap 'rm -f -- "$kmod_index_probe"' EXIT
-retry 3 10 verify_kmod_repository "$kmod_index_probe"
-rm -f -- "$kmod_index_probe"
-trap - EXIT
 
 (
 	cd "$WORK_DIR/openwrt"
@@ -86,9 +64,7 @@ printf '%s\n' \
 	"toolchain=$TOOLCHAIN_COMMIT" \
 	"OpenWrt=$OPENWRT_COMMIT" \
 	"Linux=$LINUX_VERSION" \
-	"native-kmod-abi=$TB_KMOD_NATIVE_ABI" \
-	"package-kmod-abi=$TB_KMOD_OFFICIAL_ABI" \
-	"kmod-repository=$TB_KMOD_REPOSITORY" > "$WORK_DIR/BASELINES"
+	"kernel-abi=$TB_KERNEL_ABI" > "$WORK_DIR/BASELINES"
 sed 's/^/feed=/' "$PROJECT_DIR/configs/feeds.conf" >> "$WORK_DIR/BASELINES"
 
 bash "$SCRIPT_DIR/check.sh"

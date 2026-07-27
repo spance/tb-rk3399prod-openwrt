@@ -11,23 +11,21 @@ bash "$SCRIPT_DIR/check-env.sh"
 for required in \
 	"$OUT_DIR/uboot/uboot.img" \
 	"$OUT_DIR/openwrt/openwrt.img" \
-	"$OUT_DIR/openwrt/kmod-compat.buildinfo"; do
+	"$OUT_DIR/openwrt/kernel-abi.buildinfo"; do
 	[ -e "$required" ] || fail "missing build output: $required; run make all first"
 done
 [ "$(stat -c '%s' "$OUT_DIR/uboot/uboot.img")" -eq 4194304 ] || \
 	fail "uboot.img is not exactly 4 MiB"
 bash "$SCRIPT_DIR/verify-openwrt-image.sh" \
 	"$OUT_DIR/openwrt/openwrt.img" >/dev/null
-compat_info="$OUT_DIR/openwrt/kmod-compat.buildinfo"
+abi_info="$OUT_DIR/openwrt/kernel-abi.buildinfo"
 for expected in \
 	"openwrt_commit=$OPENWRT_COMMIT" \
 	"linux_version=$LINUX_VERSION" \
-	"linux_release=$TB_KMOD_LINUX_RELEASE" \
-	"native_kconfig_abi=$TB_KMOD_NATIVE_ABI" \
-	"package_kmod_abi=$TB_KMOD_OFFICIAL_ABI" \
-	"official_kmod_repository=$TB_KMOD_REPOSITORY"; do
-	[ "$(grep -Fxc -- "$expected" "$compat_info")" -eq 1 ] || \
-		fail "stale or inconsistent OpenWrt kmod compatibility record: $expected"
+	"linux_release=$TB_KERNEL_LINUX_RELEASE" \
+	"kernel_kconfig_abi=$TB_KERNEL_ABI"; do
+	[ "$(grep -Fxc -- "$expected" "$abi_info")" -eq 1 ] || \
+		fail "stale or inconsistent OpenWrt kernel ABI record: $expected"
 done
 
 mark_managed_dir "$DIST_DIR" dist
@@ -47,10 +45,8 @@ printf '%s\n' \
 	"toolchain: $TOOLCHAIN_COMMIT" \
 	"OpenWrt: $OPENWRT_TAG ($OPENWRT_COMMIT)" \
 	"Linux: $LINUX_VERSION" \
-	"Native kernel Kconfig ABI: $TB_KMOD_NATIVE_ABI" \
-	"Package-visible kmod ABI: $TB_KMOD_OFFICIAL_ABI" \
-	"Pinned official kmod repository: $TB_KMOD_REPOSITORY" \
-	"Official kmod scope: audited modules outside the patched Type-C/DWC3/Rockchip PHY/MMC/DRM paths" \
+	"Kernel Kconfig ABI: $TB_KERNEL_ABI" \
+	"External kmod policy: modules must be built from this exact project kernel baseline" \
 	"uboot.img: flash at LBA 0x$(printf '%x' "$UBOOT_LBA")" \
 	"openwrt.img: flash at LBA 0x$(printf '%x' "$BOOT_LINUX_LBA")" \
 	"openwrt.img rootfs: byte offset $OPENWRT_ROOTFS_OFFSET, eMMC LBA 0x$(printf '%x' "$ROOTFS_LBA")" \
