@@ -240,9 +240,9 @@ index 0000000..1469dc5
 +Date: Mon, 27 Jul 2026 10:05:21 +0800
 +Subject: [PATCH] phy: rockchip: add TCPM orientation for RK3399 Type-C
 +
-+Backport the USB orientation-switch path and power-on retry behavior from Rockchip develop-6.6. TCPM callbacks only record the connector state; hardware lane programming remains in the PHY power-on lifecycle.
++Reproduce the Toybrick stable 4.4 orientation-at-power-on and five-retry behavior through the Linux 6.12 TCPM orientation-switch API. TCPM callbacks only record connector state; hardware lane programming remains in the PHY power-on lifecycle.
 +
-+Link: https://github.com/rockchip-linux/kernel/tree/1ba51b059f25533c5529b7f68186190b47d6a7b3
++Link: https://github.com/rockchip-toybrick/kernel/blob/a80be5749ac552821967eff313df53f9e0cd1e01/drivers/phy/rockchip/phy-rockchip-typec.c
 +---
 + drivers/phy/rockchip/Kconfig              |   1 +
 + drivers/phy/rockchip/phy-rockchip-typec.c | 101 +++++++++++++++++++++-
@@ -441,26 +441,40 @@ new file mode 100644
 index 0000000..6087bc6
 --- /dev/null
 +++ b/target/linux/rockchip/patches-6.12/145-usb-dwc3-rk3399-typec-runtime-pm.patch
-@@ -0,0 +1,63 @@
+@@ -0,0 +1,165 @@
 +From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 +From: TB-RK3399ProD OpenWrt project <noreply@example.invalid>
 +Date: Mon, 27 Jul 2026 10:05:21 +0800
-+Subject: [PATCH] usb: dwc3: runtime suspend unattached RK3399 OTG
++Subject: [PATCH] usb: dwc3: restore RK3399 Type-C attach lifecycle
 +
-+Backport the RK3399 runtime-PM lifecycle from Rockchip develop-6.6. Power the DWC3 core and generic PHY down while Type-C is unattached, then resume them after TCPM has selected the orientation and before the host role is created.
++Reproduce the Toybrick stable 4.4 attach lifecycle through Linux 6.12 runtime PM and role-switch APIs. While unattached, remove host/xHCI and power down DWC3/PHY; on reattach, pulse the parent usb3-otg reset before the child core and PHY resume, then recreate host.
 +
-+Use a 100 ms autosuspend delay so a normal unplug/replug completes the PHY power cycle before the next Type-C attach debounce finishes.
++Use a 100 ms autosuspend delay so unplug/replug completes the PHY power cycle, and preserve the BSP's 10-11 ms PHY settle time before xHCI probes an attached SuperSpeed device.
 +
-+Link: https://github.com/rockchip-linux/kernel/tree/1ba51b059f25533c5529b7f68186190b47d6a7b3
++Link: https://github.com/rockchip-toybrick/kernel/blob/a80be5749ac552821967eff313df53f9e0cd1e01/drivers/usb/dwc3/dwc3-rockchip.c
 +---
-+ drivers/usb/dwc3/core.c | 24 ++++++++++++++++++++++--
-+ 1 file changed, 22 insertions(+), 2 deletions(-)
++ drivers/usb/dwc3/core.c           | 30 ++++++++++++++++++++++++++++--
++ drivers/usb/dwc3/dwc3-of-simple.c | 34 +++++++++++++++++++++++++++++++++-
++ 2 files changed, 61 insertions(+), 3 deletions(-)
 +
 +diff --git a/drivers/usb/dwc3/core.c b/drivers/usb/dwc3/core.c
-+index 2cdb073..e6ac079 100644
++index 2cdb073..2a289fb 100644
 +--- a/drivers/usb/dwc3/core.c
 ++++ b/drivers/usb/dwc3/core.c
-+@@ -2291,6 +2291,23 @@ static int dwc3_probe(struct platform_device *pdev)
++@@ -236,6 +236,12 @@ static void __dwc3_set_mode(struct work_struct *work)
++ 
++ 	switch (desired_dr_role) {
++ 	case DWC3_GCTL_PRTCAP_HOST:
+++		/* Let the RK3399 SuperSpeed PHY settle before xHCI probes it. */
+++		if (IS_REACHABLE(CONFIG_ARCH_ROCKCHIP) &&
+++		    of_device_is_compatible(dwc->dev->parent->of_node,
+++					    "rockchip,rk3399-dwc3"))
+++			usleep_range(10000, 11000);
+++
++ 		ret = dwc3_host_init(dwc);
++ 		if (ret) {
++ 			dev_err(dwc->dev, "failed to initialize host\n");
++@@ -2291,6 +2297,23 @@ static int dwc3_probe(struct platform_device *pdev)
 + 	if (ret)
 + 		goto err_exit_debugfs;
 + 
@@ -484,7 +498,7 @@ index 0000000..6087bc6
 + 	pm_runtime_put(dev);
 + 
 + 	dma_set_max_seg_size(dev, UINT_MAX);
-+@@ -2450,7 +2467,8 @@ static int dwc3_suspend_common(struct dwc3 *dwc, pm_message_t msg)
++@@ -2450,7 +2473,8 @@ static int dwc3_suspend_common(struct dwc3 *dwc, pm_message_t msg)
 + 		dwc3_core_exit(dwc);
 + 		break;
 + 	default:
@@ -494,7 +508,7 @@ index 0000000..6087bc6
 + 		break;
 + 	}
 + 
-+@@ -2517,7 +2535,9 @@ static int dwc3_resume_common(struct dwc3 *dwc, pm_message_t msg)
++@@ -2517,7 +2541,9 @@ static int dwc3_resume_common(struct dwc3 *dwc, pm_message_t msg)
 + 
 + 		break;
 + 	default:
@@ -505,3 +519,91 @@ index 0000000..6087bc6
 + 		break;
 + 	}
 + 
++diff --git a/drivers/usb/dwc3/dwc3-of-simple.c b/drivers/usb/dwc3/dwc3-of-simple.c
++index 415eb5a..22e16f2 100644
++--- a/drivers/usb/dwc3/dwc3-of-simple.c
+++++ b/drivers/usb/dwc3/dwc3-of-simple.c
++@@ -13,6 +13,7 @@
++ 
++ #include <linux/module.h>
++ #include <linux/kernel.h>
+++#include <linux/delay.h>
++ #include <linux/slab.h>
++ #include <linux/platform_device.h>
++ #include <linux/dma-mapping.h>
++@@ -28,6 +29,7 @@ struct dwc3_of_simple {
++ 	int			num_clocks;
++ 	struct reset_control	*resets;
++ 	bool			need_reset;
+++	bool			runtime_reset;
++ };
++ 
++ static int dwc3_of_simple_probe(struct platform_device *pdev)
++@@ -35,6 +37,7 @@ static int dwc3_of_simple_probe(struct platform_device *pdev)
++ 	struct dwc3_of_simple	*simple;
++ 	struct device		*dev = &pdev->dev;
++ 	struct device_node	*np = dev->of_node;
+++	struct device_node	*child;
++ 
++ 	int			ret;
++ 
++@@ -49,8 +52,15 @@ static int dwc3_of_simple_probe(struct platform_device *pdev)
++ 	 * Some controllers need to toggle the usb3-otg reset before trying to
++ 	 * initialize the PHY, otherwise the PHY times out.
++ 	 */
++-	if (of_device_is_compatible(np, "rockchip,rk3399-dwc3"))
+++	if (of_device_is_compatible(np, "rockchip,rk3399-dwc3")) {
++ 		simple->need_reset = true;
+++		child = of_get_compatible_child(np, "snps,dwc3");
+++		if (child) {
+++			simple->runtime_reset =
+++				of_property_read_bool(child, "usb-role-switch");
+++			of_node_put(child);
+++		}
+++	}
++ 
++ 	simple->resets = of_reset_control_array_get_optional_exclusive(np);
++ 	if (IS_ERR(simple->resets)) {
++@@ -79,6 +89,8 @@ static int dwc3_of_simple_probe(struct platform_device *pdev)
++ 	pm_runtime_set_active(dev);
++ 	pm_runtime_enable(dev);
++ 	pm_runtime_get_sync(dev);
+++	if (simple->runtime_reset)
+++		pm_runtime_put_sync_suspend(dev);
++ 
++ 	return 0;
++ 
++@@ -97,6 +109,9 @@ static int dwc3_of_simple_probe(struct platform_device *pdev)
++ 
++ static void __dwc3_of_simple_teardown(struct dwc3_of_simple *simple)
++ {
+++	if (simple->runtime_reset)
+++		pm_runtime_get_sync(simple->dev);
+++
++ 	of_platform_depopulate(simple->dev);
++ 
++ 	clk_bulk_disable_unprepare(simple->num_clocks, simple->clks);
++@@ -138,6 +153,23 @@ static int __maybe_unused dwc3_of_simple_runtime_suspend(struct device *dev)
++ static int __maybe_unused dwc3_of_simple_runtime_resume(struct device *dev)
++ {
++ 	struct dwc3_of_simple	*simple = dev_get_drvdata(dev);
+++	int ret;
+++
+++	/*
+++	 * RK3399 needs usb3-otg reset to be toggled before the Type-C PHY is
+++	 * powered on.  The child DWC3 runtime resume follows this callback.
+++	 */
+++	if (simple->runtime_reset) {
+++		ret = reset_control_assert(simple->resets);
+++		if (ret)
+++			return ret;
+++
+++		udelay(1);
+++
+++		ret = reset_control_deassert(simple->resets);
+++		if (ret)
+++			return ret;
+++	}
++ 
++ 	return clk_bulk_enable(simple->num_clocks, simple->clks);
++ }

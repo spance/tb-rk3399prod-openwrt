@@ -197,6 +197,22 @@ grep -Fq 'pm_runtime_put_sync_suspend(dev);' "$openwrt_patch" || \
 	fail "RK3399 DWC3 is not suspended while Type-C is unattached"
 grep -Fq 'dwc3_core_init_for_resume(dwc);' "$openwrt_patch" || \
 	fail "RK3399 DWC3/PHY resume lifecycle is missing"
+grep -Fq 'drivers/usb/dwc3/dwc3-of-simple.c' "$openwrt_patch" || \
+	fail "RK3399 parent DWC3 glue reset lifecycle is missing"
+grep -Fq 'of_property_read_bool(child, "usb-role-switch");' \
+	"$openwrt_patch" || \
+	fail "RK3399 runtime reset is not restricted to the Type-C role-switch controller"
+grep -Fq 'reset_control_assert(simple->resets);' "$openwrt_patch" || \
+	fail "RK3399 usb3-otg reset assert is missing before PHY resume"
+grep -Fq 'udelay(1);' "$openwrt_patch" || \
+	fail "RK3399 usb3-otg reset pulse width is missing"
+grep -Fq 'usleep_range(10000, 11000);' "$openwrt_patch" || \
+	fail "Toybrick stable 4.4 PHY settle time is missing before xHCI probe"
+grep -Fq 'reset_control_deassert(simple->resets);' "$openwrt_patch" || \
+	fail "RK3399 usb3-otg reset deassert is missing before PHY resume"
+grep -Fq 'rockchip-toybrick/kernel/blob/a80be5749ac552821967eff313df53f9e0cd1e01/drivers/usb/dwc3/dwc3-rockchip.c' \
+	"$openwrt_patch" || \
+	fail "Toybrick stable 4.4 DWC3 behavior is not pinned as the board baseline"
 if grep -Fq 'tcphy_reinit_usb3' "$openwrt_patch"; then
 	fail "unsafe live Type-C PHY reinitialization remains"
 fi

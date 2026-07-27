@@ -10,12 +10,15 @@
 |---|---|
 | 开发板 | Toybrick TB-RK3399ProD |
 | DT compatible | `rockchip,rk3399pro-toybrick-prod`、`rockchip,rk3399pro` |
+| 官方板级行为基线 | `rockchip-toybrick/kernel` 的 `stable` 分支，Linux 4.4，固定提交 `a80be5749ac552821967eff313df53f9e0cd1e01` |
 | OpenWrt | `v25.12.5`，commit `f0a60eee2fe051741c643ea6118718aae1ef17fb` |
-| Linux | `6.12.94` |
+| OpenWrt 目标 Linux | `6.12.94` |
 | Toybrick U-Boot | commit `22af63bad708ff41513375a8ecf7fe8d2d521c84`，带本工程补丁 |
 | Toybrick rkbin | commit `78c1c4939634a76f6f4531c912c1a52a83f0451b` |
 | Toybrick linux-x86 工具链 | commit `32505a8032d04e9320dbdb817b08bf67bdfb5a0c` |
 | OpenWrt target | `rockchip/armv8`，profile `toybrick_tb-rk3399prod` |
+
+以后升级时，板级连线、供电、复位、时钟、引脚和外设事件顺序优先参考上述 Toybrick stable 4.4；目标 6.x 内核用于选择当前子系统 API 和已合入的通用修复；Rockchip 其他 6.x 分支及邮件列表补丁只能作为移植线索。任何无法静态证明等价的差异都必须保留为待验收项，并以本板实机测试闭环。
 
 当前正式 profile 默认启用独立 x4 插座的 PCIe host 和 HDMI Linux 文本 console。板载 Mini-PCIe 只接 USB2；无线、蓝牙、摄像、音频、图形桌面、GPU 功能和 NPU 不属于本阶段的完成条件，相关无线驱动和固件也不纳入镜像。
 
@@ -118,7 +121,7 @@ Linux 6.12 基线中，TCS4525/TCS4526 由兼容的 `fan53555` regulator 驱动�
 - 正式 profile 内置 USB Mass Storage、UAS、FAT32 和 exFAT 驱动；常见 U 盘、SSD 与移动硬盘无需联网安装文件系统模块。
 - 蓝色 Type-A 口已由多种设备确认工作在 `5000M`；Lexar E300 2 TB M.2 移动硬盘使用 UAS，4 GiB direct read 约 319 MiB/s，测试后无新增 USB/UAS/SCSI 错误，已经证明该物理口的 SuperSpeed 路径可达到正常高速区间。
 - Type-C USB3：DWC3_0 `fe800000.usb`、`tcphy0`，连接器固定为 source/host；FUSB302 位于 I2C8 `0x22`，中断 GPIO1_A2 低有效，VBUS 由 GPIO0_A1 低电平使能，对外声明 5 V/1.5 A。DWC3 使用 `dr_mode = "otg"` 和 `usb-role-switch` 取得正确的断开/重连生命周期，但连接器不会请求 gadget 角色。
-- Linux 6.12 的 RK3399 Type-C PHY 缺少 TCPM orientation-switch，通用 DWC3 又未启用 Rockchip 6.6 中的 RK3399 空载 runtime suspend。工程分别回移 PHY 方向记录/5 次上电重试和 DWC3 core/PHY 断电恢复逻辑：方向回调不在线重置 PHY，只由后续 `power_on()` 配置当前方向的一对 lanes。带设备冷启动已用 Lexar E300 确认 UAS/`5000M`，4 GiB direct read 约 367 MB/s（350 MiB/s）且无新增 USB/UAS/SCSI/I/O 错误；重构后的热插拔仍需正反插和长时读写回归，设计与证据见 [USB Type-C SuperSpeed 主机](USB-TYPE-C.md)。
+- 本板 Type-C 的行为基线是 Toybrick stable Linux 4.4；Linux 6.12 只提供当前 API，Rockchip 6.6 只作现代实现参考。工程按 4.4 时序实现 PHY 方向记录/5 次上电重试，以及 detach 时删除 xHCI 并关闭 core/PHY；attach 时先脉冲父节点 `SRST_A_USB3_OTG0`，再由 DWC3 子核心恢复并给 PHY 上电，等待 10–11 ms 后才创建 xHCI。方向回调不在线重置 PHY，只由后续 `power_on()` 配置当前方向的一对 lanes。带设备冷启动已用 Lexar E300 确认 UAS/`5000M`，4 GiB direct read 约 367 MB/s（350 MiB/s）且无新增 USB/UAS/SCSI/I/O 错误；重构后的热插拔仍需正反插和长时读写回归，设计与证据见 [USB Type-C SuperSpeed 主机](USB-TYPE-C.md)。
 - Type-C 的 Linux 配置不修改 BootROM/U-Boot；Loader/Maskrom 刷机接口继续保留。
 
 ## 7. HDMI console
