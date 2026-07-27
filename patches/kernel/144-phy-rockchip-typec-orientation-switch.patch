@@ -1,0 +1,402 @@
+From: TB-RK3399ProD OpenWrt project <noreply@example.invalid>
+Subject: [PATCH] phy: rockchip: add observable TCPM orientation lifecycle
+
+Reproduce the Toybrick stable 4.4 orientation-at-power-on and five-retry
+behavior through the Linux 6.12 TCPM orientation-switch API.  The callback
+records state only; lane programming and reset sequencing stay in power_on().
+Log every decisive boundary, propagate GRF/regmap failures, and retain coherent
+orientation plus raw PMA/PIPE state on failures.
+
+Link: https://github.com/rockchip-toybrick/kernel/blob/a80be5749ac552821967eff313df53f9e0cd1e01/drivers/phy/rockchip/phy-rockchip-typec.c
+---
+ drivers/phy/rockchip/Kconfig              |   1 +
+ drivers/phy/rockchip/phy-rockchip-typec.c | 238 +++++++++++++++++++++++++++---
+ 2 files changed, 220 insertions(+), 19 deletions(-)
+
+--- a/drivers/phy/rockchip/Kconfig
++++ b/drivers/phy/rockchip/Kconfig
+@@ -107,6 +107,7 @@ config PHY_ROCKCHIP_SNPS_PCIE3
+ config PHY_ROCKCHIP_TYPEC
+ 	tristate "Rockchip TYPEC PHY Driver"
+ 	depends on OF && (ARCH_ROCKCHIP || COMPILE_TEST)
++	depends on TYPEC || TYPEC=n
+ 	select EXTCON
+ 	select GENERIC_PHY
+ 	select RESET_CONTROLLER
+--- a/drivers/phy/rockchip/phy-rockchip-typec.c
++++ b/drivers/phy/rockchip/phy-rockchip-typec.c
+@@ -54,6 +54,7 @@
+ 
+ #include <linux/mfd/syscon.h>
+ #include <linux/phy/phy.h>
++#include <linux/usb/typec_mux.h>
+ 
+ #define CMN_SSM_BANDGAP			(0x21 << 2)
+ #define CMN_SSM_BIAS			(0x22 << 2)
+@@ -331,6 +332,7 @@
+ #define DP_MODE_ENTER_A2		0xc104
+ 
+ #define PHY_MODE_SET_TIMEOUT		100000
++#define POWER_ON_TRIES			5
+ 
+ #define PIN_ASSIGN_C_E			0x51d9
+ #define PIN_ASSIGN_D_F			0x5100
+@@ -372,6 +374,7 @@ struct rockchip_typec_phy {
+ 	struct device *dev;
+ 	void __iomem *base;
+ 	struct extcon_dev *extcon;
++	struct typec_switch_dev *sw;
+ 	struct regmap *grf_regs;
+ 	struct clk *clk_core;
+ 	struct clk *clk_ref;
+@@ -384,6 +387,7 @@ struct rockchip_typec_phy {
+ 
+ 	bool flip;
+ 	u8 mode;
++	u8 new_mode;
+ };
+ 
+ struct phy_reg {
+@@ -737,9 +741,20 @@ static int tcphy_phy_init(struct rockchip_typec_phy *tcphy, u8 mode)
+ 		goto err_clk_core;
+ 	}
+ 
+-	reset_control_deassert(tcphy->tcphy_rst);
++	ret = reset_control_deassert(tcphy->tcphy_rst);
++	if (ret) {
++		dev_err(tcphy->dev,
++			"rk3399-typec: tcphy reset deassert failed: %d\n", ret);
++		goto err_clk_ref;
++	}
+ 
+-	property_enable(tcphy, &cfg->typec_conn_dir, tcphy->flip);
++	ret = property_enable(tcphy, &cfg->typec_conn_dir, tcphy->flip);
++	if (ret) {
++		dev_err(tcphy->dev,
++			"rk3399-typec: connector direction write failed: %d\n",
++			ret);
++		goto err_tcphy_reset;
++	}
+ 	tcphy_dp_aux_set_flip(tcphy);
+ 
+ 	tcphy_cfg_24m(tcphy);
+@@ -770,24 +785,38 @@ static int tcphy_phy_init(struct rockchip_typec_phy *tcphy, u8 mode)
+ 
+ 	writel(DP_MODE_ENTER_A2, tcphy->base + DP_MODE_CTL);
+ 
+-	reset_control_deassert(tcphy->uphy_rst);
++	ret = reset_control_deassert(tcphy->uphy_rst);
++	if (ret) {
++		dev_err(tcphy->dev,
++			"rk3399-typec: uphy reset deassert failed: %d\n", ret);
++		goto err_tcphy_reset;
++	}
+ 
+ 	ret = readx_poll_timeout(readl, tcphy->base + PMA_CMN_CTRL1,
+ 				 val, val & CMN_READY, 10,
+ 				 PHY_MODE_SET_TIMEOUT);
+ 	if (ret < 0) {
+-		dev_err(tcphy->dev, "wait pma ready timeout\n");
++		dev_err(tcphy->dev,
++			"rk3399-typec: wait PMA ready timeout: mode=%#x flip=%u pma=%#x\n",
++			mode, tcphy->flip, val);
+ 		ret = -ETIMEDOUT;
+ 		goto err_wait_pma;
+ 	}
+ 
+-	reset_control_deassert(tcphy->pipe_rst);
++	ret = reset_control_deassert(tcphy->pipe_rst);
++	if (ret) {
++		dev_err(tcphy->dev,
++			"rk3399-typec: pipe reset deassert failed: %d\n", ret);
++		goto err_wait_pma;
++	}
+ 
+ 	return 0;
+ 
+ err_wait_pma:
+ 	reset_control_assert(tcphy->uphy_rst);
++err_tcphy_reset:
+ 	reset_control_assert(tcphy->tcphy_rst);
++err_clk_ref:
+ 	clk_disable_unprepare(tcphy->clk_ref);
+ err_clk_core:
+ 	clk_disable_unprepare(tcphy->clk_core);
+@@ -812,7 +841,7 @@ static int tcphy_get_mode(struct rockchip_typec_phy *tcphy)
+ 	int ret, ufp, dp;
+ 
+ 	if (!edev)
+-		return MODE_DFP_USB;
++		return tcphy->new_mode;
+ 
+ 	ufp = extcon_get_state(edev, EXTCON_USB);
+ 	dp = extcon_get_state(edev, EXTCON_DISP_DP);
+@@ -854,17 +883,23 @@ static int tcphy_cfg_usb3_to_usb2_only(struct rockchip_typec_phy *tcphy,
+ 				       bool value)
+ {
+ 	const struct rockchip_usb3phy_port_cfg *cfg = tcphy->port_cfgs;
++	int ret;
+ 
+-	property_enable(tcphy, &cfg->usb3tousb2_en, value);
+-	property_enable(tcphy, &cfg->usb3_host_disable, value);
+-	property_enable(tcphy, &cfg->usb3_host_port, !value);
++	ret = property_enable(tcphy, &cfg->usb3tousb2_en, value);
++	if (ret)
++		return ret;
++	ret = property_enable(tcphy, &cfg->usb3_host_disable, value);
++	if (ret)
++		return ret;
++	ret = property_enable(tcphy, &cfg->usb3_host_port, !value);
++	if (ret)
++		return ret;
+ 
+ 	return 0;
+ }
+ 
+-static int rockchip_usb3_phy_power_on(struct phy *phy)
++static int _rockchip_usb3_phy_power_on(struct rockchip_typec_phy *tcphy)
+ {
+-	struct rockchip_typec_phy *tcphy = phy_get_drvdata(phy);
+ 	const struct rockchip_usb3phy_port_cfg *cfg = tcphy->port_cfgs;
+ 	const struct usb3phy_reg *reg = &cfg->pipe_status;
+ 	int timeout, new_mode, ret = 0;
+@@ -880,7 +915,11 @@ static int rockchip_usb3_phy_power_on(struct phy *phy)
+ 
+ 	/* DP-only mode; fall back to USB2 */
+ 	if (!(new_mode & (MODE_DFP_USB | MODE_UFP_USB))) {
+-		tcphy_cfg_usb3_to_usb2_only(tcphy, true);
++		ret = tcphy_cfg_usb3_to_usb2_only(tcphy, true);
++		if (ret)
++			dev_err(tcphy->dev,
++				"rk3399-typec: USB2-only GRF setup failed: %d\n",
++				ret);
+ 		goto unlock_ret;
+ 	}
+ 
+@@ -895,33 +934,101 @@ static int rockchip_usb3_phy_power_on(struct phy *phy)
+ 
+ 	/* wait TCPHY for pipe ready */
+ 	for (timeout = 0; timeout < 100; timeout++) {
+-		regmap_read(tcphy->grf_regs, reg->offset, &val);
++		ret = regmap_read(tcphy->grf_regs, reg->offset, &val);
++		if (ret) {
++			dev_err(tcphy->dev,
++				"rk3399-typec: PIPE status read failed: ret=%d offset=%#x\n",
++				ret, reg->offset);
++			break;
++		}
+ 		if (!(val & BIT(reg->enable_bit))) {
+-			tcphy->mode |= new_mode & (MODE_DFP_USB | MODE_UFP_USB);
+-
+ 			/* enable usb3 host */
+-			tcphy_cfg_usb3_to_usb2_only(tcphy, false);
++			ret = tcphy_cfg_usb3_to_usb2_only(tcphy, false);
++			if (ret) {
++				dev_err(tcphy->dev,
++					"rk3399-typec: USB3 host GRF enable failed: %d\n",
++					ret);
++				break;
++			}
++			tcphy->mode |= new_mode & (MODE_DFP_USB | MODE_UFP_USB);
+ 			goto unlock_ret;
+ 		}
+ 		usleep_range(10, 20);
+ 	}
+ 
++	if (!ret) {
++		ret = -ETIMEDOUT;
++		dev_err(tcphy->dev,
++			"rk3399-typec: wait PIPE ready timeout: requested=%#x active=%#x flip=%u pipe=%#x\n",
++			new_mode, tcphy->mode, tcphy->flip, val);
++	}
++
+ 	if (tcphy->mode == MODE_DISCONNECT)
+ 		tcphy_phy_deinit(tcphy);
+ 
+-	ret = -ETIMEDOUT;
+-
+ unlock_ret:
+ 	mutex_unlock(&tcphy->lock);
+ 	return ret;
+ }
+ 
++static int rockchip_usb3_phy_power_on(struct phy *phy)
++{
++	struct rockchip_typec_phy *tcphy = phy_get_drvdata(phy);
++	const struct rockchip_usb3phy_port_cfg *cfg = tcphy->port_cfgs;
++	const struct usb3phy_reg *reg = &cfg->pipe_status;
++	u32 pipe_status = 0;
++	u8 requested, active;
++	bool flip;
++	int pipe_ret;
++	int ret;
++	int tries;
++
++	for (tries = 0; tries < POWER_ON_TRIES; tries++) {
++		ret = _rockchip_usb3_phy_power_on(tcphy);
++		if (!ret)
++			break;
++	}
++
++	mutex_lock(&tcphy->lock);
++	requested = tcphy->new_mode;
++	active = tcphy->mode;
++	flip = tcphy->flip;
++	pipe_ret = regmap_read(tcphy->grf_regs, reg->offset, &pipe_status);
++	mutex_unlock(&tcphy->lock);
++	if (ret) {
++		dev_err(tcphy->dev,
++			"rk3399-typec: USB3 PHY power-on failed: ret=%d tries=%d requested=%#x active=%#x flip=%u pipe=%#x pipe_read_ret=%d\n",
++			ret, tries, requested, active, flip,
++			pipe_status, pipe_ret);
++	} else if (requested == MODE_DISCONNECT) {
++		dev_info(tcphy->dev,
++			 "rk3399-typec: USB3 PHY remains idle while connector is detached: active=%#x flip=%u pipe=%#x pipe_read_ret=%d\n",
++			 active, flip, pipe_status, pipe_ret);
++	} else {
++		if (pipe_ret)
++			dev_warn(tcphy->dev,
++				 "rk3399-typec: post-power-on PIPE status read failed: %d\n",
++				 pipe_ret);
++		dev_info(tcphy->dev,
++			 "rk3399-typec: USB3 PHY on: requested=%#x active=%#x orientation=%s tries=%d pipe=%#x pipe_read_ret=%d\n",
++			 requested, active, flip ? "reverse" : "normal", tries + 1,
++			 pipe_status, pipe_ret);
++	}
++
++	return ret;
++}
++
+ static int rockchip_usb3_phy_power_off(struct phy *phy)
+ {
+ 	struct rockchip_typec_phy *tcphy = phy_get_drvdata(phy);
++	u8 old_mode, requested;
++	bool flip;
++	int ret = 0;
+ 
+ 	mutex_lock(&tcphy->lock);
+-	tcphy_cfg_usb3_to_usb2_only(tcphy, false);
++	old_mode = tcphy->mode;
++	if (!(tcphy->mode & (MODE_UFP_USB | MODE_DFP_USB)))
++		ret = tcphy_cfg_usb3_to_usb2_only(tcphy, false);
+ 
+ 	if (tcphy->mode == MODE_DISCONNECT)
+ 		goto unlock;
+@@ -931,10 +1038,96 @@ static int rockchip_usb3_phy_power_off(struct phy *phy)
+ 		tcphy_phy_deinit(tcphy);
+ 
+ unlock:
++	requested = tcphy->new_mode;
++	flip = tcphy->flip;
++	mutex_unlock(&tcphy->lock);
++	dev_info(tcphy->dev,
++		 "rk3399-typec: USB3 PHY off: previous=%#x requested=%#x flip=%u grf_ret=%d\n",
++		 old_mode, requested, flip, ret);
++	return ret;
++}
++
++#if IS_ENABLED(CONFIG_TYPEC)
++static int tcphy_set_orientation(struct typec_switch_dev *sw,
++				 enum typec_orientation orientation)
++{
++	struct rockchip_typec_phy *tcphy = typec_switch_get_drvdata(sw);
++	const char *name;
++	u8 requested;
++	bool flip;
++
++	mutex_lock(&tcphy->lock);
++
++	if (orientation == TYPEC_ORIENTATION_NONE) {
++		tcphy->new_mode = MODE_DISCONNECT;
++		name = "none";
++		goto out_unlock;
++	}
++
++	tcphy->flip = orientation == TYPEC_ORIENTATION_REVERSE;
++	tcphy->new_mode = MODE_DFP_USB;
++	name = tcphy->flip ? "reverse" : "normal";
++
++out_unlock:
++	requested = tcphy->new_mode;
++	flip = tcphy->flip;
+ 	mutex_unlock(&tcphy->lock);
++	dev_info(tcphy->dev,
++		 "rk3399-typec: orientation=%s requested=%#x flip=%u\n",
++		 name, requested, flip);
+ 	return 0;
+ }
+ 
++static void tcphy_unregister_orientation_switch(void *data)
++{
++	struct rockchip_typec_phy *tcphy = data;
++
++	typec_switch_unregister(tcphy->sw);
++}
++
++static int tcphy_register_orientation_switch(struct rockchip_typec_phy *tcphy)
++{
++	struct typec_switch_desc desc = { };
++	struct device_node *np;
++	int ret = 0;
++
++	np = of_get_child_by_name(tcphy->dev->of_node, "usb3-port");
++	if (!np)
++		return 0;
++
++	if (!of_property_read_bool(np, "orientation-switch"))
++		goto out_put_node;
++
++	desc.drvdata = tcphy;
++	desc.fwnode = of_fwnode_handle(np);
++	desc.set = tcphy_set_orientation;
++	tcphy->new_mode = MODE_DISCONNECT;
++
++	tcphy->sw = typec_switch_register(tcphy->dev, &desc);
++	if (IS_ERR(tcphy->sw)) {
++		ret = dev_err_probe(tcphy->dev, PTR_ERR(tcphy->sw),
++				    "failed to register Type-C orientation switch\n");
++		goto out_put_node;
++	}
++
++	ret = devm_add_action_or_reset(tcphy->dev,
++				       tcphy_unregister_orientation_switch,
++				       tcphy);
++	if (!ret)
++		dev_info(tcphy->dev,
++			 "rk3399-typec: orientation switch registered; initial state=none\n");
++
++out_put_node:
++	of_node_put(np);
++	return ret;
++}
++#else
++static int tcphy_register_orientation_switch(struct rockchip_typec_phy *tcphy)
++{
++	return 0;
++}
++#endif
++
+ static const struct phy_ops rockchip_usb3_phy_ops = {
+ 	.power_on	= rockchip_usb3_phy_power_on,
+ 	.power_off	= rockchip_usb3_phy_power_off,
+@@ -1142,6 +1335,7 @@ static int rockchip_typec_phy_probe(struct platform_device *pdev)
+ 		return ret;
+ 
+ 	tcphy->dev = dev;
++	tcphy->new_mode = MODE_DFP_USB;
+ 	platform_set_drvdata(pdev, tcphy);
+ 	mutex_init(&tcphy->lock);
+ 
+@@ -1183,6 +1377,12 @@ static int rockchip_typec_phy_probe(struct platform_device *pdev)
+ 		phy_set_drvdata(phy, tcphy);
+ 	}
+ 
++	ret = tcphy_register_orientation_switch(tcphy);
++	if (ret) {
++		pm_runtime_disable(dev);
++		return ret;
++	}
++
+ 	phy_provider = devm_of_phy_provider_register(dev, of_phy_simple_xlate);
+ 	if (IS_ERR(phy_provider)) {
+ 		dev_err(dev, "Failed to register phy provider\n");

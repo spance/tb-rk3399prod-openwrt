@@ -49,7 +49,8 @@ boot/             boot_linux 容器使用的 U-Boot 启动脚本
 configs/          OpenWrt 最小配置和精确锁定的必要 feed
 docs/             架构、构建、硬件、部署和维护文档
 dts/              TB-RK3399ProD 唯一权威 DTS/DTSI
-patches/openwrt/  OpenWrt v25.12.5 板级补丁
+patches/openwrt/  OpenWrt v25.12.5 profile、配置和通用板级补丁
+patches/kernel/   直接作用于固定 Linux 6.12 的关键驱动补丁
 patches/u-boot/   Toybrick U-Boot 板级补丁
 rootfs/           注入固件的板级启动服务和首次启动默认值
 scripts/          检查、初始化、构建和打包脚本
@@ -57,7 +58,7 @@ scripts/          检查、初始化、构建和打包脚本
 
 `.work/`、`out/` 和 `dist/` 均为可重新生成且不纳入版本控制的目录。板级参数和升级回归基线见 [硬件参考](docs/HARDWARE-REFERENCE.md)，当前验收状态见 [硬件状态](docs/HARDWARE-STATUS.md)，Type-C 的阶段切换、驱动设计和验收步骤见 [USB Type-C SuperSpeed 主机](docs/USB-TYPE-C.md)，IRQ、flow offload、密码加速和 PCIe 网卡策略见 [网络性能与加速策略](docs/NETWORK-PERFORMANCE.md)。
 
-`make clean` 只删除 `out/` 和 `dist/`。若上游工作树被中断的补丁或人工修改污染，使用显式的 `make reset`；它会丢弃 `.work` 内的 Git 修改，但保留已下载和已编译的 ignored cache。`make -j2 reinit` 可以完成工作树复位并重新初始化。
+`make clean` 只删除 `out/` 和 `dist/`。若上游工作树被中断的补丁或人工修改污染，使用显式的 `make reset`；它会丢弃 `.work` 内的 Git 修改，但保留已下载和已编译的 ignored cache。`make -j2 reinit` 可以完成工作树复位并重新初始化。Type-C 的一次性诊断使用固件内置 `tb-typec-diag`，具体测试窗口和日志判读见 [USB Type-C SuperSpeed 主机](docs/USB-TYPE-C.md)。
 
 ## 启动与部署
 

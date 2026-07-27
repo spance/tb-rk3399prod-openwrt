@@ -1,0 +1,218 @@
+#!/bin/sh
+set -eu
+
+DURATION=${1:-120}
+OUTPUT=${2:-/tmp/tb-typec-diag-$(date +%Y%m%d-%H%M%S).log}
+FINISHED=0
+
+case "$DURATION" in
+	''|*[!0-9]*|0) echo "usage: $0 [duration-seconds] [output-file]" >&2; exit 2 ;;
+esac
+[ ! -e "$OUTPUT" ] || {
+	echo "refusing to overwrite: $OUTPUT" >&2
+	exit 2
+}
+
+exec 3>"$OUTPUT"
+
+mkdir -p /sys/kernel/debug
+if ! grep -qs ' /sys/kernel/debug debugfs ' /proc/mounts; then
+	if ! mount -t debugfs debugfs /sys/kernel/debug >&3 2>&1; then
+		echo "warning: debugfs could not be mounted; event rings may be unavailable" >&3
+	fi
+fi
+
+section()
+{
+	printf '\n===== %s =====\n' "$1" >&3
+}
+
+kmsg_marker()
+{
+	[ -w /dev/kmsg ] || return 0
+	printf '<6>tb-typec-diag: %s\n' "$1" >/dev/kmsg 2>/dev/null || true
+}
+
+event_rings()
+{
+	found=0
+	for log in /sys/kernel/debug/usb/fusb302-*/log \
+		/sys/kernel/debug/usb/tcpm-*/log; do
+		[ -r "$log" ] || continue
+		found=1
+		printf '\n--- %s ---\n' "$log" >&3
+		cat "$log" >&3 2>&1 || true
+	done
+	[ "$found" -eq 1 ] || \
+		echo "no readable FUSB302/TCPM event rings found" >&3
+}
+
+capture()
+{
+	title=$1
+	shift
+	section "$title"
+	"$@" >&3 2>&1 || true
+}
+
+read_attr()
+{
+	path=$1
+	[ -r "$path" ] || return 0
+	value=$(cat "$path" 2>/dev/null || true)
+	printf '%s=%s\n' "$path" "$value"
+}
+
+state_snapshot()
+{
+	printf 'uptime=%s\n' "$(cut -d' ' -f1 /proc/uptime)"
+
+	found=0
+	for port in /sys/class/typec/port*; do
+		[ -e "$port" ] || continue
+		found=1
+		for attr in orientation data_role power_role power_operation_mode; do
+			read_attr "$port/$attr"
+		done
+	done
+	[ "$found" -eq 1 ] || echo 'typec[none]'
+
+	found=0
+	for role in /sys/class/usb_role/*; do
+		[ -e "$role" ] || continue
+		found=1
+		read_attr "$role/role"
+	done
+	[ "$found" -eq 1 ] || echo 'usb_role[none]'
+
+	runtime_paths=$(find /sys/devices/platform \
+		-path '*fe800000.usb/power/runtime_status' -type f \
+		2>/dev/null | sort)
+	if [ -n "$runtime_paths" ]; then
+		printf '%s\n' "$runtime_paths" | while IFS= read -r path; do
+			read_attr "$path"
+		done
+	else
+		echo 'dwc3_runtime[none]'
+	fi
+
+	found=0
+	for dev in /sys/bus/usb/devices/*; do
+		[ -r "$dev/speed" ] || continue
+		found=1
+		name=${dev##*/}
+		speed=$(cat "$dev/speed" 2>/dev/null || true)
+		product=$(cat "$dev/product" 2>/dev/null || true)
+		driver=$(readlink "$dev/driver" 2>/dev/null || true)
+		printf 'usb[%s]=speed:%s product:%s driver:%s\n' \
+			"$name" "$speed" "$product" "${driver##*/}"
+	done
+	[ "$found" -eq 1 ] || echo 'usb[none]'
+}
+
+finish()
+{
+	[ "$FINISHED" -eq 0 ] || return 0
+	FINISHED=1
+	kmsg_marker "collection finished"
+
+	section "final state"
+	state_snapshot >&3 2>&1
+	capture "lsusb" lsusb
+	capture "lsusb topology" lsusb -t
+	capture "block devices" sh -c \
+		'lsblk -o NAME,PATH,SIZE,MODEL,TRAN,FSTYPE,MOUNTPOINTS 2>/dev/null || lsblk'
+	capture "OpenWrt block info" block info
+	capture "mounts" mount
+	capture "interrupts" cat /proc/interrupts
+	capture "kernel log" dmesg
+	capture "system log" logread
+
+	section "TCPM and FUSB302 event rings since collection start"
+	event_rings
+
+	section "debugfs USB device tree"
+	[ ! -r /sys/kernel/debug/usb/devices ] || \
+		cat /sys/kernel/debug/usb/devices >&3 2>&1
+
+	section "USB-related clocks"
+	if [ -r /sys/kernel/debug/clk/clk_summary ]; then
+		grep -Ei 'usb|otg|tcpd|uphy' /sys/kernel/debug/clk/clk_summary >&3 2>&1 || true
+	fi
+
+	section "USB-related power domains"
+	if [ -r /sys/kernel/debug/pm_genpd/pm_genpd_summary ]; then
+		grep -Ei 'usb|tcpd|status|domain' \
+			/sys/kernel/debug/pm_genpd/pm_genpd_summary >&3 2>&1 || true
+	fi
+
+	section "Type-C and VBUS regulators"
+	if [ -r /sys/kernel/debug/regulator/regulator_summary ]; then
+		grep -Ei 'type.?c|usb|vbus|5v|name|use' \
+			/sys/kernel/debug/regulator/regulator_summary >&3 2>&1 || true
+	fi
+
+	section "GPIO ownership"
+	if [ -r /sys/kernel/debug/gpio ]; then
+		grep -Ei 'gpiochip|fusb|type.?c|usb|vbus' \
+			/sys/kernel/debug/gpio >&3 2>&1 || true
+	fi
+
+	capture "deferred probes" cat /sys/kernel/debug/devices_deferred
+	capture "relevant platform and I2C bindings" sh -c '
+		found=0
+		for dev in /sys/bus/platform/devices/*fe800000* \
+			/sys/bus/platform/devices/*ff7c0000* \
+			/sys/bus/i2c/devices/*-0022; do
+			[ -e "$dev" ] || continue
+			found=1
+			echo "--- $dev ---"
+			[ ! -r "$dev/name" ] || cat "$dev/name"
+			[ ! -r "$dev/modalias" ] || cat "$dev/modalias"
+			driver=$(readlink "$dev/driver" 2>/dev/null || true)
+			echo "driver=${driver##*/}"
+		done
+		[ "$found" -eq 1 ] || echo "no relevant platform/I2C devices found"'
+
+	exec 3>&-
+	echo "Type-C diagnostic bundle written to $OUTPUT"
+}
+
+trap finish EXIT
+trap 'exit 130' INT TERM
+
+section "collection metadata"
+printf 'output=%s\nduration=%s\nstarted=%s\n' \
+	"$OUTPUT" "$DURATION" "$(date -Iseconds 2>/dev/null || date)" >&3
+capture "kernel" uname -a
+capture "command line" cat /proc/cmdline
+capture "board model" sh -c "tr -d '\\000' </proc/device-tree/model; echo"
+capture "OpenWrt release" cat /etc/openwrt_release
+capture "loaded USB modules" sh -c "lsmod | grep -Ei 'fusb|typec|tcpm|dwc3|xhci|uas|usb_storage' || true"
+kmsg_marker "collection started duration=${DURATION}s"
+
+section "TCPM and FUSB302 event rings before test"
+event_rings
+
+capture "kernel log at collection start" dmesg
+
+section "initial state"
+previous=$(state_snapshot)
+printf '%s\n' "$previous" >&3
+
+echo "Collecting for $DURATION seconds. During this window:" >&2
+echo "  1. plug in normally and wait for enumeration" >&2
+echo "  2. unmount, unplug, reverse the Type-C plug, and reconnect" >&2
+echo "  3. wait for enumeration again; Ctrl-C may end collection early" >&2
+echo "Output: $OUTPUT" >&2
+
+end=$(( $(date +%s) + DURATION ))
+while [ "$(date +%s)" -lt "$end" ]; do
+	sleep 1
+	current=$(state_snapshot)
+	if [ "$current" != "$previous" ]; then
+		section "state change $(date -Iseconds 2>/dev/null || date)"
+		printf '%s\n' "$current" >&3
+		previous=$current
+	fi
+done

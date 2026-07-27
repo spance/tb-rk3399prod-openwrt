@@ -1,0 +1,446 @@
+From: TB-RK3399ProD OpenWrt project <noreply@example.invalid>
+Subject: [PATCH] usb: dwc3: reproduce RK3399 Type-C cable lifecycle
+
+Represent USB_ROLE_NONE as real idle on this fixed-host connector.  Hold a
+runtime-PM reference for the full attached interval, remove xHCI before the
+synchronous detach suspend, and pulse the parent OTG reset only on a genuine
+idle-to-host resume.  This preserves the ordering used by Toybrick stable 4.4
+while using Linux 6.12 role-switch and runtime-PM APIs.
+
+Log the state-machine, PM reference counts, parent reset, clocks and child core
+boundaries so one capture can distinguish TCPM, role, PM, PHY and xHCI failures.
+
+Link: https://github.com/rockchip-toybrick/kernel/blob/a80be5749ac552821967eff313df53f9e0cd1e01/drivers/usb/dwc3/dwc3-rockchip.c
+---
+ drivers/usb/dwc3/core.c           | 139 +++++++++++++++++++++++++++++++++++---
+ drivers/usb/dwc3/core.h           |   4 ++
+ drivers/usb/dwc3/drd.c            |  15 +++-
+ drivers/usb/dwc3/dwc3-of-simple.c |  78 ++++++++++++++++++++-
+ 4 files changed, 221 insertions(+), 15 deletions(-)
+
+--- a/drivers/usb/dwc3/core.c
++++ b/drivers/usb/dwc3/core.c
+@@ -157,6 +157,15 @@ void dwc3_set_prtcap(struct dwc3 *dwc, u32 mode, bool ignore_susphy)
+ 	dwc->current_dr_role = mode;
+ }
+ 
++static int dwc3_runtime_usage_count(struct device *dev)
++{
++#ifdef CONFIG_PM
++	return atomic_read(&dev->power.usage_count);
++#else
++	return 0;
++#endif
++}
++
+ static void __dwc3_set_mode(struct work_struct *work)
+ {
+ 	struct dwc3 *dwc = work_to_dwc(work);
+@@ -164,6 +173,8 @@ static void __dwc3_set_mode(struct work_struct *work)
+ 	int ret;
+ 	u32 reg;
+ 	u32 desired_dr_role;
++	bool keep_runtime_pm = false;
++	bool sync_suspend = false;
+ 	int i;
+ 
+ 	mutex_lock(&dwc->mutex);
+@@ -171,14 +182,28 @@ static void __dwc3_set_mode(struct work_struct *work)
+ 	desired_dr_role = dwc->desired_dr_role;
+ 	spin_unlock_irqrestore(&dwc->lock, flags);
+ 
+-	pm_runtime_get_sync(dwc->dev);
++	ret = pm_runtime_resume_and_get(dwc->dev);
++	if (ret < 0) {
++		if (dwc->rk3399_typec)
++			dev_err(dwc->dev,
++				"rk3399-typec: role resume failed: current=%u desired=%u ret=%d\n",
++				dwc->current_dr_role, desired_dr_role, ret);
++		else
++			dev_err(dwc->dev, "failed to resume for role switch: %d\n",
++				ret);
++		goto out_unlock;
++	}
++
++	if (dwc->rk3399_typec)
++		dev_info(dwc->dev,
++			 "rk3399-typec: role transition current=%u desired=%u pm_usage=%d held=%u\n",
++			 dwc->current_dr_role, desired_dr_role,
++			 dwc3_runtime_usage_count(dwc->dev),
++			 dwc->role_pm_held);
+ 
+ 	if (dwc->current_dr_role == DWC3_GCTL_PRTCAP_OTG)
+ 		dwc3_otg_update(dwc, 0);
+ 
+-	if (!desired_dr_role)
+-		goto out;
+-
+ 	if (desired_dr_role == dwc->current_dr_role)
+ 		goto out;
+ 
+@@ -204,6 +229,24 @@ static void __dwc3_set_mode(struct work_struct *work)
+ 		break;
+ 	}
+ 
++	if (!desired_dr_role) {
++		spin_lock_irqsave(&dwc->lock, flags);
++		dwc->current_dr_role = 0;
++		spin_unlock_irqrestore(&dwc->lock, flags);
++
++		if (dwc->rk3399_typec) {
++			if (dwc->role_pm_held) {
++				pm_runtime_put_noidle(dwc->dev);
++				dwc->role_pm_held = false;
++			}
++			sync_suspend = true;
++			dev_info(dwc->dev,
++				 "rk3399-typec: role idle, host/gadget removed; suspending synchronously pm_usage=%d\n",
++				 dwc3_runtime_usage_count(dwc->dev));
++		}
++		goto out;
++	}
++
+ 	/*
+ 	 * When current_dr_role is not set, there's no role switching.
+ 	 * Only perform GCTL.CoreSoftReset when there's DRD role switching.
+@@ -236,10 +279,30 @@ static void __dwc3_set_mode(struct work_struct *work)
+ 
+ 	switch (desired_dr_role) {
+ 	case DWC3_GCTL_PRTCAP_HOST:
++		/* Let the RK3399 SuperSpeed PHY settle before xHCI probes it. */
++		if (dwc->rk3399_typec)
++			usleep_range(10000, 11000);
++
+ 		ret = dwc3_host_init(dwc);
+ 		if (ret) {
+-			dev_err(dwc->dev, "failed to initialize host\n");
++			dev_err(dwc->dev, "failed to initialize host: %d\n", ret);
++			if (dwc->rk3399_typec) {
++				spin_lock_irqsave(&dwc->lock, flags);
++				dwc->current_dr_role = 0;
++				spin_unlock_irqrestore(&dwc->lock, flags);
++				sync_suspend = true;
++			}
+ 		} else {
++			if (dwc->rk3399_typec && !dwc->role_pm_held) {
++				dwc->role_pm_held = true;
++				keep_runtime_pm = true;
++			}
++			if (dwc->rk3399_typec)
++				dev_info(dwc->dev,
++					 "rk3399-typec: host active, xHCI created; runtime PM held=%u pm_usage=%d\n",
++					 dwc->role_pm_held,
++					 dwc3_runtime_usage_count(dwc->dev));
++
+ 			if (dwc->usb2_phy)
+ 				otg_set_vbus(dwc->usb2_phy->otg, true);
+ 
+@@ -278,8 +341,24 @@ static void __dwc3_set_mode(struct work_struct *work)
+ 	}
+ 
+ out:
+-	pm_runtime_mark_last_busy(dwc->dev);
+-	pm_runtime_put_autosuspend(dwc->dev);
++	if (!keep_runtime_pm) {
++		pm_runtime_mark_last_busy(dwc->dev);
++		if (sync_suspend) {
++			ret = pm_runtime_put_sync_suspend(dwc->dev);
++			if (ret < 0)
++				dev_err(dwc->dev,
++					"rk3399-typec: synchronous idle suspend failed: %d\n",
++					ret);
++			else
++				dev_info(dwc->dev,
++					 "rk3399-typec: synchronous idle suspend complete: pm_usage=%d suspended=%u\n",
++					 dwc3_runtime_usage_count(dwc->dev),
++					 pm_runtime_suspended(dwc->dev));
++		} else {
++			pm_runtime_put_autosuspend(dwc->dev);
++		}
++	}
++out_unlock:
+ 	mutex_unlock(&dwc->mutex);
+ }
+ 
+@@ -2278,6 +2357,11 @@ static int dwc3_probe(struct platform_device *pdev)
+ 	if (ret)
+ 		goto err_free_event_buffers;
+ 
++	dwc->rk3399_typec = IS_REACHABLE(CONFIG_ARCH_ROCKCHIP) &&
++			dwc->dr_mode == USB_DR_MODE_OTG &&
++			of_device_is_compatible(dev->parent->of_node,
++						"rockchip,rk3399-dwc3");
++
+ 	ret = dwc3_core_init(dwc);
+ 	if (ret) {
+ 		dev_err_probe(dev, ret, "failed to initialize core\n");
+@@ -2291,6 +2375,24 @@ static int dwc3_probe(struct platform_device *pdev)
+ 	if (ret)
+ 		goto err_exit_debugfs;
+ 
++	/*
++	 * RK3399 Type-C orientation is known only after its external Type-C
++	 * controller reports an attachment.  Keep an unattached OTG controller
++	 * runtime suspended so its generic PHY is powered on only after TCPM has
++	 * selected the connector orientation.
++	 */
++	if (dwc->rk3399_typec) {
++		pm_runtime_set_autosuspend_delay(dev, 100);
++		pm_runtime_allow(dev);
++		ret = pm_runtime_put_sync_suspend(dev);
++		dev_info(dev,
++			 "rk3399-typec: runtime PM armed, initial suspend ret=%d pm_usage=%d suspended=%u\n",
++			 ret, dwc3_runtime_usage_count(dev),
++			 pm_runtime_suspended(dev));
++		dma_set_max_seg_size(dev, UINT_MAX);
++		return 0;
++	}
++
+ 	pm_runtime_put(dev);
+ 
+ 	dma_set_max_seg_size(dev, UINT_MAX);
+@@ -2329,6 +2431,10 @@ static void dwc3_remove(struct platform_device *pdev)
+ 	pm_runtime_get_sync(&pdev->dev);
+ 
+ 	dwc3_core_exit_mode(dwc);
++	if (dwc->role_pm_held) {
++		pm_runtime_put_noidle(&pdev->dev);
++		dwc->role_pm_held = false;
++	}
+ 	dwc3_debugfs_exit(dwc);
+ 
+ 	dwc3_core_exit(dwc);
+@@ -2450,7 +2556,11 @@ static int dwc3_suspend_common(struct dwc3 *dwc, pm_message_t msg)
+ 		dwc3_core_exit(dwc);
+ 		break;
+ 	default:
+-		/* do nothing */
++		if (dwc->rk3399_typec && !pm_runtime_suspended(dwc->dev)) {
++			dev_info(dwc->dev,
++				 "rk3399-typec: child runtime suspend, core/PHY off\n");
++			dwc3_core_exit(dwc);
++		}
+ 		break;
+ 	}
+ 
+@@ -2517,7 +2627,18 @@ static int dwc3_resume_common(struct dwc3 *dwc, pm_message_t msg)
+ 
+ 		break;
+ 	default:
+-		/* do nothing */
++		if (!dwc->rk3399_typec)
++			break;
++
++		ret = dwc3_core_init_for_resume(dwc);
++		if (ret) {
++			dev_err(dwc->dev,
++				"rk3399-typec: child runtime resume failed: %d\n",
++				ret);
++			return ret;
++		}
++		dev_info(dwc->dev,
++			 "rk3399-typec: child runtime resume, core/PHY on\n");
+ 		break;
+ 	}
+ 
+--- a/drivers/usb/dwc3/core.h
++++ b/drivers/usb/dwc3/core.h
+@@ -1043,6 +1043,8 @@ struct dwc3_scratchpad_array {
+  * @dr_mode: requested mode of operation
+  * @current_dr_role: current role of operation when in dual-role mode
+  * @desired_dr_role: desired role of operation when in dual-role mode
++ * @rk3399_typec: controller uses the RK3399 external Type-C lifecycle
++ * @role_pm_held: runtime-PM reference held while a Type-C role is active
+  * @edev: extcon handle
+  * @edev_nb: extcon notifier
+  * @hsphy_mode: UTMI phy mode, one of following:
+@@ -1230,6 +1232,8 @@ struct dwc3 {
+ 	enum usb_dr_mode	dr_mode;
+ 	u32			current_dr_role;
+ 	u32			desired_dr_role;
++	bool			rk3399_typec;
++	bool			role_pm_held;
+ 	struct extcon_dev	*edev;
+ 	struct notifier_block	edev_nb;
+ 	enum usb_phy_interface	hsphy_mode;
+--- a/drivers/usb/dwc3/drd.c
++++ b/drivers/usb/dwc3/drd.c
+@@ -457,7 +457,9 @@ static int dwc3_usb_role_switch_set(struct usb_role_switch *sw,
+ 		mode = DWC3_GCTL_PRTCAP_DEVICE;
+ 		break;
+ 	default:
+-		if (dwc->role_switch_default_mode == USB_DR_MODE_HOST)
++		if (dwc->rk3399_typec)
++			mode = 0;
++		else if (dwc->role_switch_default_mode == USB_DR_MODE_HOST)
+ 			mode = DWC3_GCTL_PRTCAP_HOST;
+ 		else
+ 			mode = DWC3_GCTL_PRTCAP_DEVICE;
+@@ -486,7 +488,9 @@ static enum usb_role dwc3_usb_role_switch_get(struct usb_role_switch *sw)
+ 		role = dwc->current_otg_role;
+ 		break;
+ 	default:
+-		if (dwc->role_switch_default_mode == USB_DR_MODE_HOST)
++		if (dwc->rk3399_typec)
++			role = USB_ROLE_NONE;
++		else if (dwc->role_switch_default_mode == USB_DR_MODE_HOST)
+ 			role = USB_ROLE_HOST;
+ 		else
+ 			role = USB_ROLE_DEVICE;
+@@ -502,13 +506,16 @@ static int dwc3_setup_role_switch(struct dwc3 *dwc)
+ 	u32 mode;
+ 
+ 	dwc->role_switch_default_mode = usb_get_role_switch_default_mode(dwc->dev);
+-	if (dwc->role_switch_default_mode == USB_DR_MODE_HOST) {
++	if (dwc->rk3399_typec) {
++		mode = 0;
++	} else if (dwc->role_switch_default_mode == USB_DR_MODE_HOST) {
+ 		mode = DWC3_GCTL_PRTCAP_HOST;
+ 	} else {
+ 		dwc->role_switch_default_mode = USB_DR_MODE_PERIPHERAL;
+ 		mode = DWC3_GCTL_PRTCAP_DEVICE;
+ 	}
+-	dwc3_set_mode(dwc, mode);
++	if (!dwc->rk3399_typec)
++		dwc3_set_mode(dwc, mode);
+ 
+ 	dwc3_role_switch.fwnode = dev_fwnode(dwc->dev);
+ 	dwc3_role_switch.set = dwc3_usb_role_switch_set;
+--- a/drivers/usb/dwc3/dwc3-of-simple.c
++++ b/drivers/usb/dwc3/dwc3-of-simple.c
+@@ -13,6 +13,7 @@
+ 
+ #include <linux/module.h>
+ #include <linux/kernel.h>
++#include <linux/delay.h>
+ #include <linux/slab.h>
+ #include <linux/platform_device.h>
+ #include <linux/dma-mapping.h>
+@@ -28,6 +29,16 @@ struct dwc3_of_simple {
+ 	int			num_clocks;
+ 	struct reset_control	*resets;
+ 	bool			need_reset;
++	bool			runtime_reset;
+ };
+ 
++static int dwc3_of_simple_runtime_usage_count(struct device *dev)
++{
++#ifdef CONFIG_PM
++	return atomic_read(&dev->power.usage_count);
++#else
++	return 0;
++#endif
++}
++
+ static int dwc3_of_simple_probe(struct platform_device *pdev)
+@@ -35,6 +46,7 @@ static int dwc3_of_simple_probe(struct platform_device *pdev)
+ 	struct dwc3_of_simple	*simple;
+ 	struct device		*dev = &pdev->dev;
+ 	struct device_node	*np = dev->of_node;
++	struct device_node	*child;
+ 
+ 	int			ret;
+ 
+@@ -49,8 +61,18 @@ static int dwc3_of_simple_probe(struct platform_device *pdev)
+ 	 * Some controllers need to toggle the usb3-otg reset before trying to
+ 	 * initialize the PHY, otherwise the PHY times out.
+ 	 */
+-	if (of_device_is_compatible(np, "rockchip,rk3399-dwc3"))
++	if (of_device_is_compatible(np, "rockchip,rk3399-dwc3")) {
+ 		simple->need_reset = true;
++		child = of_get_compatible_child(np, "snps,dwc3");
++		if (child) {
++			simple->runtime_reset =
++				of_property_read_bool(child, "usb-role-switch");
++			of_node_put(child);
++		}
++		if (simple->runtime_reset)
++			dev_info(dev,
++				 "rk3399-typec: parent runtime reset enabled\n");
++	}
+ 
+ 	simple->resets = of_reset_control_array_get_optional_exclusive(np);
+ 	if (IS_ERR(simple->resets)) {
+@@ -79,6 +101,13 @@ static int dwc3_of_simple_probe(struct platform_device *pdev)
+ 	pm_runtime_set_active(dev);
+ 	pm_runtime_enable(dev);
+ 	pm_runtime_get_sync(dev);
++	if (simple->runtime_reset) {
++		ret = pm_runtime_put_sync_suspend(dev);
++		dev_info(dev,
++			 "rk3399-typec: parent initial suspend ret=%d pm_usage=%d suspended=%u\n",
++			 ret, dwc3_of_simple_runtime_usage_count(dev),
++			 pm_runtime_suspended(dev));
++	}
+ 
+ 	return 0;
+ 
+@@ -97,6 +126,9 @@ static int dwc3_of_simple_probe(struct platform_device *pdev)
+ 
+ static void __dwc3_of_simple_teardown(struct dwc3_of_simple *simple)
+ {
++	if (simple->runtime_reset)
++		pm_runtime_get_sync(simple->dev);
++
+ 	of_platform_depopulate(simple->dev);
+ 
+ 	clk_bulk_disable_unprepare(simple->num_clocks, simple->clks);
+@@ -130,6 +162,11 @@ static int __maybe_unused dwc3_of_simple_runtime_suspend(struct device *dev)
+ {
+ 	struct dwc3_of_simple	*simple = dev_get_drvdata(dev);
+ 
++	if (simple->runtime_reset)
++		dev_info(dev,
++			 "rk3399-typec: parent runtime suspend, clocks off pm_usage=%d\n",
++			 dwc3_of_simple_runtime_usage_count(dev));
++
+ 	clk_bulk_disable(simple->num_clocks, simple->clks);
+ 
+ 	return 0;
+@@ -138,8 +175,45 @@ static int __maybe_unused dwc3_of_simple_runtime_suspend(struct device *dev)
+ static int __maybe_unused dwc3_of_simple_runtime_resume(struct device *dev)
+ {
+ 	struct dwc3_of_simple	*simple = dev_get_drvdata(dev);
++	int ret;
++
++	/*
++	 * RK3399 needs usb3-otg reset to be toggled before the Type-C PHY is
++	 * powered on.  The child DWC3 runtime resume follows this callback.
++	 */
++	if (simple->runtime_reset) {
++		ret = reset_control_assert(simple->resets);
++		if (ret) {
++			dev_err(dev,
++				"rk3399-typec: usb3-otg reset assert failed: %d\n",
++				ret);
++			return ret;
++		}
++
++		udelay(1);
++
++		ret = reset_control_deassert(simple->resets);
++		if (ret) {
++			dev_err(dev,
++				"rk3399-typec: usb3-otg reset deassert failed: %d\n",
++				ret);
++			return ret;
++		}
++
++		dev_info(dev,
++			 "rk3399-typec: usb3-otg reset pulse complete\n");
++	}
+ 
+-	return clk_bulk_enable(simple->num_clocks, simple->clks);
++	ret = clk_bulk_enable(simple->num_clocks, simple->clks);
++	if (ret && simple->runtime_reset)
++		dev_err(dev,
++			"rk3399-typec: parent clock enable failed: %d\n", ret);
++	else if (simple->runtime_reset)
++		dev_info(dev,
++			 "rk3399-typec: parent runtime resume, clocks on pm_usage=%d\n",
++			 dwc3_of_simple_runtime_usage_count(dev));
++
++	return ret;
+ }
+ 
+ static int __maybe_unused dwc3_of_simple_suspend(struct device *dev)

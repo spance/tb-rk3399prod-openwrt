@@ -37,7 +37,7 @@ Linux 6.12 是 OpenWrt 25.12.5 的目标内核，用来选择当前的 TCPM、ro
 当前实现不是原厂 Linux 4.4 驱动的逐行等价迁移。原厂方案由三个相互配合的部分组成：
 
 1. 私有 FUSB302 状态机先写入方向和 SuperSpeed extcon 属性，再同步 `EXTCON_USB_HOST` 状态；
-2. Rockchip 专用 `dwc3-rockchip.c` 在拔出时先移除 shared/primary HCD，再关闭 USB2/USB3 PHY 并挂起 DWC3；
+2. Rockchip 专用 `dwc3-rockchip.c` 在整段线缆连接期间持续持有父 glue 与子 DWC3 的 runtime-PM 引用；拔出时先移除 shared/primary HCD，再关闭 USB2/USB3 PHY，最后同步挂起子控制器和父 glue；
 3. 再次插入时先复位 OTG 控制器，Type-C PHY 在 `power_on()` 中读取已经确定的方向，只初始化当前方向的一对 USB3 lanes；PIPE ready 后才重新添加 HCD。PHY 上电失败最多重试 5 次。
 
 因此，原厂可靠热插拔的关键不是“PHY 在线换向”，而是由 DWC3 消费者统一管理 xHCI、控制器和 PHY 的完整生命周期。此前只把 orientation-switch 接入 PHY、再尝试在常驻 xHCI 下在线重启 PHY，缺少原厂 DWC3 生命周期，不能视为等价迁移；实机出现 `-110` 和 `connect-debounce failed` 与这一差异一致。
@@ -46,15 +46,17 @@ Linux 6.12 是 OpenWrt 25.12.5 的目标内核，用来选择当前的 TCPM、ro
 
 工程以 Toybrick stable 4.4 的板级行为为目标，用 Linux 6.12 的现有框架实现；Rockchip `develop-6.6` 的固定提交 `1ba51b059f25533c5529b7f68186190b47d6a7b3` 仅作为新 API 写法的交叉参考。适配由两部分组成：
 
-- `144-phy-rockchip-typec-orientation-switch.patch`：接入 TCPM orientation switch。回调只记录 `flip` 和 `new_mode`，不写在线寄存器、不复位 PHY；实际 lane 配置仍只在 PHY `power_on()` 中完成，并恢复 Rockchip 的 5 次上电重试。
-- `145-usb-dwc3-rk3399-typec-runtime-pm.patch`：让未连接的 RK3399 OTG DWC3 进入 runtime suspend，执行 `dwc3_core_exit()` 并关闭 generic PHY；只有带标准 `usb-role-switch` 的 Type-C 控制器允许父 glue 随子设备挂起，独立 Type-A 控制器保持原行为。连接后先由父 glue 对 `usb3-otg` 复位执行 `assert → 1 µs → deassert`，随后 `dwc3_core_init_for_resume()` 才给 core 和 PHY 上电；等待 10–11 ms 让 SuperSpeed PHY 稳定后，最后创建 host/xHCI。autosuspend 延时为 100 ms。这补齐了此前仅复位 DWC3 子核心、未触及父节点 `SRST_A_USB3_OTG0` 的语义缺口。
+- `patches/kernel/144-phy-rockchip-typec-orientation-switch.patch`：接入 TCPM orientation switch。带 orientation switch 的 PHY 初始状态明确为 `DISCONNECT`；回调只记录 `flip` 和 `new_mode`，不写在线寄存器、不复位 PHY。实际 lane 配置仍只在 PHY `power_on()` 中完成，恢复 Rockchip 的 5 次上电重试，并记录复位、PMA ready、PIPE ready、方向、尝试次数和原始状态值。
+- `patches/kernel/145-usb-dwc3-rk3399-typec-runtime-pm.patch`：在本控制器上把 `USB_ROLE_NONE` 表示成真正的内部 idle，而不是 Linux 6.12 原有的默认 device；连接成功后持续持有 runtime-PM 引用，拔出时先删除 xHCI，再释放连接期引用并同步挂起。这样父 glue 的 `usb3-otg` 复位脉冲只发生于真正的 `NONE → HOST`，不会发生在 `HOST → NONE` 或普通总线唤醒途中。attach 时父 glue 执行 `assert → 1 µs → deassert`，子 DWC3 再恢复 core/PHY，等待 10–11 ms 后创建 xHCI。100 ms autosuspend 仅作为空闲路径的安全边界；活动连接不依赖该定时器。
+
+这两份关键驱动补丁是工程中的直接权威文件。`make init` 根据 OpenWrt 的 `KERNEL_PATCHVER` 把它们同步到 `target/linux/rockchip/patches-<版本>/`；OpenWrt 板级补丁不再嵌套保存第二份副本。
 
 DTS 中连接器仍固定声明 `data-role = "host"`、`power-role = "source"`；DWC3_0 使用 `dr_mode = "otg"` 和 `usb-role-switch`，内核启用 `CONFIG_USB_DWC3_DUAL_ROLE`。dual-role 只是复用内核的控制器生命周期状态机，并不表示产品对外提供 gadget：TCPM 在本连接器上只会请求 `HOST` 或 `NONE`。
 
 事件顺序如下：
 
-1. 拔出：TCPM 先发送 orientation `NONE`，再发送 USB role `NONE`；DWC3 退出 host、删除 xHCI，空闲后关闭 core 和 PHY。
-2. 插入：TCPM 先发送 normal/reverse orientation，再请求 `HOST`；父 DWC3 glue 先脉冲 `usb3-otg` 复位，子 DWC3 随后 runtime resume，PHY 按该方向初始化；等待 10–11 ms 后创建 xHCI 并枚举设备。
+1. 拔出：TCPM 先发送 orientation `NONE`，再发送 USB role `NONE`；DWC3 在仍处于供电状态时退出 host、删除 xHCI，然后释放连接期 PM 引用并同步关闭 core、PHY 和父 glue。该方向不触发 OTG 复位。
+2. 插入：TCPM 先发送 normal/reverse orientation，再请求 `HOST`；从真实 idle 恢复父 DWC3 glue 时先脉冲 `usb3-otg` 复位，子 DWC3 随后 runtime resume，PHY 按已经记录的方向初始化；等待 10–11 ms 后创建 xHCI，并在整段连接期间保持 PM active。
 
 这条路径不同时配置两组 USB3 lanes，不在活动 xHCI 下方重启 PHY，也不依赖用户态热插拔脚本或驱动重绑。
 
@@ -74,7 +76,7 @@ DTS 中连接器仍固定声明 `data-role = "host"`、`power-role = "source"`�
 ## 构建后静态检查
 
 ```sh
-grep -E 'CONFIG_(TYPEC|TYPEC_TCPM|TYPEC_FUSB302|PHY_ROCKCHIP_TYPEC|USB_DWC3_DUAL_ROLE|USB_GADGET)=y' \
+grep -E 'CONFIG_(DEBUG_FS|TYPEC|TYPEC_TCPM|TYPEC_FUSB302|PHY_ROCKCHIP_TYPEC|USB_DWC3_DUAL_ROLE|USB_GADGET)=y' \
   .work/openwrt/build_dir/target-aarch64_generic_musl/linux-rockchip_armv8/linux-6.12.94/.config
 
 .work/openwrt/staging_dir/host/bin/dtc -I dtb -O dts -o - \
@@ -83,6 +85,51 @@ grep -E 'CONFIG_(TYPEC|TYPEC_TCPM|TYPEC_FUSB302|PHY_ROCKCHIP_TYPEC|USB_DWC3_DUAL
 ```
 
 最终 DTB 应包含 FUSB302、orientation switch、`usb-role-switch` 和 `dr_mode = "otg"`，不应包含实验属性 `rockchip,usb3-host-only`。
+
+## 一次性诊断采集
+
+固件内置 `/usr/sbin/tb-typec-diag`。它在一个时间窗内只记录发生变化的 Type-C role、orientation、DWC3 runtime-PM 和 USB 设备状态，结束时收集完整 `dmesg`、`logread`、USB/块设备拓扑、IRQ、相关 clock/power-domain/regulator/GPIO、驱动绑定和 deferred probe，以及 Linux 已有的 FUSB302 与 TCPM 1024 项事件环。脚本会把开始/结束标记写入内核日志，使测试窗口在完整 `dmesg` 中有明确边界。
+
+读取 FUSB302/TCPM debugfs 事件环会推进其 tail。脚本在测试开始时先把开机阶段的现存事件保存到输出文件并释放环容量，结束时再读取测试期间的新事件；两段内容都保存在同一文件中，不会因为下一阶段采集而丢失，同时降低 1024 项环在多次插拔中溢出的概率。若 debugfs、事件环或关键驱动绑定不存在，脚本会明确记录“未找到”，而不是静默跳过。
+
+默认一次 120 秒即可覆盖两个方向：
+
+```sh
+tb-typec-diag
+# 正向插入并等待枚举；卸载、拔出、翻转，再次插入并等待枚举
+# 完成后把脚本打印的 /tmp/tb-typec-diag-*.log 取回分析
+```
+
+也可指定时间和输出文件：
+
+```sh
+tb-typec-diag 180 /tmp/typec-run.log
+```
+
+针对“带盘冷启动成功、运行中重插失败”的当前故障，最有效的一次采集方式是：刷机后先保持已知可用的 M.2 连接并启动，进入系统后执行 `tb-typec-diag 240`，确认冷启动枚举仍在，然后卸载并拔出，依次完成同向重插、翻转重插。这样一份文件同时包含冷启动成功链和热插拔失败链，可直接做边界对比，不需要针对每个猜测重新刷机。
+
+驱动的事件日志覆盖以下关键边界：
+
+- TCPM/FUSB302：CC、attach/detach、请求的 USB role 和 orientation；
+- DWC3 父 glue：OTG reset 的 assert/deassert 失败、复位脉冲完成、clock resume/suspend；
+- Type-C PHY：方向、reset、PMA ready、PIPE ready、GRF 写入错误、PIPE regmap 读取错误、5 次重试及原始状态值；
+- DWC3 子控制器：当前/目标 role、xHCI 创建或移除、同步 suspend 结果；
+- runtime PM：关键转换同时记录 usage count、连接期 hold 状态和最终 suspended 状态，可直接发现引用泄漏；
+- 用户态快照：Type-C/USB role、父子 runtime status、USB speed/UAS、块设备、clock、power domain、regulator、GPIO 和驱动绑定。
+
+同一份日志可以按下面的连续边界定位故障：
+
+| 最后成功边界 | 首个缺失/错误边界 | 主要定位 |
+|---|---|---|
+| FUSB302 CC/TCPM attached | 无 orientation/role 事件 | FUSB302、I2C/IRQ、TCPM 或 graph 绑定 |
+| `orientation=normal/reverse` | 无 `role transition ... desired=1` | USB role switch |
+| role transition | 父 reset/clock resume 失败 | DWC3 glue、reset、clock 或 power domain |
+| 父 resume | child core/PMA/PIPE 失败 | DWC3 core 或 Type-C PHY，并有 reset、GRF/regmap 返回码、原始状态值和 5 次重试记录 |
+| PHY on | 无 `host active, xHCI created` | DWC3 host/xHCI 创建 |
+| xHCI created | 无 USB/UAS 设备 | xHCI 端口、线缆、设备或 USB 枚举 |
+| 拔出 role NONE | 无同步 child/parent suspend | PM 引用或退出路径泄漏 |
+
+正常 attach 的关键日志顺序应为：父 reset pulse → 父 clocks on → PHY ready → child core resume → role transition → xHCI created；正常 detach 应为：orientation none → role NONE → xHCI removed → child core/PHY off → parent clocks off。成功 attach 后 PM usage count 应保留一个连接期引用；detach 完成后应回到 `pm_usage=0 suspended=1`。时间戳、事件环和 PM 计数足以判断顺序与引用平衡，不需要为每一个猜测重新编译固件。
 
 ## 上板验收
 
@@ -107,7 +154,7 @@ lsusb -t
 6. 日志不得新增 `connect-debounce failed`、PMA/PIPE timeout、xHCI、UAS、SCSI 或文件系统错误。
 7. 断电进入 Loader/Maskrom，确认 Rockchip 官方工具仍能发现设备。
 
-推荐记录：
+快速人工查看仍可使用：
 
 ```sh
 lsusb -t
@@ -122,7 +169,7 @@ dmesg | grep -Ei 'error|fail|timeout|uas|scsi|xhci|dwc3|fusb|tcpm'
 升级内核时必须同时审查 Type-C PHY 和 DWC3 两部分：
 
 - 若新内核已合入 RK3399 TCPM orientation-switch，删除 144 回移并使用上游绑定；
-- 若新内核已具备 RK3399 未连接 runtime suspend/恢复逻辑，必须确认它也保留父 `usb3-otg` 复位早于 PHY 上电的顺序，满足后才删除 145 回移；
+- 若新内核已具备 RK3399 未连接 runtime suspend/恢复逻辑，必须同时确认：`NONE` 不回落到 gadget、xHCI 先于 suspend 删除、连接期间 PM 引用保持、父 `usb3-otg` 只在 attach 时复位且早于 PHY 上电；全部满足后才删除 145 回移；
 - 若只合入其中一部分，另一部分仍以 Toybrick stable 4.4 的板级行为为目标，按新内核 API 重新实现；Rockchip 新分支只作实现参考；
 - 每次升级都重新完成正反插、同方向重插、快速重插、长时 UAS 读写和 Loader 回归。
 

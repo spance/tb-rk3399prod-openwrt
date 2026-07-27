@@ -10,7 +10,12 @@ index 6fb6dae..8bf2d8e 100644
  CONFIG_CPU_IDLE=y
  CONFIG_CPU_IDLE_GOV_MENU=y
  CONFIG_CPU_IDLE_MULTIPLE_DRIVERS=y
-@@ -234,6 +235,10 @@ CONFIG_DNOTIFY=y
+@@ -213,3 +214,4 @@
+ CONFIG_DCACHE_WORD_ACCESS=y
+ CONFIG_DEBUG_BUGVERBOSE=y
++CONFIG_DEBUG_FS=y
+ CONFIG_DEBUG_INFO=y
+@@ -234,6 +236,10 @@ CONFIG_DNOTIFY=y
  CONFIG_DTC=y
  CONFIG_DT_IDLE_GENPD=y
  CONFIG_DT_IDLE_STATES=y
@@ -21,7 +26,7 @@ index 6fb6dae..8bf2d8e 100644
  CONFIG_DUMMY_CONSOLE=y
  CONFIG_DWMAC_DWC_QOS_ETH=y
  CONFIG_DWMAC_GENERIC=y
-@@ -251,6 +256,9 @@ CONFIG_FANOTIFY=y
+@@ -251,6 +257,9 @@ CONFIG_FANOTIFY=y
  CONFIG_FHANDLE=y
  CONFIG_FIXED_PHY=y
  CONFIG_FIX_EARLYCON_MEM=y
@@ -31,7 +36,7 @@ index 6fb6dae..8bf2d8e 100644
  CONFIG_FRAME_POINTER=y
  CONFIG_FS_IOMAP=y
  CONFIG_FS_MBCACHE=y
-@@ -510,7 +518,7 @@ CONFIG_PHY_ROCKCHIP_DP=y
+@@ -510,7 +519,7 @@ CONFIG_PHY_ROCKCHIP_DP=y
  CONFIG_PHY_ROCKCHIP_EMMC=y
  # CONFIG_PHY_ROCKCHIP_INNO_CSIDPHY is not set
  # CONFIG_PHY_ROCKCHIP_INNO_DSIDPHY is not set
@@ -40,7 +45,7 @@ index 6fb6dae..8bf2d8e 100644
  CONFIG_PHY_ROCKCHIP_INNO_USB2=y
  CONFIG_PHY_ROCKCHIP_NANENG_COMBO_PHY=y
  CONFIG_PHY_ROCKCHIP_PCIE=y
-@@ -574,17 +582,27 @@ CONFIG_RELOCATABLE=y
+@@ -574,17 +583,27 @@ CONFIG_RELOCATABLE=y
  CONFIG_RESET_CONTROLLER=y
  CONFIG_RESET_SCMI=y
  CONFIG_RFS_ACCEL=y
@@ -68,7 +73,7 @@ index 6fb6dae..8bf2d8e 100644
  CONFIG_RODATA_FULL_DEFAULT_ENABLED=y
  CONFIG_RPS=y
  CONFIG_RSEQ=y
-@@ -714,11 +732,12 @@ CONFIG_UNMAP_KERNEL_AT_EL0=y
+@@ -714,11 +733,12 @@ CONFIG_UNMAP_KERNEL_AT_EL0=y
  CONFIG_USB=y
  CONFIG_USB_COMMON=y
  CONFIG_USB_DWC3=y
@@ -229,381 +234,3 @@ index 0000000..a1231ad
 ++	.pdata = &sdhci_arasan_rk3399_pdata,
 + 	.clk_ops = &arasan_clk_ops,
 + };
-diff --git a/target/linux/rockchip/patches-6.12/144-phy-rockchip-typec-orientation-switch.patch b/target/linux/rockchip/patches-6.12/144-phy-rockchip-typec-orientation-switch.patch
-new file mode 100644
-index 0000000..1469dc5
---- /dev/null
-+++ b/target/linux/rockchip/patches-6.12/144-phy-rockchip-typec-orientation-switch.patch
-@@ -0,0 +1,201 @@
-+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
-+From: TB-RK3399ProD OpenWrt project <noreply@example.invalid>
-+Date: Mon, 27 Jul 2026 10:05:21 +0800
-+Subject: [PATCH] phy: rockchip: add TCPM orientation for RK3399 Type-C
-+
-+Reproduce the Toybrick stable 4.4 orientation-at-power-on and five-retry behavior through the Linux 6.12 TCPM orientation-switch API. TCPM callbacks only record connector state; hardware lane programming remains in the PHY power-on lifecycle.
-+
-+Link: https://github.com/rockchip-toybrick/kernel/blob/a80be5749ac552821967eff313df53f9e0cd1e01/drivers/phy/rockchip/phy-rockchip-typec.c
-+---
-+ drivers/phy/rockchip/Kconfig              |   1 +
-+ drivers/phy/rockchip/phy-rockchip-typec.c | 101 +++++++++++++++++++++-
-+ 2 files changed, 99 insertions(+), 3 deletions(-)
-+
-+diff --git a/drivers/phy/rockchip/Kconfig b/drivers/phy/rockchip/Kconfig
-+index dcb8e16..3677bfe 100644
-+--- a/drivers/phy/rockchip/Kconfig
-++++ b/drivers/phy/rockchip/Kconfig
-+@@ -107,6 +107,7 @@ config PHY_ROCKCHIP_SNPS_PCIE3
-+ config PHY_ROCKCHIP_TYPEC
-+ 	tristate "Rockchip TYPEC PHY Driver"
-+ 	depends on OF && (ARCH_ROCKCHIP || COMPILE_TEST)
-++	depends on TYPEC || TYPEC=n
-+ 	select EXTCON
-+ 	select GENERIC_PHY
-+ 	select RESET_CONTROLLER
-+diff --git a/drivers/phy/rockchip/phy-rockchip-typec.c b/drivers/phy/rockchip/phy-rockchip-typec.c
-+index 4efcb78..22a4fb4 100644
-+--- a/drivers/phy/rockchip/phy-rockchip-typec.c
-++++ b/drivers/phy/rockchip/phy-rockchip-typec.c
-+@@ -54,6 +54,7 @@
-+ 
-+ #include <linux/mfd/syscon.h>
-+ #include <linux/phy/phy.h>
-++#include <linux/usb/typec_mux.h>
-+ 
-+ #define CMN_SSM_BANDGAP			(0x21 << 2)
-+ #define CMN_SSM_BIAS			(0x22 << 2)
-+@@ -331,6 +332,7 @@
-+ #define DP_MODE_ENTER_A2		0xc104
-+ 
-+ #define PHY_MODE_SET_TIMEOUT		100000
-++#define POWER_ON_TRIES			5
-+ 
-+ #define PIN_ASSIGN_C_E			0x51d9
-+ #define PIN_ASSIGN_D_F			0x5100
-+@@ -372,6 +374,7 @@ struct rockchip_typec_phy {
-+ 	struct device *dev;
-+ 	void __iomem *base;
-+ 	struct extcon_dev *extcon;
-++	struct typec_switch_dev *sw;
-+ 	struct regmap *grf_regs;
-+ 	struct clk *clk_core;
-+ 	struct clk *clk_ref;
-+@@ -384,6 +387,7 @@ struct rockchip_typec_phy {
-+ 
-+ 	bool flip;
-+ 	u8 mode;
-++	u8 new_mode;
-+ };
-+ 
-+ struct phy_reg {
-+@@ -812,7 +816,7 @@ static int tcphy_get_mode(struct rockchip_typec_phy *tcphy)
-+ 	int ret, ufp, dp;
-+ 
-+ 	if (!edev)
-+-		return MODE_DFP_USB;
-++		return tcphy->new_mode;
-+ 
-+ 	ufp = extcon_get_state(edev, EXTCON_USB);
-+ 	dp = extcon_get_state(edev, EXTCON_DISP_DP);
-+@@ -862,9 +866,8 @@ static int tcphy_cfg_usb3_to_usb2_only(struct rockchip_typec_phy *tcphy,
-+ 	return 0;
-+ }
-+ 
-+-static int rockchip_usb3_phy_power_on(struct phy *phy)
-++static int _rockchip_usb3_phy_power_on(struct rockchip_typec_phy *tcphy)
-+ {
-+-	struct rockchip_typec_phy *tcphy = phy_get_drvdata(phy);
-+ 	const struct rockchip_usb3phy_port_cfg *cfg = tcphy->port_cfgs;
-+ 	const struct usb3phy_reg *reg = &cfg->pipe_status;
-+ 	int timeout, new_mode, ret = 0;
-+@@ -916,6 +919,24 @@ unlock_ret:
-+ 	return ret;
-+ }
-+ 
-++static int rockchip_usb3_phy_power_on(struct phy *phy)
-++{
-++	struct rockchip_typec_phy *tcphy = phy_get_drvdata(phy);
-++	int ret;
-++	int tries;
-++
-++	for (tries = 0; tries < POWER_ON_TRIES; tries++) {
-++		ret = _rockchip_usb3_phy_power_on(tcphy);
-++		if (!ret)
-++			break;
-++	}
-++
-++	if (tries && !ret)
-++		dev_info(tcphy->dev, "Needed %d loops to turn on\n", tries);
-++
-++	return ret;
-++}
-++
-+ static int rockchip_usb3_phy_power_off(struct phy *phy)
-+ {
-+ 	struct rockchip_typec_phy *tcphy = phy_get_drvdata(phy);
-+@@ -935,6 +956,73 @@ unlock:
-+ 	return 0;
-+ }
-+ 
-++#if IS_ENABLED(CONFIG_TYPEC)
-++static int tcphy_set_orientation(struct typec_switch_dev *sw,
-++				 enum typec_orientation orientation)
-++{
-++	struct rockchip_typec_phy *tcphy = typec_switch_get_drvdata(sw);
-++
-++	mutex_lock(&tcphy->lock);
-++
-++	if (orientation == TYPEC_ORIENTATION_NONE) {
-++		tcphy->new_mode = MODE_DISCONNECT;
-++		goto out_unlock;
-++	}
-++
-++	tcphy->flip = orientation == TYPEC_ORIENTATION_REVERSE;
-++	tcphy->new_mode = MODE_DFP_USB;
-++
-++out_unlock:
-++	mutex_unlock(&tcphy->lock);
-++	return 0;
-++}
-++
-++static void tcphy_unregister_orientation_switch(void *data)
-++{
-++	struct rockchip_typec_phy *tcphy = data;
-++
-++	typec_switch_unregister(tcphy->sw);
-++}
-++
-++static int tcphy_register_orientation_switch(struct rockchip_typec_phy *tcphy)
-++{
-++	struct typec_switch_desc desc = { };
-++	struct device_node *np;
-++	int ret = 0;
-++
-++	np = of_get_child_by_name(tcphy->dev->of_node, "usb3-port");
-++	if (!np)
-++		return 0;
-++
-++	if (!of_property_read_bool(np, "orientation-switch"))
-++		goto out_put_node;
-++
-++	desc.drvdata = tcphy;
-++	desc.fwnode = of_fwnode_handle(np);
-++	desc.set = tcphy_set_orientation;
-++
-++	tcphy->sw = typec_switch_register(tcphy->dev, &desc);
-++	if (IS_ERR(tcphy->sw)) {
-++		ret = dev_err_probe(tcphy->dev, PTR_ERR(tcphy->sw),
-++				    "failed to register Type-C orientation switch\n");
-++		goto out_put_node;
-++	}
-++
-++	ret = devm_add_action_or_reset(tcphy->dev,
-++				       tcphy_unregister_orientation_switch,
-++				       tcphy);
-++
-++out_put_node:
-++	of_node_put(np);
-++	return ret;
-++}
-++#else
-++static int tcphy_register_orientation_switch(struct rockchip_typec_phy *tcphy)
-++{
-++	return 0;
-++}
-++#endif
-++
-+ static const struct phy_ops rockchip_usb3_phy_ops = {
-+ 	.power_on	= rockchip_usb3_phy_power_on,
-+ 	.power_off	= rockchip_usb3_phy_power_off,
-+@@ -1142,6 +1230,7 @@ static int rockchip_typec_phy_probe(struct platform_device *pdev)
-+ 		return ret;
-+ 
-+ 	tcphy->dev = dev;
-++	tcphy->new_mode = MODE_DFP_USB;
-+ 	platform_set_drvdata(pdev, tcphy);
-+ 	mutex_init(&tcphy->lock);
-+ 
-+@@ -1183,6 +1272,12 @@ static int rockchip_typec_phy_probe(struct platform_device *pdev)
-+ 		phy_set_drvdata(phy, tcphy);
-+ 	}
-+ 
-++	ret = tcphy_register_orientation_switch(tcphy);
-++	if (ret) {
-++		pm_runtime_disable(dev);
-++		return ret;
-++	}
-++
-+ 	phy_provider = devm_of_phy_provider_register(dev, of_phy_simple_xlate);
-+ 	if (IS_ERR(phy_provider)) {
-+ 		dev_err(dev, "Failed to register phy provider\n");
-diff --git a/target/linux/rockchip/patches-6.12/145-usb-dwc3-rk3399-typec-runtime-pm.patch b/target/linux/rockchip/patches-6.12/145-usb-dwc3-rk3399-typec-runtime-pm.patch
-new file mode 100644
-index 0000000..6087bc6
---- /dev/null
-+++ b/target/linux/rockchip/patches-6.12/145-usb-dwc3-rk3399-typec-runtime-pm.patch
-@@ -0,0 +1,165 @@
-+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
-+From: TB-RK3399ProD OpenWrt project <noreply@example.invalid>
-+Date: Mon, 27 Jul 2026 10:05:21 +0800
-+Subject: [PATCH] usb: dwc3: restore RK3399 Type-C attach lifecycle
-+
-+Reproduce the Toybrick stable 4.4 attach lifecycle through Linux 6.12 runtime PM and role-switch APIs. While unattached, remove host/xHCI and power down DWC3/PHY; on reattach, pulse the parent usb3-otg reset before the child core and PHY resume, then recreate host.
-+
-+Use a 100 ms autosuspend delay so unplug/replug completes the PHY power cycle, and preserve the BSP's 10-11 ms PHY settle time before xHCI probes an attached SuperSpeed device.
-+
-+Link: https://github.com/rockchip-toybrick/kernel/blob/a80be5749ac552821967eff313df53f9e0cd1e01/drivers/usb/dwc3/dwc3-rockchip.c
-+---
-+ drivers/usb/dwc3/core.c           | 30 ++++++++++++++++++++++++++++--
-+ drivers/usb/dwc3/dwc3-of-simple.c | 34 +++++++++++++++++++++++++++++++++-
-+ 2 files changed, 61 insertions(+), 3 deletions(-)
-+
-+diff --git a/drivers/usb/dwc3/core.c b/drivers/usb/dwc3/core.c
-+index 2cdb073..2a289fb 100644
-+--- a/drivers/usb/dwc3/core.c
-++++ b/drivers/usb/dwc3/core.c
-+@@ -236,6 +236,12 @@ static void __dwc3_set_mode(struct work_struct *work)
-+ 
-+ 	switch (desired_dr_role) {
-+ 	case DWC3_GCTL_PRTCAP_HOST:
-++		/* Let the RK3399 SuperSpeed PHY settle before xHCI probes it. */
-++		if (IS_REACHABLE(CONFIG_ARCH_ROCKCHIP) &&
-++		    of_device_is_compatible(dwc->dev->parent->of_node,
-++					    "rockchip,rk3399-dwc3"))
-++			usleep_range(10000, 11000);
-++
-+ 		ret = dwc3_host_init(dwc);
-+ 		if (ret) {
-+ 			dev_err(dwc->dev, "failed to initialize host\n");
-+@@ -2291,6 +2297,23 @@ static int dwc3_probe(struct platform_device *pdev)
-+ 	if (ret)
-+ 		goto err_exit_debugfs;
-+ 
-++	/*
-++	 * RK3399 Type-C orientation is known only after its external Type-C
-++	 * controller reports an attachment.  Keep an unattached OTG controller
-++	 * runtime suspended so its generic PHY is powered on only after TCPM has
-++	 * selected the connector orientation.
-++	 */
-++	if (IS_REACHABLE(CONFIG_ARCH_ROCKCHIP) &&
-++	    dwc->dr_mode == USB_DR_MODE_OTG &&
-++	    of_device_is_compatible(dev->parent->of_node,
-++				    "rockchip,rk3399-dwc3")) {
-++		pm_runtime_set_autosuspend_delay(dev, 100);
-++		pm_runtime_allow(dev);
-++		pm_runtime_put_sync_suspend(dev);
-++		dma_set_max_seg_size(dev, UINT_MAX);
-++		return 0;
-++	}
-++
-+ 	pm_runtime_put(dev);
-+ 
-+ 	dma_set_max_seg_size(dev, UINT_MAX);
-+@@ -2450,7 +2473,8 @@ static int dwc3_suspend_common(struct dwc3 *dwc, pm_message_t msg)
-+ 		dwc3_core_exit(dwc);
-+ 		break;
-+ 	default:
-+-		/* do nothing */
-++		if (!pm_runtime_suspended(dwc->dev))
-++			dwc3_core_exit(dwc);
-+ 		break;
-+ 	}
-+ 
-+@@ -2517,7 +2541,9 @@ static int dwc3_resume_common(struct dwc3 *dwc, pm_message_t msg)
-+ 
-+ 		break;
-+ 	default:
-+-		/* do nothing */
-++		ret = dwc3_core_init_for_resume(dwc);
-++		if (ret)
-++			return ret;
-+ 		break;
-+ 	}
-+ 
-+diff --git a/drivers/usb/dwc3/dwc3-of-simple.c b/drivers/usb/dwc3/dwc3-of-simple.c
-+index 415eb5a..22e16f2 100644
-+--- a/drivers/usb/dwc3/dwc3-of-simple.c
-++++ b/drivers/usb/dwc3/dwc3-of-simple.c
-+@@ -13,6 +13,7 @@
-+ 
-+ #include <linux/module.h>
-+ #include <linux/kernel.h>
-++#include <linux/delay.h>
-+ #include <linux/slab.h>
-+ #include <linux/platform_device.h>
-+ #include <linux/dma-mapping.h>
-+@@ -28,6 +29,7 @@ struct dwc3_of_simple {
-+ 	int			num_clocks;
-+ 	struct reset_control	*resets;
-+ 	bool			need_reset;
-++	bool			runtime_reset;
-+ };
-+ 
-+ static int dwc3_of_simple_probe(struct platform_device *pdev)
-+@@ -35,6 +37,7 @@ static int dwc3_of_simple_probe(struct platform_device *pdev)
-+ 	struct dwc3_of_simple	*simple;
-+ 	struct device		*dev = &pdev->dev;
-+ 	struct device_node	*np = dev->of_node;
-++	struct device_node	*child;
-+ 
-+ 	int			ret;
-+ 
-+@@ -49,8 +52,15 @@ static int dwc3_of_simple_probe(struct platform_device *pdev)
-+ 	 * Some controllers need to toggle the usb3-otg reset before trying to
-+ 	 * initialize the PHY, otherwise the PHY times out.
-+ 	 */
-+-	if (of_device_is_compatible(np, "rockchip,rk3399-dwc3"))
-++	if (of_device_is_compatible(np, "rockchip,rk3399-dwc3")) {
-+ 		simple->need_reset = true;
-++		child = of_get_compatible_child(np, "snps,dwc3");
-++		if (child) {
-++			simple->runtime_reset =
-++				of_property_read_bool(child, "usb-role-switch");
-++			of_node_put(child);
-++		}
-++	}
-+ 
-+ 	simple->resets = of_reset_control_array_get_optional_exclusive(np);
-+ 	if (IS_ERR(simple->resets)) {
-+@@ -79,6 +89,8 @@ static int dwc3_of_simple_probe(struct platform_device *pdev)
-+ 	pm_runtime_set_active(dev);
-+ 	pm_runtime_enable(dev);
-+ 	pm_runtime_get_sync(dev);
-++	if (simple->runtime_reset)
-++		pm_runtime_put_sync_suspend(dev);
-+ 
-+ 	return 0;
-+ 
-+@@ -97,6 +109,9 @@ static int dwc3_of_simple_probe(struct platform_device *pdev)
-+ 
-+ static void __dwc3_of_simple_teardown(struct dwc3_of_simple *simple)
-+ {
-++	if (simple->runtime_reset)
-++		pm_runtime_get_sync(simple->dev);
-++
-+ 	of_platform_depopulate(simple->dev);
-+ 
-+ 	clk_bulk_disable_unprepare(simple->num_clocks, simple->clks);
-+@@ -138,6 +153,23 @@ static int __maybe_unused dwc3_of_simple_runtime_suspend(struct device *dev)
-+ static int __maybe_unused dwc3_of_simple_runtime_resume(struct device *dev)
-+ {
-+ 	struct dwc3_of_simple	*simple = dev_get_drvdata(dev);
-++	int ret;
-++
-++	/*
-++	 * RK3399 needs usb3-otg reset to be toggled before the Type-C PHY is
-++	 * powered on.  The child DWC3 runtime resume follows this callback.
-++	 */
-++	if (simple->runtime_reset) {
-++		ret = reset_control_assert(simple->resets);
-++		if (ret)
-++			return ret;
-++
-++		udelay(1);
-++
-++		ret = reset_control_deassert(simple->resets);
-++		if (ret)
-++			return ret;
-++	}
-+ 
-+ 	return clk_bulk_enable(simple->num_clocks, simple->clks);
-+ }

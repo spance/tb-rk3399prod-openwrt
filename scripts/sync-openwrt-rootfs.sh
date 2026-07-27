@@ -18,7 +18,7 @@ while IFS= read -r -d '' source_file; do
 	dest_file="$dest_root/$relative_path"
 	mode=0644
 	case "$relative_path" in
-	etc/init.d/*|etc/uci-defaults/*) mode=0755 ;;
+	etc/init.d/*|etc/uci-defaults/*|usr/sbin/*) mode=0755 ;;
 	esac
 	install -D -m "$mode" "$source_file" "$dest_file"
 	cmp -s "$source_file" "$dest_file" || \

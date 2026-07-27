@@ -23,7 +23,8 @@ for script in "$SCRIPT_DIR"/*.sh; do
 done
 for script in "$PROJECT_DIR"/rootfs/etc/init.d/* \
 	"$PROJECT_DIR"/rootfs/etc/uci-defaults/* \
-	"$PROJECT_DIR"/rootfs/etc/hotplug.d/iface/*; do
+	"$PROJECT_DIR"/rootfs/etc/hotplug.d/iface/* \
+	"$PROJECT_DIR"/rootfs/usr/sbin/*; do
 	sh -n "$script"
 done
 
@@ -38,16 +39,28 @@ grep -Fq 'make defconfig' "$SCRIPT_DIR/init.sh" || \
 grep -Fq 'make download' "$SCRIPT_DIR/init.sh" || \
 	fail "init stage does not download OpenWrt source archives"
 
-git -C "$PROJECT_DIR" diff --check
-git -C "$PROJECT_DIR" diff --cached --check
+# A patch file's own context lines intentionally begin with one space.  When a
+# new patch is itself shown in a repository diff, Git's outer whitespace check
+# misreads those context prefixes as indentation.  Validate project sources
+# here and validate patch payloads structurally below.
+git -C "$PROJECT_DIR" diff --check -- . \
+	':(exclude,glob)patches/**/*.patch'
+git -C "$PROJECT_DIR" diff --cached --check -- . \
+	':(exclude,glob)patches/**/*.patch'
 
 openwrt_patch="$PROJECT_DIR/patches/openwrt/0001-tb-rk3399prod-board-support.patch"
+kernel_patch_dir="$PROJECT_DIR/patches/kernel"
+typec_phy_patch="$kernel_patch_dir/144-phy-rockchip-typec-orientation-switch.patch"
+typec_dwc_patch="$kernel_patch_dir/145-usb-dwc3-rk3399-typec-runtime-pm.patch"
 assert_file "$openwrt_patch"
+assert_file "$typec_phy_patch"
+assert_file "$typec_dwc_patch"
 assert_file "$PROJECT_DIR/dts/rk3399pro-toybrick-prod.dts"
 assert_file "$PROJECT_DIR/dts/rk3399pro-toybrick-prod.dtsi"
 assert_file "$PROJECT_DIR/rootfs/etc/init.d/tb-net-tuning"
 assert_file "$PROJECT_DIR/rootfs/etc/hotplug.d/iface/90-tb-net-tuning"
 assert_file "$PROJECT_DIR/rootfs/etc/uci-defaults/99-tb-network-offload"
+assert_file "$PROJECT_DIR/rootfs/usr/sbin/tb-typec-diag"
 assert_file "$PROJECT_DIR/configs/openwrt.config"
 assert_file "$PROJECT_DIR/configs/feeds.conf"
 assert_file "$PROJECT_DIR/boot/boot.cmd"
@@ -55,6 +68,7 @@ assert_file "$PROJECT_DIR/scripts/clean.sh"
 assert_file "$PROJECT_DIR/scripts/make-openwrt-image.sh"
 assert_file "$PROJECT_DIR/scripts/reset.sh"
 assert_file "$PROJECT_DIR/scripts/sync-openwrt-rootfs.sh"
+assert_file "$PROJECT_DIR/scripts/sync-openwrt-kernel-patches.sh"
 assert_file "$PROJECT_DIR/scripts/verify-openwrt-image.sh"
 assert_file "$PROJECT_DIR/docs/BOOT-CHAIN.md"
 assert_file "$PROJECT_DIR/docs/HDMI-CONSOLE.md"
@@ -120,6 +134,14 @@ grep -Fq 'git -C "$repo" clean -fd' \
 	fail "exactly one current OpenWrt patch is required"
 git apply --numstat "$openwrt_patch" >/dev/null
 
+[ "$(find "$kernel_patch_dir" -mindepth 1 -maxdepth 1 -type d | wc -l)" -eq 0 ] || \
+	fail "kernel patch directory must not contain subdirectories"
+[ "$(find "$kernel_patch_dir" -maxdepth 1 -type f -name '*.patch' | wc -l)" -eq 2 ] || \
+	fail "exactly two canonical Type-C kernel patches are required"
+for patch in "$kernel_patch_dir"/*.patch; do
+	git apply --numstat "$patch" >/dev/null
+done
+
 [ "$(find "$PROJECT_DIR/patches/u-boot" -mindepth 1 -maxdepth 1 \
 	-type d | wc -l)" -eq 0 ] || \
 	fail "U-Boot patch directory must not contain subdirectories"
@@ -176,48 +198,82 @@ grep -Fq '143-mmc-sdhci-of-arasan-disable-rk3399-cqe.patch' \
 	fail "RK3399 eMMC CQE reliability patch is missing"
 grep -Fq 'SDHCI_QUIRK_BROKEN_CQE' "$openwrt_patch" || \
 	fail "RK3399 eMMC CQE is not disabled with the standard SDHCI quirk"
-grep -Fq '144-phy-rockchip-typec-orientation-switch.patch' \
-	"$openwrt_patch" || \
-	fail "RK3399 Type-C orientation-switch patch is missing"
-grep -Fq 'tcphy_set_orientation' "$openwrt_patch" || \
+grep -Fq 'tcphy_set_orientation' "$typec_phy_patch" || \
 	fail "RK3399 Type-C orientation callback is missing"
-grep -Fq 'tcphy->new_mode = MODE_DISCONNECT;' "$openwrt_patch" || \
+grep -Fq 'tcphy->new_mode = MODE_DISCONNECT;' "$typec_phy_patch" || \
 	fail "RK3399 Type-C detach state is not recorded by the PHY"
-grep -Fq 'return tcphy->new_mode;' "$openwrt_patch" || \
+grep -Fq 'return tcphy->new_mode;' "$typec_phy_patch" || \
 	fail "RK3399 Type-C PHY does not consume the TCPM mode"
-grep -Fq '#define POWER_ON_TRIES' "$openwrt_patch" || \
+grep -Fq '#define POWER_ON_TRIES' "$typec_phy_patch" || \
 	fail "RK3399 Type-C PHY power-on retries are missing"
-grep -Fq '145-usb-dwc3-rk3399-typec-runtime-pm.patch' \
-	"$openwrt_patch" || \
-	fail "RK3399 DWC3 Type-C runtime-PM patch is missing"
-grep -Fq 'pm_runtime_set_autosuspend_delay(dev, 100);' \
-	"$openwrt_patch" || \
+grep -Fq 'rk3399-typec: PIPE status read failed:' "$typec_phy_patch" || \
+	fail "RK3399 Type-C PIPE regmap read errors are not observable"
+grep -Fq 'rk3399-typec: USB3 host GRF enable failed:' "$typec_phy_patch" || \
+	fail "RK3399 Type-C GRF programming errors are not observable"
+grep -Fq 'pipe_read_ret=%d' "$typec_phy_patch" || \
+	fail "RK3399 Type-C final PHY failure log lacks the PIPE read status"
+grep -Fq 'mode = 0;' "$typec_dwc_patch" || \
+	fail "RK3399 USB_ROLE_NONE is not represented as a true idle role"
+grep -Fq 'if (!dwc->rk3399_typec)' "$typec_dwc_patch" || \
+	fail "RK3399 Type-C role switch still schedules an initial non-idle role"
+grep -Fq 'role_pm_held' "$typec_dwc_patch" || \
+	fail "RK3399 Type-C active-role runtime-PM hold is missing"
+grep -Fq 'pm_runtime_put_noidle(dwc->dev);' "$typec_dwc_patch" || \
+	fail "RK3399 Type-C detach does not release its attached-role PM hold"
+grep -Fq 'pm_usage=%d' "$typec_dwc_patch" || \
+	fail "RK3399 Type-C PM reference counts are absent from transition logs"
+grep -Fq 'pm_runtime_put_sync_suspend(dwc->dev);' "$typec_dwc_patch" || \
+	fail "RK3399 Type-C detach does not synchronously suspend DWC3"
+grep -Fq 'pm_runtime_set_autosuspend_delay(dev, 100);' "$typec_dwc_patch" || \
 	fail "RK3399 DWC3 detach delay is not bounded"
-grep -Fq 'pm_runtime_put_sync_suspend(dev);' "$openwrt_patch" || \
+grep -Fq 'pm_runtime_put_sync_suspend(dev);' "$typec_dwc_patch" || \
 	fail "RK3399 DWC3 is not suspended while Type-C is unattached"
-grep -Fq 'dwc3_core_init_for_resume(dwc);' "$openwrt_patch" || \
+grep -Fq 'dwc3_core_init_for_resume(dwc);' "$typec_dwc_patch" || \
 	fail "RK3399 DWC3/PHY resume lifecycle is missing"
-grep -Fq 'drivers/usb/dwc3/dwc3-of-simple.c' "$openwrt_patch" || \
+grep -Fq 'drivers/usb/dwc3/dwc3-of-simple.c' "$typec_dwc_patch" || \
 	fail "RK3399 parent DWC3 glue reset lifecycle is missing"
 grep -Fq 'of_property_read_bool(child, "usb-role-switch");' \
-	"$openwrt_patch" || \
+	"$typec_dwc_patch" || \
 	fail "RK3399 runtime reset is not restricted to the Type-C role-switch controller"
-grep -Fq 'reset_control_assert(simple->resets);' "$openwrt_patch" || \
+grep -Fq 'reset_control_assert(simple->resets);' "$typec_dwc_patch" || \
 	fail "RK3399 usb3-otg reset assert is missing before PHY resume"
-grep -Fq 'udelay(1);' "$openwrt_patch" || \
+grep -Fq 'udelay(1);' "$typec_dwc_patch" || \
 	fail "RK3399 usb3-otg reset pulse width is missing"
-grep -Fq 'usleep_range(10000, 11000);' "$openwrt_patch" || \
+grep -Fq 'usleep_range(10000, 11000);' "$typec_dwc_patch" || \
 	fail "Toybrick stable 4.4 PHY settle time is missing before xHCI probe"
-grep -Fq 'reset_control_deassert(simple->resets);' "$openwrt_patch" || \
+grep -Fq 'reset_control_deassert(simple->resets);' "$typec_dwc_patch" || \
 	fail "RK3399 usb3-otg reset deassert is missing before PHY resume"
 grep -Fq 'rockchip-toybrick/kernel/blob/a80be5749ac552821967eff313df53f9e0cd1e01/drivers/usb/dwc3/dwc3-rockchip.c' \
-	"$openwrt_patch" || \
+	"$typec_dwc_patch" || \
 	fail "Toybrick stable 4.4 DWC3 behavior is not pinned as the board baseline"
-if grep -Fq 'tcphy_reinit_usb3' "$openwrt_patch"; then
+for marker in \
+	'rk3399-typec: role transition' \
+	'rk3399-typec: USB3 PHY power-on failed' \
+	'rk3399-typec: wait PMA ready timeout' \
+	'rk3399-typec: wait PIPE ready timeout' \
+	'rk3399-typec: usb3-otg reset pulse complete'; do
+	grep -Fq "$marker" "$kernel_patch_dir"/*.patch || \
+		fail "Type-C diagnostic marker is missing: $marker"
+done
+grep -Fq '+CONFIG_DEBUG_FS=y' "$openwrt_patch" || \
+	fail "TCPM/FUSB302 debug rings are unavailable without CONFIG_DEBUG_FS"
+grep -Fq '/sys/kernel/debug/usb/fusb302-*/log' \
+	"$PROJECT_DIR/rootfs/usr/sbin/tb-typec-diag" || \
+	fail "Type-C diagnostic tool does not collect the FUSB302 event ring"
+grep -Fq '/sys/kernel/debug/usb/tcpm-*/log' \
+	"$PROJECT_DIR/rootfs/usr/sbin/tb-typec-diag" || \
+	fail "Type-C diagnostic tool does not collect the TCPM event ring"
+grep -Fq 'event rings before test' \
+	"$PROJECT_DIR/rootfs/usr/sbin/tb-typec-diag" || \
+	fail "Type-C diagnostic tool does not preserve pre-test controller events"
+grep -Fq 'tb-typec-diag: %s' \
+	"$PROJECT_DIR/rootfs/usr/sbin/tb-typec-diag" || \
+	fail "Type-C diagnostic tool does not place test boundaries in dmesg"
+if grep -Fq 'tcphy_reinit_usb3' "$kernel_patch_dir"/*.patch; then
 	fail "unsafe live Type-C PHY reinitialization remains"
 fi
 if grep -Eq 'rockchip,usb3-host-only|usb3_powered|USB3 host switched' \
-	"$openwrt_patch"; then
+	"$kernel_patch_dir"/*.patch; then
 	fail "unsupported fixed-host Type-C lane switching remains"
 fi
 grep -Fq '+CONFIG_USB_DWC3_DUAL_ROLE=y' "$openwrt_patch" || \
@@ -368,6 +424,7 @@ if [ -d "$WORK_DIR/openwrt/.git" ]; then
 		fail "OpenWrt Linux version differs from the pinned project baseline"
 	rockchip_kernel_config="$WORK_DIR/openwrt/target/linux/rockchip/armv8/config-$kernel_patchver"
 	for required_kernel_config in \
+		'CONFIG_DEBUG_FS=y' \
 		'CONFIG_PHY_ROCKCHIP_TYPEC=y' \
 		'CONFIG_REGULATOR_FIXED_VOLTAGE=y' \
 		'CONFIG_TYPEC=y' \
@@ -387,6 +444,12 @@ if [ -d "$WORK_DIR/openwrt/.git" ]; then
 	for name in rk3399pro-toybrick-prod.dts rk3399pro-toybrick-prod.dtsi; do
 		cmp -s "$PROJECT_DIR/dts/$name" "$dts_dest/$name" || \
 			fail "OpenWrt worktree DTS is not synchronized: $name"
+	done
+	kernel_patch_dest="$WORK_DIR/openwrt/target/linux/rockchip/patches-$kernel_patchver"
+	for source_patch in "$kernel_patch_dir"/*.patch; do
+		name=${source_patch##*/}
+		cmp -s "$source_patch" "$kernel_patch_dest/$name" || \
+			fail "OpenWrt worktree kernel patch is not synchronized: $name"
 	done
 	rootfs_dest="$WORK_DIR/openwrt/target/linux/rockchip/base-files"
 	while IFS= read -r -d '' source_file; do
