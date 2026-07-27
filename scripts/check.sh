@@ -241,6 +241,9 @@ assert_exact_line \
 	"$TB_KMOD_REPOSITORY"
 grep -Fq '.vermagic.native' "$kmod_compat_patch" || \
 	fail "kmod compatibility patch does not preserve the native ABI hash"
+grep -Fq "printf '%s\\n' '\$(TB_KMOD_NATIVE_ABI)' | cmp -s - \$(LINUX_DIR)/.vermagic.native" \
+	"$kmod_compat_patch" || \
+	fail "kmod compatibility patch does not compare the native ABI without Make expansion"
 grep -Fq 'TB_KMOD_NATIVE_ABI' "$kmod_compat_patch" || \
 	fail "kmod compatibility patch does not enforce the native ABI baseline"
 grep -Fq 'TB_KMOD_OFFICIAL_ABI' "$kmod_compat_patch" || \

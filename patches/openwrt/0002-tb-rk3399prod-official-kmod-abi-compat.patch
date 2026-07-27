@@ -9,8 +9,8 @@ limited to OpenWrt's package-level kernel dependency.
 The generated include/tb-kmod-compat.mk is synchronized from the adaptation
 project during initialization.
 ---
- include/kernel-defaults.mk | 9 ++++++++-
- 1 file changed, 8 insertions(+), 1 deletion(-)
+ include/kernel-defaults.mk | 11 ++++++++++-
+ 1 file changed, 10 insertions(+), 1 deletion(-)
 
 --- a/include/kernel-defaults.mk
 +++ b/include/kernel-defaults.mk
@@ -23,15 +23,16 @@ project during initialization.
  ifdef CONFIG_STRIP_KERNEL_EXPORTS
    KERNEL_MAKEOPTS_IMAGE += \
  	EXTRA_LDSFLAGS="-I$(KERNEL_BUILD_DIR) -include symtab.h"
-@@ -126,7 +128,13 @@ define Kernel/Configure/Default
+@@ -126,7 +128,14 @@ define Kernel/Configure/Default
  		cp $(LINUX_DIR)/.config.set $(LINUX_DIR)/.config.prev; \
  	}
  	$(_SINGLE) [ -d $(LINUX_DIR)/user_headers ] || $(KERNEL_MAKE) $(if $(findstring uml,$(BOARD)),ARCH=$(ARCH)) INSTALL_HDR_PATH=$(LINUX_DIR)/user_headers headers_install
 -	grep '=[ym]' $(LINUX_DIR)/.config.set | LC_ALL=C sort | $(MKHASH) md5 > $(LINUX_DIR)/.vermagic
 +	grep '=[ym]' $(LINUX_DIR)/.config.set | LC_ALL=C sort | $(MKHASH) md5 > $(LINUX_DIR)/.vermagic.native
-+	[ "$$(cat $(LINUX_DIR)/.vermagic.native)" = "$(TB_KMOD_NATIVE_ABI)" ] || { \
++	printf '%s\n' '$(TB_KMOD_NATIVE_ABI)' | cmp -s - $(LINUX_DIR)/.vermagic.native || { \
 +		echo "ERROR: native kernel Kconfig ABI changed; refusing the official kmod compatibility override" >&2; \
-+		echo "ERROR: expected $(TB_KMOD_NATIVE_ABI), got $$(cat $(LINUX_DIR)/.vermagic.native)" >&2; \
++		printf '%s' "ERROR: expected $(TB_KMOD_NATIVE_ABI), got " >&2; \
++		cat $(LINUX_DIR)/.vermagic.native >&2; \
 +		exit 1; \
 +	}
 +	printf '%s\n' '$(TB_KMOD_OFFICIAL_ABI)' > $(LINUX_DIR)/.vermagic
