@@ -123,7 +123,7 @@ index b9f1fca..cf2065f 100644
 +	strace ethtool -dnsmasq dnsmasq-full -ip-tiny ip-full iperf3 ss \
 +	tcpdump-mini kmod-fs-exfat kmod-fs-vfat kmod-inet-diag \
 +	kmod-nft-tproxy kmod-tun kmod-usb-hid kmod-usb-storage \
-+	kmod-usb-storage-uas pciutils ruby ruby-yaml unzip usbutils
++	kmod-usb-storage-uas pciutils python3-light unzip usbutils
 +endef
 +TARGET_DEVICES += toybrick_tb-rk3399prod
 +

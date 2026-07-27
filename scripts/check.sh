@@ -186,10 +186,13 @@ fi
 for package in bash blkid blockdev dnsmasq-full fdisk fstrim lsblk lscpu \
 	mount-utils wdctl ca-bundle curl htop jq lsof strace ip-full \
 	tcpdump-mini kmod-fs-exfat kmod-fs-vfat kmod-inet-diag \
-	kmod-nft-tproxy kmod-tun ruby ruby-yaml unzip; do
+	kmod-nft-tproxy kmod-tun python3-light unzip; do
 	grep -Eq "[[:space:]]$package([[:space:]\\\\]|$)" "$openwrt_patch" || \
 		fail "required maintenance package is missing: $package"
 done
+if grep -Eq '[[:space:]]ruby(-yaml)?([[:space:]\\]|$)' "$openwrt_patch"; then
+	fail "Ruby must remain an on-demand overlay package"
+fi
 grep -Eq '[[:space:]]-dnsmasq([[:space:]\\]|$)' "$openwrt_patch" || \
 	fail "default dnsmasq is not removed when dnsmasq-full is selected"
 grep -Eq '[[:space:]]-ip-tiny([[:space:]\\]|$)' "$openwrt_patch" || \

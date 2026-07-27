@@ -33,10 +33,17 @@ Mini-PCIe 插座的机械外形不代表本板提供 PCIe 电气连接：它只�
 - 板级与进程：`lscpu`、`wdctl`、`htop`、`lsof`、`strace`。
 - 网络：完整功能的 `ip`（以 `ip-full` 替换默认 `ip-tiny`）、`ss`、`ethtool`、`iperf3`、`tcpdump-mini`，以及 TUN、INET socket diagnostics 和 nftables TPROXY 内核模块。
 - DNS/DHCP：以 `dnsmasq-full` 替换默认 `dnsmasq`，保留 UCI 配置路径，并提供 DHCPv6、DNSSEC、authoritative DNS、nftset、conntrack 和 TFTP 能力。
-- Shell、脚本与归档：`bash`、Ruby、`ruby-yaml`、`unzip`；Ruby 的可选实现特性沿用锁定 packages feed 的上游默认值。
+- Shell、脚本与归档：`bash`、`python3-light`、`unzip`；`python3-light` 提供 Python 解释器和常用标准库，并保持与 OpenWrt 的 musl ABI 和软件包生命周期一致。
 - 通用数据访问：`curl`、`ca-bundle`、`jq`。
 
 BusyBox 已能满足的基础命令不重复引入 GNU coreutils；不预装编辑器、编译器或 LuCI。`dnsmasq-full` 继续使用 OpenWrt 原有 `/etc/config/dhcp` 和启动服务，其额外能力只有在对应配置中启用后才改变网络行为。
+
+## 脚本运行时策略
+
+- 固件内置 `python3-light`，作为唯一的系统 Python；需要几乎完整的标准库时执行 `apk add python3`，由 APK 在现有解释器上补齐拆分模块。
+- `uv` 只用于基于 `/usr/bin/python3` 创建虚拟环境和管理应用依赖，不负责安装或升级系统解释器。建议使用 `uv --no-managed-python`，或者设置 `UV_PYTHON_DOWNLOADS=never` 与 `UV_PYTHON_PREFERENCE=only-system`。
+- Ruby 不属于板级功能或启动依赖，因此不固化到基础镜像；需要时使用匹配当前 OpenWrt 版本和架构的软件源执行 `apk add ruby ruby-yaml`。YJIT 能力由软件包构建配置决定而不是安装位置决定，可用 `ruby --yjit -e 'p RubyVM::YJIT.enabled?'` 验证。
+- 完整重刷 `openwrt.img` 会重建 overlay，因此通过 APK、uv 或其他方式按需安装的软件都应视为可重建的应用状态，不应成为未记录的板级依赖。
 
 网络性能基线、flow offload 适用边界、ARMv8 AES-CE、Rockchip Crypto 取舍和未来多队列/RSS 策略见 [网络性能与加速策略](NETWORK-PERFORMANCE.md)。
 

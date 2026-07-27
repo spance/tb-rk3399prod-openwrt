@@ -49,5 +49,9 @@
 - [RK3399Pro datasheet](https://opensource.rock-chips.com/images/9/9f/Rockchip_RK3399Pro_Datasheet_V1.1_20181214.pdf)
 - [OpenWrt v25.12.5 official release feed commits](https://downloads.openwrt.org/releases/25.12.5/targets/rockchip/armv8/feeds.buildinfo)
 - [OpenWrt v25.12.5 feeds implementation](https://github.com/openwrt/openwrt/blob/f0a60eee2fe051741c643ea6118718aae1ef17fb/scripts/feeds)
+- [OpenWrt v25.12.5 pinned Python package definition](https://github.com/openwrt/packages/blob/5caa62e0bc9f7fb9b0c12a23267bceb7724214dd/lang/python/python3/Makefile)
+- [OpenWrt v25.12.5 pinned Ruby package definition](https://github.com/openwrt/packages/blob/5caa62e0bc9f7fb9b0c12a23267bceb7724214dd/lang/ruby/Makefile)
+- [uv managed and system Python policy](https://docs.astral.sh/uv/concepts/python-versions/)
+- [python-build-standalone portability quirks](https://gregoryszorc.com/docs/python-build-standalone/main/quirks.html)
 
 本工程只保留上游固定 commit 的页面链接，不提交抓取的网页副本，避免过期内容和无关示例数据进入版本库。
