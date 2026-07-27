@@ -219,6 +219,14 @@
 						remote-endpoint = <&tcphy0_orientation_switch>;
 					};
 				};
+
+				port@1 {
+					reg = <1>;
+
+					usbc0_role_sw: endpoint {
+						remote-endpoint = <&dwc3_0_role_switch>;
+					};
+				};
 			};
 		};
 	};
@@ -599,7 +607,6 @@
 
 &tcphy0_usb3 {
 	orientation-switch;
-	rockchip,usb3-host-only;
 
 	port {
 		tcphy0_orientation_switch: endpoint {
@@ -669,9 +676,16 @@
 };
 
 &usbdrd_dwc3_0 {
-	dr_mode = "host";
+	dr_mode = "otg";
 	snps,dis-u3-autosuspend-quirk;
 	status = "okay";
+	usb-role-switch;
+
+	port {
+		dwc3_0_role_switch: endpoint {
+			remote-endpoint = <&usbc0_role_sw>;
+		};
+	};
 };
 
 &usbdrd3_1 {

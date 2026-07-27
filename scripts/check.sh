@@ -181,40 +181,35 @@ grep -Fq '144-phy-rockchip-typec-orientation-switch.patch' \
 	fail "RK3399 Type-C orientation-switch patch is missing"
 grep -Fq 'tcphy_set_orientation' "$openwrt_patch" || \
 	fail "RK3399 Type-C orientation callback is missing"
-grep -Fq 'if (orientation == TYPEC_ORIENTATION_NONE)' "$openwrt_patch" || \
-	fail "RK3399 Type-C detach preserves the active fixed-host PHY"
-grep -Fq 'if (tcphy->flip == flip)' "$openwrt_patch" || \
-	fail "RK3399 Type-C polarity-change guard is missing"
-grep -Fq 'rockchip,usb3-host-only' "$openwrt_patch" || \
-	fail "RK3399 Type-C fixed-host PHY binding is missing"
-grep -Fq 'tcphy->usb3_host_only && tcphy->usb3_powered' \
+grep -Fq 'tcphy->new_mode = MODE_DISCONNECT;' "$openwrt_patch" || \
+	fail "RK3399 Type-C detach state is not recorded by the PHY"
+grep -Fq 'return tcphy->new_mode;' "$openwrt_patch" || \
+	fail "RK3399 Type-C PHY does not consume the TCPM mode"
+grep -Fq '#define POWER_ON_TRIES' "$openwrt_patch" || \
+	fail "RK3399 Type-C PHY power-on retries are missing"
+grep -Fq '145-usb-dwc3-rk3399-typec-runtime-pm.patch' \
 	"$openwrt_patch" || \
-	fail "RK3399 Type-C live mux switch is not limited to an active fixed host"
-grep -Fq 'property_enable(tcphy, &cfg->typec_conn_dir, flip);' \
+	fail "RK3399 DWC3 Type-C runtime-PM patch is missing"
+grep -Fq 'pm_runtime_set_autosuspend_delay(dev, 100);' \
 	"$openwrt_patch" || \
-	fail "RK3399 Type-C polarity change does not update the GRF mux"
-for lane_init in \
-	'tcphy_tx_usb3_cfg_lane(tcphy, 0);' \
-	'tcphy_rx_usb3_cfg_lane(tcphy, 1);' \
-	'tcphy_rx_usb3_cfg_lane(tcphy, 2);' \
-	'tcphy_tx_usb3_cfg_lane(tcphy, 3);'; do
-	grep -Fq "$lane_init" "$openwrt_patch" || \
-		fail "RK3399 Type-C fixed-host lane initialization is missing: $lane_init"
-done
-grep -Fq 'tcphy->usb3_powered = true;' "$openwrt_patch" || \
-	fail "RK3399 Type-C logical PHY power-on state is not recorded"
-grep -Fq 'tcphy->usb3_powered = false;' "$openwrt_patch" || \
-	fail "RK3399 Type-C logical PHY power-off state is not recorded"
+	fail "RK3399 DWC3 detach delay is not bounded"
+grep -Fq 'pm_runtime_put_sync_suspend(dev);' "$openwrt_patch" || \
+	fail "RK3399 DWC3 is not suspended while Type-C is unattached"
+grep -Fq 'dwc3_core_init_for_resume(dwc);' "$openwrt_patch" || \
+	fail "RK3399 DWC3/PHY resume lifecycle is missing"
 if grep -Fq 'tcphy_reinit_usb3' "$openwrt_patch"; then
 	fail "unsafe live Type-C PHY reinitialization remains"
 fi
-if grep -Fq '145-usb-dwc3-set-host-phy-mode-before-xhci.patch' \
+if grep -Eq 'rockchip,usb3-host-only|usb3_powered|USB3 host switched' \
 	"$openwrt_patch"; then
-	fail "unused dynamic-role DWC3 ordering patch remains"
+	fail "unsupported fixed-host Type-C lane switching remains"
 fi
-if grep -Eq '^\+CONFIG_USB_DWC3_(DUAL_ROLE|GADGET)=y|^\+CONFIG_USB_GADGET=y' \
-	"$openwrt_patch"; then
-	fail "host-only product image unexpectedly enables DWC3 gadget/dual-role"
+grep -Fq '+CONFIG_USB_DWC3_DUAL_ROLE=y' "$openwrt_patch" || \
+	fail "DWC3 dual-role lifecycle is missing"
+grep -Fq '+CONFIG_USB_GADGET=y' "$openwrt_patch" || \
+	fail "DWC3 dual-role build dependency USB_GADGET is missing"
+if grep -Fq '+CONFIG_USB_DWC3_HOST=y' "$openwrt_patch"; then
+	fail "Type-C DWC3 must not use the static host-only lifecycle"
 fi
 grep -Fq 'Mini-PCIe 插座只接 USB2' \
 	"$PROJECT_DIR/docs/HARDWARE-REFERENCE.md" || \
@@ -301,12 +296,16 @@ for typec_setting in \
 	'&tcphy0 {' \
 	'&tcphy0_usb3 {' \
 	'orientation-switch;' \
-	'rockchip,usb3-host-only;' \
 	'&usbdrd3_0 {' \
 	'&usbdrd_dwc3_0 {' \
-	'dr_mode = "host";' \
+	'dr_mode = "otg";' \
+	'usb-role-switch;' \
+	'usbc0_role_sw: endpoint {' \
+	'dwc3_0_role_switch: endpoint {' \
 	'remote-endpoint = <&tcphy0_orientation_switch>;' \
-	'remote-endpoint = <&usbc0_orien_sw>;'; do
+	'remote-endpoint = <&dwc3_0_role_switch>;' \
+	'remote-endpoint = <&usbc0_orien_sw>;' \
+	'remote-endpoint = <&usbc0_role_sw>;'; do
 	grep -Fq "$typec_setting" \
 		"$PROJECT_DIR/dts/rk3399pro-toybrick-prod.dtsi" || \
 		fail "USB Type-C device-tree setting is missing: $typec_setting"
@@ -315,10 +314,7 @@ for vendor_typec_setting in \
 	'compatible = "fairchild,fusb302";' \
 	'vbus-5v-gpios' \
 	'extcon = <&fusb0>' \
-	'dr_mode = "otg";' \
-	'usb-role-switch;' \
-	'usbc0_role_sw' \
-	'dwc3_0_role_switch' \
+	'rockchip,usb3-host-only' \
 	'u2phy0_typec_hs' \
 	'usbc0_hs' \
 	'tcphy0_typec_ss' \
@@ -362,14 +358,14 @@ if [ -d "$WORK_DIR/openwrt/.git" ]; then
 		'CONFIG_TYPEC_FUSB302=y' \
 		'CONFIG_TYPEC_TCPM=y' \
 		'CONFIG_USB_DWC3=y' \
-		'CONFIG_USB_DWC3_HOST=y' \
+		'CONFIG_USB_DWC3_DUAL_ROLE=y' \
+		'CONFIG_USB_GADGET=y' \
 		'CONFIG_USB_ROLE_SWITCH=y'; do
 		grep -Fqx "$required_kernel_config" "$rockchip_kernel_config" || \
 			fail "required Type-C kernel setting is missing: $required_kernel_config"
 	done
-	if grep -Eq '^CONFIG_USB_DWC3_(DUAL_ROLE|GADGET)=y$|^CONFIG_USB_GADGET=y$' \
-		"$rockchip_kernel_config"; then
-		fail "host-only product kernel unexpectedly enables DWC3 gadget/dual-role"
+	if grep -Fqx 'CONFIG_USB_DWC3_HOST=y' "$rockchip_kernel_config"; then
+		fail "Type-C DWC3 still uses static host-only mode"
 	fi
 	dts_dest="$WORK_DIR/openwrt/target/linux/rockchip/files-$kernel_patchver/arch/arm64/boot/dts/rockchip"
 	for name in rk3399pro-toybrick-prod.dts rk3399pro-toybrick-prod.dtsi; do
