@@ -28,8 +28,16 @@ ensure_patches_applied "$WORK_DIR/u-boot" \
 
 ensure_checkout "$OPENWRT_URL" "refs/tags/$OPENWRT_TAG" "$OPENWRT_COMMIT" \
 	"$WORK_DIR/openwrt"
-openwrt_patch="$PROJECT_DIR/patches/openwrt/0001-tb-rk3399prod-board-support.patch"
-ensure_patches_applied "$WORK_DIR/openwrt" "$openwrt_patch"
+openwrt_patches=(
+	"$PROJECT_DIR/patches/openwrt/0001-tb-rk3399prod-board-support.patch"
+	"$PROJECT_DIR/patches/openwrt/0002-tb-rk3399prod-official-kmod-abi-compat.patch"
+)
+ensure_patches_applied "$WORK_DIR/openwrt" "${openwrt_patches[@]}"
+install -m 0644 "$KMOD_COMPAT_CONFIG" \
+	"$WORK_DIR/openwrt/include/tb-kmod-compat.mk"
+cmp -s "$KMOD_COMPAT_CONFIG" \
+	"$WORK_DIR/openwrt/include/tb-kmod-compat.mk" || \
+	fail "kmod compatibility baseline synchronization failed"
 bash "$SCRIPT_DIR/sync-openwrt-kernel-patches.sh" "$WORK_DIR/openwrt"
 bash "$SCRIPT_DIR/sync-openwrt-dts.sh" "$WORK_DIR/openwrt"
 bash "$SCRIPT_DIR/sync-openwrt-rootfs.sh" "$WORK_DIR/openwrt"
@@ -47,6 +55,7 @@ if ! feeds_match_config "$WORK_DIR/openwrt" \
 fi
 feeds_match_config "$WORK_DIR/openwrt" "$PROJECT_DIR/configs/feeds.conf" || \
 	fail "OpenWrt feeds do not match the pinned configuration; use an empty TB_WORK_DIR"
+retry 3 10 wget -q --spider "$TB_KMOD_REPOSITORY"
 
 (
 	cd "$WORK_DIR/openwrt"
@@ -61,7 +70,10 @@ printf '%s\n' \
 	"rkbin=$RKBIN_COMMIT" \
 	"toolchain=$TOOLCHAIN_COMMIT" \
 	"OpenWrt=$OPENWRT_COMMIT" \
-	"Linux=$LINUX_VERSION" > "$WORK_DIR/BASELINES"
+	"Linux=$LINUX_VERSION" \
+	"native-kmod-abi=$TB_KMOD_NATIVE_ABI" \
+	"package-kmod-abi=$TB_KMOD_OFFICIAL_ABI" \
+	"kmod-repository=$TB_KMOD_REPOSITORY" > "$WORK_DIR/BASELINES"
 sed 's/^/feed=/' "$PROJECT_DIR/configs/feeds.conf" >> "$WORK_DIR/BASELINES"
 
 bash "$SCRIPT_DIR/check.sh"

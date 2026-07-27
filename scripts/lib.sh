@@ -19,6 +19,14 @@ OPENWRT_COMMIT=f0a60eee2fe051741c643ea6118718aae1ef17fb
 OPENWRT_VERSION=${OPENWRT_TAG#v}
 LINUX_VERSION=6.12.94
 
+KMOD_COMPAT_CONFIG="$PROJECT_DIR/configs/kmod-compat.conf"
+[ -f "$KMOD_COMPAT_CONFIG" ] || {
+	echo "ERROR: kmod compatibility baseline not found: $KMOD_COMPAT_CONFIG" >&2
+	exit 1
+}
+# shellcheck source=../configs/kmod-compat.conf
+. "$KMOD_COMPAT_CONFIG"
+
 # Raw eMMC layout inherited from the vendor GPT. Values are 512-byte LBAs.
 SECTOR_SIZE=512
 UBOOT_LBA=$((0x2000))

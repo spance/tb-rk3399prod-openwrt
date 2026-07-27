@@ -7,10 +7,13 @@
 - target/subtarget：`rockchip/armv8`。
 - `configs/openwrt.config`：唯一正式目标配置，PCIe host/PHY/供电默认启用。
 - `configs/feeds.conf`：只启用当前镜像需要的 `packages` 和 `luci` 两个 feed，并分别锁定到 OpenWrt 25.12.5 官方源码使用的精确 commit；routing、telephony 和 video feed 不下载。
+- `configs/kmod-compat.conf`：同时固定本项目原生 Kconfig ABI、向 APK 暴露的 OpenWrt 官方 ABI，以及精确到版本、target、内核和哈希的官方 kmod 仓库。构建不会根据远端目录自动追随新 ABI。
 
 板级 profile、持久化镜像规则、DTB Makefile 和必要的内核 binding 修改统一由 `patches/openwrt/0001-tb-rk3399prod-board-support.patch` 加入。完整板级设备树不嵌入补丁；`dts/` 是唯一权威来源，`make init` 调用 `scripts/sync-openwrt-dts.sh`，从 Rockchip target 的 `KERNEL_PATCHVER` 自动确定 `files-<版本>` 目录并逐文件覆写。板级启动服务和 UCI 初始值以 `rootfs/` 为唯一来源，由 `scripts/sync-openwrt-rootfs.sh` 同步到 Rockchip base-files。修改这些文件后重新执行 `make init` 再构建，不需要手工刷新重复补丁。
 
 `configs/openwrt.config` 刻意只保留 target、正式设备 profile、SquashFS 和强制 initramfs 六项选择：板级软件包、内核选项和镜像规则属于 profile 的组成部分，应由同一份 OpenWrt 补丁原子维护，避免 `.config` 再保存一份容易漂移的展开结果。`CONFIG_TARGET_INITRAMFS_FORCE` 只保证每次同时生成 TF/串口恢复 FIT，不会让正式 `openwrt.img` 使用易失的 initramfs 根文件系统。
+
+`patches/openwrt/0002-tb-rk3399prod-official-kmod-abi-compat.patch` 保存真实配置哈希并对 APK 暴露固定官方哈希，使经过验收的通用官方模块可以安装；详细机制、支持边界和升级审计见 [官方 kmod 兼容层](KMOD-COMPATIBILITY.md)。
 
 ## 硬件范围
 

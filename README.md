@@ -14,6 +14,7 @@
 - **完整 USB 3.0 主机能力**：蓝色 Type-A 与 Type-C 均通过 UAS/`5000M` 高速存储测试；Type-C 支持正反插、热拔插和完整 runtime-PM 生命周期。
 - **双控制台与恢复路径**：UART2 1500000 baud、HDMI Linux console、USB 键盘登录，以及 TF/initramfs 恢复启动。
 - **内置 Web 管理**：LuCI、uhttpd、Firewall 和 APK 软件包管理随镜像提供，默认使用 HTTPS。
+- **可控扩展官方 kmod**：固定到 OpenWrt 25.12.5 `rockchip/armv8` 的精确内核模块仓库；配置漂移时构建直接失败，通用模块按明确边界安装和验收。
 - **面向升级维护**：DTS、Linux 补丁和 rootfs 文件各自只有一个权威来源；全部上游精确锁定到 commit，并由自动检查保护关键不变量。
 
 ## 硬件支持矩阵
@@ -94,10 +95,10 @@ Type-C 不是把 Linux 4.4 代码逐行复制到 6.12：板级时序和生命周
 
 ```text
 boot/             boot_linux 容器使用的 U-Boot 启动脚本
-configs/          OpenWrt 最小配置和精确锁定的必要 feed
+configs/          OpenWrt 最小配置、精确锁定的 feed 和 kmod ABI 基线
 docs/             架构、构建、硬件、部署和维护文档
 dts/              TB-RK3399ProD 唯一权威 DTS/DTSI
-patches/openwrt/  OpenWrt profile、内核配置和镜像规则
+patches/openwrt/  OpenWrt profile、内核配置、镜像规则和 kmod 兼容层
 patches/kernel/   直接作用于固定 Linux 6.12 的关键驱动补丁
 patches/u-boot/   Toybrick U-Boot 板级补丁
 rootfs/           注入固件的板级服务和首次启动默认值
@@ -137,6 +138,7 @@ make package
 | `out/openwrt/openwrt.img` | 从 LBA `0x6000` 连续写入的完整 OpenWrt 镜像，包含启动容器和 SquashFS rootfs |
 | `out/openwrt/boot_linux.img`、`rootfs.img` | 组合镜像的分区级组件；前者也可用于保留 rootfs/overlay 的 boot-only 更新 |
 | `out/openwrt/*initramfs-kernel.bin` | TF/串口恢复启动镜像 |
+| `out/openwrt/kmod-compat.buildinfo` | 本项目原生 Kconfig ABI、对 APK 暴露的官方 ABI 和固定 kmod 仓库 |
 | `out/openwrt/` 其他文件 | OpenWrt 校验、版本、manifest 和构建信息 |
 | `dist/*.tar.gz` | 只包含两个部署镜像、版本信息和 SHA256 的发布包 |
 
@@ -149,3 +151,4 @@ make package
 `make clean` 只删除发布产物。若 `.work` 因中断的补丁或人工修改而污染，使用显式的 `make reset`；它会丢弃上游工作树内的 Git 修改，但保留 ignored 下载和编译缓存。修改 DTS、Linux 补丁或 `rootfs/` 后重新运行 `make init`，再构建并按 [硬件状态](docs/HARDWARE-STATUS.md) 和各专项文档完成回归。
 
 Type-C 的一次性诊断使用固件内置 `tb-typec-diag`；设计、日志判读和升级测试见 [USB Type-C SuperSpeed 主机](docs/USB-TYPE-C.md)。
+需要后装内核模块时，先阅读 [官方 kmod 兼容层](docs/KMOD-COMPATIBILITY.md)；它只覆盖固定发布基线中与本项目改动子系统无关的模块，不等同于任意官方 kmod 的无条件兼容声明。

@@ -59,6 +59,19 @@ build_openwrt()
 		fi
 	)
 
+	mapfile -d '' native_abi_files < <(find "$source/build_dir" -type f \
+		-path "*/linux-rockchip_armv8/linux-$LINUX_VERSION/.vermagic.native" \
+		-print0)
+	[ "${#native_abi_files[@]}" -eq 1 ] || \
+		fail "expected exactly one native kernel ABI record, found ${#native_abi_files[@]}"
+	kernel_build_dir=$(dirname -- "${native_abi_files[0]}")
+	native_abi=$(cat "$kernel_build_dir/.vermagic.native")
+	package_abi=$(cat "$kernel_build_dir/.vermagic")
+	[ "$native_abi" = "$TB_KMOD_NATIVE_ABI" ] || \
+		fail "native kernel ABI differs from the audited baseline: $native_abi"
+	[ "$package_abi" = "$TB_KMOD_OFFICIAL_ABI" ] || \
+		fail "package-visible kernel ABI is not the pinned official value: $package_abi"
+
 	target_dir="$source/bin/targets/rockchip/armv8"
 	[ -d "$target_dir" ] || fail "OpenWrt output not found: $target_dir"
 	dest="$OUT_DIR/openwrt"
@@ -73,6 +86,28 @@ build_openwrt()
 		-name profiles.json \) \
 		-print0)
 	[ "$found" -eq 1 ] || fail "no TB-RK3399ProD OpenWrt output was found"
+
+	manifest_count=0
+	manifest=
+	while IFS= read -r -d '' file; do
+		manifest=$file
+		manifest_count=$((manifest_count + 1))
+	done < <(find "$dest" -maxdepth 1 -type f \
+		-name '*toybrick_tb-rk3399prod.manifest' -print0)
+	[ "$manifest_count" -eq 1 ] || \
+		fail "expected exactly one TB-RK3399ProD manifest, found $manifest_count"
+	grep -Fqx "kernel - $LINUX_VERSION~$TB_KMOD_OFFICIAL_ABI-r$TB_KMOD_LINUX_RELEASE" \
+		"$manifest" || \
+		fail "OpenWrt manifest does not expose the pinned official kmod ABI"
+
+	printf '%s\n' \
+		"openwrt_commit=$OPENWRT_COMMIT" \
+		"linux_version=$LINUX_VERSION" \
+		"linux_release=$TB_KMOD_LINUX_RELEASE" \
+		"native_kconfig_abi=$native_abi" \
+		"package_kmod_abi=$package_abi" \
+		"official_kmod_repository=$TB_KMOD_REPOSITORY" \
+		> "$dest/kmod-compat.buildinfo"
 
 	fit_count=0
 	fit_image=
