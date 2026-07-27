@@ -280,6 +280,10 @@ grep -Fq '+CONFIG_USB_DWC3_DUAL_ROLE=y' "$openwrt_patch" || \
 	fail "DWC3 dual-role lifecycle is missing"
 grep -Fq '+CONFIG_USB_GADGET=y' "$openwrt_patch" || \
 	fail "DWC3 dual-role build dependency USB_GADGET is missing"
+grep -Fq '+# CONFIG_USB_DWC3_GADGET is not set' "$openwrt_patch" || \
+	fail "DWC3 mode choice does not explicitly disable gadget-only mode"
+grep -Fq '+# CONFIG_USB_DWC3_HOST is not set' "$openwrt_patch" || \
+	fail "DWC3 mode choice does not explicitly disable host-only mode"
 if grep -Fq '+CONFIG_USB_DWC3_HOST=y' "$openwrt_patch"; then
 	fail "Type-C DWC3 must not use the static host-only lifecycle"
 fi
@@ -432,6 +436,8 @@ if [ -d "$WORK_DIR/openwrt/.git" ]; then
 		'CONFIG_TYPEC_TCPM=y' \
 		'CONFIG_USB_DWC3=y' \
 		'CONFIG_USB_DWC3_DUAL_ROLE=y' \
+		'# CONFIG_USB_DWC3_GADGET is not set' \
+		'# CONFIG_USB_DWC3_HOST is not set' \
 		'CONFIG_USB_GADGET=y' \
 		'CONFIG_USB_ROLE_SWITCH=y'; do
 		grep -Fqx "$required_kernel_config" "$rockchip_kernel_config" || \
