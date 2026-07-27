@@ -6,7 +6,7 @@
 - Linux：OpenWrt 官方 `6.12.94`。
 - target/subtarget：`rockchip/armv8`。
 - `configs/openwrt.config`：唯一正式目标配置，PCIe host/PHY/供电默认启用。
-- `configs/feeds.conf`：只启用当前软件包集合所需的 `packages` feed，并锁定到 25.12.5 官方发布使用的精确 commit；LuCI 等未使用 feed 不下载。
+- `configs/feeds.conf`：只启用当前镜像需要的 `packages` 和 `luci` 两个 feed，并分别锁定到 OpenWrt 25.12.5 官方源码使用的精确 commit；routing、telephony 和 video feed 不下载。
 
 板级 profile、持久化镜像规则、DTB Makefile 和必要的内核 binding 修改统一由 `patches/openwrt/0001-tb-rk3399prod-board-support.patch` 加入。完整板级设备树不嵌入补丁；`dts/` 是唯一权威来源，`make init` 调用 `scripts/sync-openwrt-dts.sh`，从 Rockchip target 的 `KERNEL_PATCHVER` 自动确定 `files-<版本>` 目录并逐文件覆写。板级启动服务和 UCI 初始值以 `rootfs/` 为唯一来源，由 `scripts/sync-openwrt-rootfs.sh` 同步到 Rockchip base-files。修改这些文件后重新执行 `make init` 再构建，不需要手工刷新重复补丁。
 
@@ -40,7 +40,19 @@ Mini-PCIe 插座的机械外形不代表本板提供 PCIe 电气连接：它只�
 - Shell、脚本与归档：`bash`、`python3-light`、`unzip`；`python3-light` 提供 Python 解释器和常用标准库，并保持与 OpenWrt 的 musl ABI 和软件包生命周期一致。
 - 通用数据访问：`curl`、`ca-bundle`、`jq`。
 
-BusyBox 已能满足的基础命令不重复引入 GNU coreutils；不预装编辑器、编译器或 LuCI。`dnsmasq-full` 继续使用 OpenWrt 原有 `/etc/config/dhcp` 和启动服务，其额外能力只有在对应配置中启用后才改变网络行为。
+BusyBox 已能满足的基础命令不重复引入 GNU coreutils；不预装编辑器或编译器。`dnsmasq-full` 继续使用 OpenWrt 原有 `/etc/config/dhcp` 和启动服务，其额外能力只有在对应配置中启用后才改变网络行为。
+
+## LuCI Web 管理
+
+正式 profile 内置 `luci-ssl`。它通过依赖带入 `luci-light`、完整管理页面、Firewall 页面、Bootstrap 主题、APK 软件包管理、`uhttpd`、`uhttpd-mod-ubus` 和 RPC 组件。首次启动完成后可通过 LAN 地址访问：
+
+```text
+https://192.168.1.1/
+```
+
+若 LAN 地址已经调整，应使用实际地址。首次打开时浏览器会提示设备生成的自签名证书；确认地址属于本机后再继续。LuCI 与 SSH 使用同一个 root 账户和密码，因此部署后应立即设置强密码。
+
+这里选择 `luci-ssl`，而不是普通 `luci` 元包：普通元包还会加入 attended sysupgrade，而本项目尚未实现与自定义组合镜像匹配的 sysupgrade 流程。Web 页面中的 APK 软件包管理可以使用，但不要把任何通用固件升级入口当成本板的刷写方式；完整镜像和 boot-only 更新边界仍以 [eMMC 部署与验收](EMMC-INSTALL.md) 为准。
 
 ## 脚本运行时策略
 

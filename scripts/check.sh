@@ -187,8 +187,8 @@ assert_exact_line "$PROJECT_DIR/configs/openwrt.config" \
 assert_exact_line "$PROJECT_DIR/configs/openwrt.config" \
 	'CONFIG_TARGET_ROOTFS_INITRAMFS=y'
 
-[ "$(wc -l < "$PROJECT_DIR/configs/feeds.conf")" -eq 1 ] || \
-	fail "configs/feeds.conf must contain exactly one required feed"
+[ "$(wc -l < "$PROJECT_DIR/configs/feeds.conf")" -eq 2 ] || \
+	fail "configs/feeds.conf must contain exactly the packages and LuCI feeds"
 while IFS= read -r feed; do
 	printf '%s\n' "$feed" | grep -Eq \
 		'^src-git [a-z0-9_-]+ https://[^[:space:]]+\^[0-9a-f]{40}$' || \
@@ -196,6 +196,8 @@ while IFS= read -r feed; do
 done < "$PROJECT_DIR/configs/feeds.conf"
 grep -Eq '^src-git packages ' "$PROJECT_DIR/configs/feeds.conf" || \
 	fail "the required OpenWrt packages feed is missing"
+grep -Eq '^src-git luci ' "$PROJECT_DIR/configs/feeds.conf" || \
+	fail "the required OpenWrt LuCI feed is missing"
 
 grep -Fq 'setenv fitaddr 0x10000000' "$PROJECT_DIR/boot/boot.cmd" || \
 	fail "boot script FIT address is missing or unexpected"
@@ -209,10 +211,14 @@ fi
 for package in bash blkid blockdev dnsmasq-full fdisk fstrim lsblk lscpu \
 	mount-utils wdctl ca-bundle curl htop jq lsof strace ip-full \
 	tcpdump-mini kmod-fs-exfat kmod-fs-vfat kmod-inet-diag \
-	kmod-nft-tproxy kmod-tun python3-light unzip; do
+	kmod-nft-tproxy kmod-tun luci-ssl python3-light unzip; do
 	grep -Eq "[[:space:]]$package([[:space:]\\\\]|$)" "$openwrt_patch" || \
 		fail "required maintenance package is missing: $package"
 done
+if grep -Eq '[[:space:]]luci([[:space:]\\]|$)|luci-app-attendedsysupgrade' \
+	"$openwrt_patch"; then
+	fail "unsupported attended sysupgrade must not be exposed through LuCI"
+fi
 if grep -Eq '[[:space:]]ruby(-yaml)?([[:space:]\\]|$)' "$openwrt_patch"; then
 	fail "Ruby must remain an on-demand overlay package"
 fi

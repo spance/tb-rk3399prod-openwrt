@@ -74,7 +74,27 @@ GPT 分区名比 `mmcblk0p4` 一类动态编号稳定。`fstools_overlay_fstype=
 | 原厂 `trust.img` | `trust`，LBA `0x4000`；保留且不由本工程更新 |
 | `openwrt.img` | 从 LBA `0x6000` 连续写入；内部 rootfs 自动落在 LBA `0x36000` |
 
-正常部署只需写入 `uboot.img@0x2000` 和 `openwrt.img@0x6000`，保留原厂 `trust@0x4000`。写入 `openwrt.img` 会覆盖原厂 `boot_linux`、rootfs 开头和已有 OpenWrt overlay；用户已保留原厂完整系统镜像。刷写仍使用 Rockchip 官方 RKDevTool/rkdeveloptool 和本板官方 loader、parameter/GPT，本工程不提供自动刷机命令。
+正常部署只需写入 `uboot.img@0x2000` 和 `openwrt.img@0x6000`，保留原厂 `trust@0x4000`。写入 `openwrt.img` 会覆盖原厂 `boot_linux`、rootfs 开头和已有 OpenWrt overlay；用户已保留原厂完整系统镜像。刷写仍使用 Rockchip 官方 RKDevTool/rkdeveloptool 和本板官方 loader、parameter/GPT，本工程不提供自动化刷机程序。
+
+## 只更新 boot_linux 并保留 overlay
+
+`out/openwrt/boot_linux.img` 是独立的 64 MiB 启动容器，只包含 `boot.scr`、kernel/DTB FIT 和校验文件。它从 LBA `0x6000` 写到 `0x25fff`；`rootfs` 从 `0x36000` 开始，中间还有 32 MiB 未写间隙。因此只写这个文件不会修改只读 SquashFS，也不会修改其后的 ext4 overlay。
+
+Linux 主机进入 Rockchip Loader 后可执行：
+
+```sh
+rkdeveloptool ld
+rkdeveloptool wl 0x6000 out/openwrt/boot_linux.img
+rkdeveloptool rl 0x6000 0x20000 boot_linux.readback.img
+cmp out/openwrt/boot_linux.img boot_linux.readback.img
+rkdeveloptool rd
+```
+
+`wl`/`rl` 的地址和长度单位均为 512-byte sector；`0x20000` sectors 正好是 64 MiB。Windows RKDevTool 应在下载镜像页面只选择 `boot_linux.img` 一项，地址填写 `0x6000`；不得同时选择 `openwrt.img`、`rootfs` 或执行整包升级。
+
+这个更新方式只适用于 boot-only 变更，例如 DTS、bootargs，或者完全相同 OpenWrt/Linux/Kconfig/补丁基线生成的内核。原 rootfs 和 overlay 中的 kmod 不会同步更新；如果内核版本、符号版本或模块 ABI 已改变，必须写完整 `openwrt.img`，否则 exFAT、UAS、TUN、nft-tproxy 等模块可能无法加载。
+
+独立 `boot_linux.img` 当前保留在 `out/openwrt/`，不进入正式 `dist` 包；它属于明确知道内核/rootfs 兼容关系时使用的维护产物。
 
 ## 串口手动验证
 

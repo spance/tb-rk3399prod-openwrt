@@ -48,6 +48,7 @@
 - [Linux v6.12 ARM64 AES-CE implementation](https://github.com/torvalds/linux/blob/v6.12/arch/arm64/crypto/aes-glue.c)
 - [RK3399Pro datasheet](https://opensource.rock-chips.com/images/9/9f/Rockchip_RK3399Pro_Datasheet_V1.1_20181214.pdf)
 - [OpenWrt v25.12.5 official release feed commits](https://downloads.openwrt.org/releases/25.12.5/targets/rockchip/armv8/feeds.buildinfo)
+- [OpenWrt v25.12.5 pinned LuCI source](https://github.com/openwrt/luci/tree/128a7812f4be233c5dd7f7466f534fd888785caf)
 - [OpenWrt v25.12.5 feeds implementation](https://github.com/openwrt/openwrt/blob/f0a60eee2fe051741c643ea6118718aae1ef17fb/scripts/feeds)
 - [OpenWrt v25.12.5 pinned Python package definition](https://github.com/openwrt/packages/blob/5caa62e0bc9f7fb9b0c12a23267bceb7724214dd/lang/python/python3/Makefile)
 - [OpenWrt v25.12.5 pinned Ruby package definition](https://github.com/openwrt/packages/blob/5caa62e0bc9f7fb9b0c12a23267bceb7724214dd/lang/ruby/Makefile)

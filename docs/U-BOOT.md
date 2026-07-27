@@ -30,3 +30,42 @@
 ## 启动地址
 
 OpenWrt FIT 统一加载到 `0x10000000`。不要使用 `0x08000000`，否则约 30 MiB FIT 会覆盖 `0x08400000-0x0a200000` 的 BL32/TEE 保留区并导致 `bootm` 异常。
+
+## 从 TF 卡更新 boot_linux
+
+当前 U-Boot 已启用 MMC 命令、TF 的 Rockchip DWMMC 和 eMMC 的 Rockchip SDHCI。实机编号固定为 `mmc 1` = TF、`mmc 0` = eMMC，因此可以把 `boot_linux.img` 放在 TF 卡第一个 FAT 分区，再从 U-Boot 手动写入 eMMC。
+
+64 MiB 镜像可以放在安全的 `0x10000000`；写入前必须确认 `filesize` 为十六进制 `4000000`：
+
+```text
+setenv imgaddr 0x10000000
+setenv verifyaddr 0x18000000
+
+mmc dev 1
+fatinfo mmc 1:1
+fatload mmc 1:1 ${imgaddr} boot_linux.img
+printenv filesize
+```
+
+确认大小后写入并回读比较：
+
+```text
+mmc dev 0
+mmc write ${imgaddr} 0x6000 0x20000
+mmc read ${verifyaddr} 0x6000 0x20000
+cmp.b ${imgaddr} ${verifyaddr} 0x4000000
+reset
+```
+
+这里不需要也不应执行 `mmc erase`。写入结束于 LBA `0x25fff`，不会到达 `rootfs@0x36000`。当前 TF 可靠性补丁已实测稳定加载约 30 MiB FIT；完整 64 MiB 更新路径第一次使用时仍必须保留回读比较，作为正式验收。
+
+也可以把上述命令封装为 U-Boot `update.scr`，从 TF 手动执行：
+
+```text
+fatload mmc 1:1 0x20000000 update.scr
+source 0x20000000
+```
+
+当前发行版没有“插卡即自动刷写”的逻辑。现有 eMMC `boot.scr` 只负责加载 OpenWrt FIT，不检查 TF 更新文件。以后若加入自动更新，至少应校验固定文件名、64 MiB 长度和 SHA256/CRC，写入后回读，记录已安装镜像避免重复刷写，并在没有更新或校验失败时回到原来的 `distro_bootcmd`。在这些保护完成前，不应把检测到 SD 文件直接写 eMMC。
+
+只更新启动容器会保留 rootfs/overlay，也会保留其中的旧内核模块；内核与 kmod ABI 的限制见 [eMMC 部署与验收](EMMC-INSTALL.md)。

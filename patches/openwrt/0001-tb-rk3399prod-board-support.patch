@@ -119,7 +119,7 @@ index b9f1fca..cf2065f 100644
 +  IMAGE_SIZE := 128m
 +  IMAGE/rootfs.img := append-rootfs | check-size 120m | pad-to 128M
 +  DEVICE_PACKAGES := bash block-mount blkid blockdev e2fsprogs fdisk fstrim \
-+	lsblk lscpu mount-utils mmc-utils wdctl ca-bundle curl htop jq lsof \
++	lsblk lscpu mount-utils mmc-utils wdctl ca-bundle curl htop jq lsof luci-ssl \
 +	strace ethtool -dnsmasq dnsmasq-full -ip-tiny ip-full iperf3 ss \
 +	tcpdump-mini kmod-fs-exfat kmod-fs-vfat kmod-inet-diag \
 +	kmod-nft-tproxy kmod-tun kmod-usb-hid kmod-usb-storage \

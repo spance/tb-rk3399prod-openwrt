@@ -2,7 +2,7 @@
 
 面向 Toybrick TB-RK3399ProD 的可复现 OpenWrt 板级适配工程。
 
-**OpenWrt 25.12.5 · Linux 6.12.94 · AArch64 · eMMC 持久化系统 · 千兆网络与 USB 3.0 实机验收**
+**OpenWrt 25.12.5 · Linux 6.12.94 · AArch64 · LuCI HTTPS · eMMC 持久化系统 · 千兆网络与 USB 3.0 实机验收**
 
 本项目把厂商 Linux 4.4 的板级行为迁移到现代 OpenWrt/Linux 架构，并提供经过实机验证的 U-Boot、设备树、内核驱动补丁、系统配置和镜像构建流程。仓库只保存适配所需的可维护增量；上游源码、工具链、设备信息、调试日志和构建产物均不提交。
 
@@ -13,6 +13,7 @@
 - **稳定千兆网络**：RTL8211E 在双向 30 分钟压力测试中均达到 941 Mbit/s；GMAC IRQ 自动放置到 Cortex-A72，软件 flow offload 默认启用。
 - **完整 USB 3.0 主机能力**：蓝色 Type-A 与 Type-C 均通过 UAS/`5000M` 高速存储测试；Type-C 支持正反插、热拔插和完整 runtime-PM 生命周期。
 - **双控制台与恢复路径**：UART2 1500000 baud、HDMI Linux console、USB 键盘登录，以及 TF/initramfs 恢复启动。
+- **内置 Web 管理**：LuCI、uhttpd、Firewall 和 APK 软件包管理随镜像提供，默认使用 HTTPS。
 - **面向升级维护**：DTS、Linux 补丁和 rootfs 文件各自只有一个权威来源；全部上游精确锁定到 commit，并由自动检查保护关键不变量。
 
 ## 硬件支持矩阵
@@ -119,7 +120,7 @@ make package
 | 目标 | 职责 |
 |---|---|
 | `make check` | 离线检查工程结构、脚本、补丁、配置和关键不变量 |
-| `make init` | 获取固定上游和唯一 `packages` feed，应用补丁、同步 DTS/内核补丁/rootfs、生成配置并下载全部源包 |
+| `make init` | 获取固定上游和 `packages`/`luci` feed，应用补丁、同步 DTS/内核补丁/rootfs、生成配置并下载全部源包 |
 | `make all` | 验证初始化状态，编译 U-Boot/OpenWrt 并生成部署镜像 |
 | `make package` | 校验 `out/` 并生成 `dist/` 发布包 |
 | `make clean` | 只删除 `out/` 和 `dist/` |
@@ -134,12 +135,12 @@ make package
 |---|---|
 | `out/uboot/uboot.img` | 当前厂商 miniloader 启动链使用的 U-Boot |
 | `out/openwrt/openwrt.img` | 从 LBA `0x6000` 连续写入的完整 OpenWrt 镜像，包含启动容器和 SquashFS rootfs |
-| `out/openwrt/boot_linux.img`、`rootfs.img` | 组合镜像的分区级组件，用于布局检查和调试 |
+| `out/openwrt/boot_linux.img`、`rootfs.img` | 组合镜像的分区级组件；前者也可用于保留 rootfs/overlay 的 boot-only 更新 |
 | `out/openwrt/*initramfs-kernel.bin` | TF/串口恢复启动镜像 |
 | `out/openwrt/` 其他文件 | OpenWrt 校验、版本、manifest 和构建信息 |
 | `dist/*.tar.gz` | 只包含两个部署镜像、版本信息和 SHA256 的发布包 |
 
-正常部署只写入 `uboot.img` 和 `openwrt.img`；原厂 `trust@0x4000` 保留不动。刷写映射、官方工具边界、恢复启动和上板验收见 [eMMC 部署与验收](docs/EMMC-INSTALL.md)，启动固件和分区设计依据见 [启动链设计](docs/BOOT-CHAIN.md)。
+正常部署只写入 `uboot.img` 和 `openwrt.img`；原厂 `trust@0x4000` 保留不动。只更新内核/DTB 时可以单独写入 `boot_linux.img`，但必须保证它与原 rootfs 的内核模块 ABI 一致。刷写映射、SD/U-Boot 更新、恢复启动和上板验收见 [eMMC 部署与验收](docs/EMMC-INSTALL.md)，启动固件和分区设计依据见 [启动链设计](docs/BOOT-CHAIN.md)。
 
 本工程不提供自动刷写或整盘 `dd` 脚本。不要把 OpenWrt 镜像写入 `trust` 分区。
 

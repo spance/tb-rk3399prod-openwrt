@@ -18,14 +18,14 @@
 - [启动链设计](BOOT-CHAIN.md)：厂商 miniloader、`trust.img`、BL31/BL32 及分区可变边界。
 - [启动内存布局](BOOT-MEMORY-MAP.md)：TEE、FIT 和 Linux 的 DRAM 地址约束。
 - [HDMI Linux console](HDMI-CONSOLE.md)：Rockchip DRM、fbcon、双 console、键盘登录和验收。
-- [U-Boot 适配](U-BOOT.md)：厂商 U-Boot 基线、补丁和启动地址。
+- [U-Boot 适配](U-BOOT.md)：厂商 U-Boot 基线、补丁、启动地址和从 TF 更新 `boot_linux`。
 - [OpenWrt 适配](OPENWRT.md)：OpenWrt profile、硬件范围、持久化 overlay 和恢复启动。
 - [USB Type-C SuperSpeed 主机](USB-TYPE-C.md)：4.4 行为基线、6.12 驱动设计、诊断边界和复验流程。
 - [网络性能与加速策略](NETWORK-PERFORMANCE.md)：千兆压测、IRQ 绑核、软件 flow offload、AES 和 PCIe RSS。
 
 ## 部署与验收
 
-- [eMMC 部署与验收](EMMC-INSTALL.md)：eMMC 写入映射、恢复方法和上板验收步骤。
+- [eMMC 部署与验收](EMMC-INSTALL.md)：完整刷写、保留 overlay 的 boot-only 更新、恢复方法和上板验收。
 
 ## 外部资料
 
