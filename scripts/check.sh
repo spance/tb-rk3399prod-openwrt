@@ -82,6 +82,14 @@ assert_file "$PROJECT_DIR/docs/USB-TYPE-C.md"
 
 grep -Fq '## 适配分层与改造点' "$PROJECT_DIR/README.md" || \
 	fail "README does not describe the project adaptation layers"
+grep -Fq '## 硬件支持矩阵' "$PROJECT_DIR/README.md" || \
+	fail "README does not expose the board hardware support matrix"
+grep -Fq '## 实测性能' "$PROJECT_DIR/README.md" || \
+	fail "README does not publish the measured performance baseline"
+if grep -Eq '8 ?(GiB|GB|G)[[:space:]]*内存|8G内存|内存(的)?主机.*8 ?(GiB|GB|G)' \
+	"$PROJECT_DIR/README.md" "$PROJECT_DIR/docs/BUILD.md"; then
+	fail "non-portable 8 GiB build-host guidance remains"
+fi
 grep -Fq '达到板级工程交付条件' \
 	"$PROJECT_DIR/docs/USB-TYPE-C.md" || \
 	fail "Type-C acceptance result is missing from the canonical document"

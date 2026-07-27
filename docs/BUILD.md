@@ -92,7 +92,7 @@ make check
 make all
 ```
 
-OpenWrt 并行数可通过 Make 变量设置；8 GiB 内存的主机建议从 2～4 开始：
+OpenWrt 并行数使用 GNU Make 标准 `-j` 参数控制，例如：
 
 ```sh
 make -j4 all
