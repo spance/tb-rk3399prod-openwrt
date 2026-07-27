@@ -40,8 +40,11 @@ grep -Fq 'make download' "$SCRIPT_DIR/init.sh" || \
 	fail "init stage does not download OpenWrt source archives"
 grep -Fq 'include/tb-kmod-compat.mk' "$SCRIPT_DIR/init.sh" || \
 	fail "init stage does not synchronize the kmod compatibility baseline"
-grep -Fq 'wget -q --spider "$TB_KMOD_REPOSITORY"' "$SCRIPT_DIR/init.sh" || \
-	fail "init stage does not verify the pinned official kmod repository"
+grep -Fq 'wget -nv -O "$destination" "$TB_KMOD_REPOSITORY"' \
+	"$SCRIPT_DIR/init.sh" || \
+	fail "init stage does not download the pinned official kmod index"
+grep -Fq '[ -s "$destination" ]' "$SCRIPT_DIR/init.sh" || \
+	fail "init stage does not reject an empty official kmod index"
 
 # A patch file's own context lines intentionally begin with one space.  When a
 # new patch is itself shown in a repository diff, Git's outer whitespace check

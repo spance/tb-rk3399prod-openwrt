@@ -12,6 +12,17 @@ case "$jobs" in
 esac
 [ "$jobs" -gt 0 ] || fail "jobs must be greater than zero"
 
+verify_kmod_repository()
+{
+	local destination=$1
+	rm -f -- "$destination"
+	wget -nv -O "$destination" "$TB_KMOD_REPOSITORY" || return 1
+	[ -s "$destination" ] || {
+		echo "Downloaded official kmod index is empty: $TB_KMOD_REPOSITORY" >&2
+		return 1
+	}
+}
+
 bash "$SCRIPT_DIR/check-env.sh"
 require_case_sensitive_dir "$WORK_DIR"
 
@@ -55,7 +66,11 @@ if ! feeds_match_config "$WORK_DIR/openwrt" \
 fi
 feeds_match_config "$WORK_DIR/openwrt" "$PROJECT_DIR/configs/feeds.conf" || \
 	fail "OpenWrt feeds do not match the pinned configuration; use an empty TB_WORK_DIR"
-retry 3 10 wget -q --spider "$TB_KMOD_REPOSITORY"
+kmod_index_probe=$(mktemp "$WORK_DIR/.tb-kmod-index.XXXXXX")
+trap 'rm -f -- "$kmod_index_probe"' EXIT
+retry 3 10 verify_kmod_repository "$kmod_index_probe"
+rm -f -- "$kmod_index_probe"
+trap - EXIT
 
 (
 	cd "$WORK_DIR/openwrt"
