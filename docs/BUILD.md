@@ -74,7 +74,7 @@ OpenWrt 只使用一个工作树和一个正式配置，独立 x4 插座的 PCIe
 
 `rootfs/` 同样是板级固件文件的唯一权威来源。`scripts/sync-openwrt-rootfs.sh` 将其中的 init 服务和 UCI 首次启动脚本复制到 Rockchip target base-files，并逐文件校验；可执行模式由同步脚本显式设置，不依赖 Windows Git 的 mode bit。当前包含 GMAC IRQ 绑核和软件 flow offload 默认值。
 
-`make init` 随后验证 feed 仓库的 origin、HEAD、索引、干净状态和仓库数量；精确匹配时不访问 feed 远端，不匹配时才执行更新。OpenWrt 的 `src-git` feed 获取本身使用 `--depth 1`，不会同步完整 Git 历史。之后安装 package 索引、写入唯一的 `configs/openwrt.config`、执行 `make defconfig` 和 `make download`。因此成功返回表示 OpenWrt/U-Boot 补丁、直接内核补丁、DTS、rootfs 文件、feeds、内核 ABI 基线、配置和编译所需源码都已经准备完成；使用 GNU Make 标准参数 `make -j4 init` 控制源包并行下载数。
+`make init` 随后验证 feed 仓库的 origin、HEAD、索引、干净状态和仓库数量；精确匹配时不访问 feed 远端，不匹配时才执行更新。OpenWrt 的 `src-git` feed 获取本身使用 `--depth 1`，不会同步完整 Git 历史。之后安装 package 索引、写入唯一的 `configs/openwrt.config`、执行 `make defconfig` 和 `make download`。若保留的 `build_dir` 中存在与当前基线不同的内核 `.vermagic`，初始化只删除该内核的配置标记和 ABI 缓存，强制下一次编译重新配置，不清除下载包或其他构建缓存。因此成功返回表示 OpenWrt/U-Boot 补丁、直接内核补丁、DTS、rootfs 文件、feeds、内核 ABI 基线、配置和编译所需源码都已经准备完成；使用 GNU Make 标准参数 `make -j4 init` 控制源包并行下载数。
 
 ## 2. 项目检查
 

@@ -12,6 +12,28 @@ case "$jobs" in
 esac
 [ "$jobs" -gt 0 ] || fail "jobs must be greater than zero"
 
+invalidate_stale_kernel_abi_cache()
+{
+	local openwrt_dir abi_file kernel_dir cached_abi
+	openwrt_dir=$1
+	[ -d "$openwrt_dir/build_dir" ] || return 0
+
+	while IFS= read -r -d '' abi_file; do
+		cached_abi=$(cat "$abi_file")
+		[ "$cached_abi" = "$TB_KERNEL_ABI" ] && continue
+		kernel_dir=$(dirname -- "$abi_file")
+		case "$kernel_dir/" in
+			"$openwrt_dir/build_dir/"*) ;;
+			*) fail "refusing to invalidate kernel cache outside OpenWrt build_dir: $kernel_dir" ;;
+		esac
+		rm -f -- "$kernel_dir/.configured" "$kernel_dir/.vermagic" \
+			"$kernel_dir/.vermagic.native"
+		find "$kernel_dir" -maxdepth 1 -type f -name '.configured_*' -delete
+		echo "Invalidated stale kernel ABI cache: $cached_abi"
+	done < <(find "$openwrt_dir/build_dir" -type f \
+		-path "*/linux-rockchip_armv8/linux-$LINUX_VERSION/.vermagic" -print0)
+}
+
 bash "$SCRIPT_DIR/check-env.sh"
 require_case_sensitive_dir "$WORK_DIR"
 
@@ -55,6 +77,7 @@ feeds_match_config "$WORK_DIR/openwrt" "$PROJECT_DIR/configs/feeds.conf" || \
 	./scripts/feeds install -a
 	install -m 0644 "$PROJECT_DIR/configs/openwrt.config" .config
 	make defconfig
+	invalidate_stale_kernel_abi_cache "$WORK_DIR/openwrt"
 	make download -j"$jobs"
 )
 

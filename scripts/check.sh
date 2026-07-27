@@ -38,6 +38,9 @@ grep -Fq 'make defconfig' "$SCRIPT_DIR/init.sh" || \
 	fail "init stage does not generate the OpenWrt configuration"
 grep -Fq 'make download' "$SCRIPT_DIR/init.sh" || \
 	fail "init stage does not download OpenWrt source archives"
+grep -Fq 'invalidate_stale_kernel_abi_cache "$WORK_DIR/openwrt"' \
+	"$SCRIPT_DIR/init.sh" || \
+	fail "init stage does not invalidate stale kernel ABI cache records"
 
 # A patch file's own context lines intentionally begin with one space.  When a
 # new patch is itself shown in a repository diff, Git's outer whitespace check
