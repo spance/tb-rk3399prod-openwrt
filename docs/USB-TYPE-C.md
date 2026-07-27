@@ -46,8 +46,8 @@ Linux 6.12 是 OpenWrt 25.12.5 的目标内核，用来选择当前的 TCPM、ro
 
 工程以 Toybrick stable 4.4 的板级行为为目标，用 Linux 6.12 的现有框架实现；Rockchip `develop-6.6` 的固定提交 `1ba51b059f25533c5529b7f68186190b47d6a7b3` 仅作为新 API 写法的交叉参考。适配由两部分组成：
 
-- `patches/kernel/144-phy-rockchip-typec-orientation-switch.patch`：接入 TCPM orientation switch。带 orientation switch 的 PHY 初始状态明确为 `DISCONNECT`；回调只记录 `flip` 和 `new_mode`，不写在线寄存器、不复位 PHY。实际 lane 配置仍只在 PHY `power_on()` 中完成，恢复 Rockchip 的 5 次上电重试，并记录复位、PMA ready、PIPE ready、方向、尝试次数和原始状态值。
-- `patches/kernel/145-usb-dwc3-rk3399-typec-runtime-pm.patch`：在本控制器上把 `USB_ROLE_NONE` 表示成真正的内部 idle，而不是 Linux 6.12 原有的默认 device；连接成功后持续持有 runtime-PM 引用，拔出时先删除 xHCI，再释放连接期引用并同步挂起。这样父 glue 的 `usb3-otg` 复位脉冲只发生于真正的 `NONE → HOST`，不会发生在 `HOST → NONE` 或普通总线唤醒途中。attach 时父 glue 执行 `assert → 1 µs → deassert`，子 DWC3 再恢复 core/PHY，等待 10–11 ms 后创建 xHCI。100 ms autosuspend 仅作为空闲路径的安全边界；活动连接不依赖该定时器。
+- `patches/kernel/144-phy-rockchip-typec-orientation-switch.patch`：接入 TCPM orientation switch。带 orientation switch 的 PHY 初始状态明确为 `DISCONNECT`；回调只记录 `flip` 和 `new_mode`，不写在线寄存器、不复位 PHY。实际 lane 配置仍只在 PHY `power_on()` 中完成，恢复 Rockchip 的 5 次上电重试，并记录复位、PMA ready、PIPE ready、方向、尝试次数和原始状态值。PHY 关闭时的 GRF 恢复错误会完整记录，但不向 generic PHY 返回失败，避免其 `power_count` 和 runtime-PM 引用无法归零。
+- `patches/kernel/145-usb-dwc3-rk3399-typec-runtime-pm.patch`：只对同时具有 RK3399 DWC3、OTG 模式和标准 `usb-role-switch` 属性的控制器启用本生命周期。在本控制器上把 `USB_ROLE_NONE` 表示成真正的内部 idle，而不是 Linux 6.12 原有的默认 device；连接成功后持续持有 runtime-PM 引用，拔出时先删除 xHCI，再释放连接期引用并同步挂起。这样父 glue 的 `usb3-otg` 复位脉冲只发生于真正的 `NONE → HOST`，不会发生在 `HOST → NONE` 或普通总线唤醒途中。attach 时父 glue 执行 `assert → 1 µs → deassert`，子 DWC3 再恢复 core/PHY，等待 10–11 ms 后创建 xHCI。若一次恢复最终失败，父子回调已经回滚到 suspended 硬件状态后会重置 runtime-PM 错误状态，使下一次 TCPM 事件仍能重试，而不是永久返回 `-EINVAL` 直到重启。100 ms autosuspend 仅作为空闲路径的安全边界；活动连接不依赖该定时器。
 
 这两份关键驱动补丁是工程中的直接权威文件。`make init` 根据 OpenWrt 的 `KERNEL_PATCHVER` 把它们同步到 `target/linux/rockchip/patches-<版本>/`；OpenWrt 板级补丁不再嵌套保存第二份副本。
 

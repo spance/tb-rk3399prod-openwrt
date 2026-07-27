@@ -10,8 +10,8 @@ orientation plus raw PMA/PIPE state on failures.
 Link: https://github.com/rockchip-toybrick/kernel/blob/a80be5749ac552821967eff313df53f9e0cd1e01/drivers/phy/rockchip/phy-rockchip-typec.c
 ---
  drivers/phy/rockchip/Kconfig              |   1 +
- drivers/phy/rockchip/phy-rockchip-typec.c | 238 +++++++++++++++++++++++++++---
- 2 files changed, 220 insertions(+), 19 deletions(-)
+ drivers/phy/rockchip/phy-rockchip-typec.c | 242 +++++++++++++++++++++++++++---
+ 2 files changed, 224 insertions(+), 19 deletions(-)
 
 --- a/drivers/phy/rockchip/Kconfig
 +++ b/drivers/phy/rockchip/Kconfig
@@ -282,17 +282,21 @@ Link: https://github.com/rockchip-toybrick/kernel/blob/a80be5749ac552821967eff31
  
  	if (tcphy->mode == MODE_DISCONNECT)
  		goto unlock;
-@@ -931,10 +1038,96 @@ static int rockchip_usb3_phy_power_off(struct phy *phy)
+@@ -931,10 +1038,100 @@ static int rockchip_usb3_phy_power_off(struct phy *phy)
  		tcphy_phy_deinit(tcphy);
  
  unlock:
 +	requested = tcphy->new_mode;
 +	flip = tcphy->flip;
 +	mutex_unlock(&tcphy->lock);
++	if (ret)
++		dev_warn(tcphy->dev,
++			 "rk3399-typec: USB3 PHY off GRF restore failed: %d; "
++			 "ignoring to keep power state balanced\n", ret);
 +	dev_info(tcphy->dev,
 +		 "rk3399-typec: USB3 PHY off: previous=%#x requested=%#x flip=%u grf_ret=%d\n",
 +		 old_mode, requested, flip, ret);
-+	return ret;
++	return 0;
 +}
 +
 +#if IS_ENABLED(CONFIG_TYPEC)
@@ -379,7 +383,7 @@ Link: https://github.com/rockchip-toybrick/kernel/blob/a80be5749ac552821967eff31
  static const struct phy_ops rockchip_usb3_phy_ops = {
  	.power_on	= rockchip_usb3_phy_power_on,
  	.power_off	= rockchip_usb3_phy_power_off,
-@@ -1142,6 +1335,7 @@ static int rockchip_typec_phy_probe(struct platform_device *pdev)
+@@ -1142,6 +1339,7 @@ static int rockchip_typec_phy_probe(struct platform_device *pdev)
  		return ret;
  
  	tcphy->dev = dev;
@@ -387,7 +391,7 @@ Link: https://github.com/rockchip-toybrick/kernel/blob/a80be5749ac552821967eff31
  	platform_set_drvdata(pdev, tcphy);
  	mutex_init(&tcphy->lock);
  
-@@ -1183,6 +1377,12 @@ static int rockchip_typec_phy_probe(struct platform_device *pdev)
+@@ -1183,6 +1381,12 @@ static int rockchip_typec_phy_probe(struct platform_device *pdev)
  		phy_set_drvdata(phy, tcphy);
  	}
  

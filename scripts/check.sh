@@ -183,12 +183,15 @@ grep -Fq 'root=PARTLABEL=rootfs' "$PROJECT_DIR/boot/boot.cmd" || \
 if grep -Eq 'kmod-rtw88|rtl8822|mac80211|cfg80211' "$openwrt_patch"; then
 	fail "unused wireless drivers or firmware remain in the device profile"
 fi
-for package in blkid blockdev fdisk fstrim lsblk lscpu mount-utils wdctl \
-	ca-bundle curl htop jq lsof strace ip-full tcpdump-mini kmod-fs-exfat \
-	kmod-fs-vfat; do
+for package in bash blkid blockdev dnsmasq-full fdisk fstrim lsblk lscpu \
+	mount-utils wdctl ca-bundle curl htop jq lsof strace ip-full \
+	tcpdump-mini kmod-fs-exfat kmod-fs-vfat kmod-inet-diag \
+	kmod-nft-tproxy kmod-tun ruby ruby-yaml unzip; do
 	grep -Eq "[[:space:]]$package([[:space:]\\\\]|$)" "$openwrt_patch" || \
 		fail "required maintenance package is missing: $package"
 done
+grep -Eq '[[:space:]]-dnsmasq([[:space:]\\]|$)' "$openwrt_patch" || \
+	fail "default dnsmasq is not removed when dnsmasq-full is selected"
 grep -Eq '[[:space:]]-ip-tiny([[:space:]\\]|$)' "$openwrt_patch" || \
 	fail "ip-tiny is not removed when ip-full is selected"
 grep -Eq '[[:space:]]ss([[:space:]\\]|$)' "$openwrt_patch" || \
@@ -212,6 +215,8 @@ grep -Fq 'rk3399-typec: USB3 host GRF enable failed:' "$typec_phy_patch" || \
 	fail "RK3399 Type-C GRF programming errors are not observable"
 grep -Fq 'pipe_read_ret=%d' "$typec_phy_patch" || \
 	fail "RK3399 Type-C final PHY failure log lacks the PIPE read status"
+grep -Fq 'ignoring to keep power state balanced' "$typec_phy_patch" || \
+	fail "RK3399 Type-C PHY power-off errors can leak the generic PHY power count"
 grep -Fq 'mode = 0;' "$typec_dwc_patch" || \
 	fail "RK3399 USB_ROLE_NONE is not represented as a true idle role"
 grep -Fq 'if (!dwc->rk3399_typec)' "$typec_dwc_patch" || \
@@ -230,6 +235,12 @@ grep -Fq 'pm_runtime_put_sync_suspend(dev);' "$typec_dwc_patch" || \
 	fail "RK3399 DWC3 is not suspended while Type-C is unattached"
 grep -Fq 'dwc3_core_init_for_resume(dwc);' "$typec_dwc_patch" || \
 	fail "RK3399 DWC3/PHY resume lifecycle is missing"
+grep -Fq 'dwc3_rk3399_typec_rearm_runtime_pm(dwc, ret);' \
+	"$typec_dwc_patch" || \
+	fail "RK3399 Type-C cannot recover from a failed runtime resume"
+grep -Fq 'of_property_read_bool(dev->of_node, "usb-role-switch")' \
+	"$typec_dwc_patch" || \
+	fail "RK3399 DWC3 Type-C behavior is not restricted to a role-switch child"
 grep -Fq 'drivers/usb/dwc3/dwc3-of-simple.c' "$typec_dwc_patch" || \
 	fail "RK3399 parent DWC3 glue reset lifecycle is missing"
 grep -Fq 'of_property_read_bool(child, "usb-role-switch");' \

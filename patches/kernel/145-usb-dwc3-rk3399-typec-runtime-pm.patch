@@ -12,15 +12,15 @@ boundaries so one capture can distinguish TCPM, role, PM, PHY and xHCI failures.
 
 Link: https://github.com/rockchip-toybrick/kernel/blob/a80be5749ac552821967eff313df53f9e0cd1e01/drivers/usb/dwc3/dwc3-rockchip.c
 ---
- drivers/usb/dwc3/core.c           | 139 +++++++++++++++++++++++++++++++++++---
- drivers/usb/dwc3/core.h           |   4 ++
+ drivers/usb/dwc3/core.c           | 168 ++++++++++++++++++++++++++++++++++++--
+ drivers/usb/dwc3/core.h           |   4 +
  drivers/usb/dwc3/drd.c            |  15 +++-
- drivers/usb/dwc3/dwc3-of-simple.c |  78 ++++++++++++++++++++-
- 4 files changed, 221 insertions(+), 15 deletions(-)
+ drivers/usb/dwc3/dwc3-of-simple.c |  78 +++++++++++++++++-
+ 4 files changed, 250 insertions(+), 15 deletions(-)
 
 --- a/drivers/usb/dwc3/core.c
 +++ b/drivers/usb/dwc3/core.c
-@@ -157,6 +157,15 @@ void dwc3_set_prtcap(struct dwc3 *dwc, u32 mode, bool ignore_susphy)
+@@ -157,6 +157,41 @@ void dwc3_set_prtcap(struct dwc3 *dwc, u32 mode, bool ignore_susphy)
  	dwc->current_dr_role = mode;
  }
  
@@ -33,10 +33,36 @@ Link: https://github.com/rockchip-toybrick/kernel/blob/a80be5749ac552821967eff31
 +#endif
 +}
 +
++static void dwc3_rk3399_typec_rearm_runtime_pm(struct dwc3 *dwc,
++					       int resume_error)
++{
++	int child_ret;
++	int parent_ret;
++
++	/*
++	 * A failed runtime-resume callback leaves runtime_error set and blocks
++	 * every later attach. Both callbacks unwind to their suspended hardware
++	 * state, so clear only that failed state and let a new TCPM event retry.
++	 */
++	parent_ret = pm_runtime_set_suspended(dwc->dev->parent);
++	child_ret = pm_runtime_set_suspended(dwc->dev);
++	if (parent_ret && parent_ret != -EAGAIN)
++		dev_err(dwc->dev,
++			"rk3399-typec: failed to rearm parent runtime PM: %d\n",
++			parent_ret);
++	if (child_ret && child_ret != -EAGAIN)
++		dev_err(dwc->dev,
++			"rk3399-typec: failed to rearm child runtime PM: %d\n",
++			child_ret);
++	dev_warn(dwc->dev,
++		 "rk3399-typec: runtime PM rearmed after resume error %d: parent=%d child=%d\n",
++		 resume_error, parent_ret, child_ret);
++}
++
  static void __dwc3_set_mode(struct work_struct *work)
  {
  	struct dwc3 *dwc = work_to_dwc(work);
-@@ -164,6 +173,8 @@ static void __dwc3_set_mode(struct work_struct *work)
+@@ -164,6 +199,8 @@ static void __dwc3_set_mode(struct work_struct *work)
  	int ret;
  	u32 reg;
  	u32 desired_dr_role;
@@ -45,20 +71,22 @@ Link: https://github.com/rockchip-toybrick/kernel/blob/a80be5749ac552821967eff31
  	int i;
  
  	mutex_lock(&dwc->mutex);
-@@ -171,14 +182,28 @@ static void __dwc3_set_mode(struct work_struct *work)
+@@ -171,14 +208,30 @@ static void __dwc3_set_mode(struct work_struct *work)
  	desired_dr_role = dwc->desired_dr_role;
  	spin_unlock_irqrestore(&dwc->lock, flags);
  
 -	pm_runtime_get_sync(dwc->dev);
 +	ret = pm_runtime_resume_and_get(dwc->dev);
 +	if (ret < 0) {
-+		if (dwc->rk3399_typec)
++		if (dwc->rk3399_typec) {
 +			dev_err(dwc->dev,
 +				"rk3399-typec: role resume failed: current=%u desired=%u ret=%d\n",
 +				dwc->current_dr_role, desired_dr_role, ret);
-+		else
++			dwc3_rk3399_typec_rearm_runtime_pm(dwc, ret);
++		} else {
 +			dev_err(dwc->dev, "failed to resume for role switch: %d\n",
 +				ret);
++		}
 +		goto out_unlock;
 +	}
 +
@@ -78,7 +106,7 @@ Link: https://github.com/rockchip-toybrick/kernel/blob/a80be5749ac552821967eff31
  	if (desired_dr_role == dwc->current_dr_role)
  		goto out;
  
-@@ -204,6 +229,24 @@ static void __dwc3_set_mode(struct work_struct *work)
+@@ -204,6 +257,24 @@ static void __dwc3_set_mode(struct work_struct *work)
  		break;
  	}
  
@@ -103,7 +131,7 @@ Link: https://github.com/rockchip-toybrick/kernel/blob/a80be5749ac552821967eff31
  	/*
  	 * When current_dr_role is not set, there's no role switching.
  	 * Only perform GCTL.CoreSoftReset when there's DRD role switching.
-@@ -236,10 +279,30 @@ static void __dwc3_set_mode(struct work_struct *work)
+@@ -236,10 +307,30 @@ static void __dwc3_set_mode(struct work_struct *work)
  
  	switch (desired_dr_role) {
  	case DWC3_GCTL_PRTCAP_HOST:
@@ -135,7 +163,7 @@ Link: https://github.com/rockchip-toybrick/kernel/blob/a80be5749ac552821967eff31
  			if (dwc->usb2_phy)
  				otg_set_vbus(dwc->usb2_phy->otg, true);
  
-@@ -278,8 +341,24 @@ static void __dwc3_set_mode(struct work_struct *work)
+@@ -278,8 +369,24 @@ static void __dwc3_set_mode(struct work_struct *work)
  	}
  
  out:
@@ -162,19 +190,20 @@ Link: https://github.com/rockchip-toybrick/kernel/blob/a80be5749ac552821967eff31
  	mutex_unlock(&dwc->mutex);
  }
  
-@@ -2278,6 +2357,11 @@ static int dwc3_probe(struct platform_device *pdev)
+@@ -2278,6 +2385,12 @@ static int dwc3_probe(struct platform_device *pdev)
  	if (ret)
  		goto err_free_event_buffers;
  
 +	dwc->rk3399_typec = IS_REACHABLE(CONFIG_ARCH_ROCKCHIP) &&
 +			dwc->dr_mode == USB_DR_MODE_OTG &&
++			of_property_read_bool(dev->of_node, "usb-role-switch") &&
 +			of_device_is_compatible(dev->parent->of_node,
 +						"rockchip,rk3399-dwc3");
 +
  	ret = dwc3_core_init(dwc);
  	if (ret) {
  		dev_err_probe(dev, ret, "failed to initialize core\n");
-@@ -2291,6 +2375,24 @@ static int dwc3_probe(struct platform_device *pdev)
+@@ -2291,6 +2404,24 @@ static int dwc3_probe(struct platform_device *pdev)
  	if (ret)
  		goto err_exit_debugfs;
  
@@ -199,7 +228,7 @@ Link: https://github.com/rockchip-toybrick/kernel/blob/a80be5749ac552821967eff31
  	pm_runtime_put(dev);
  
  	dma_set_max_seg_size(dev, UINT_MAX);
-@@ -2329,6 +2431,10 @@ static void dwc3_remove(struct platform_device *pdev)
+@@ -2329,6 +2460,10 @@ static void dwc3_remove(struct platform_device *pdev)
  	pm_runtime_get_sync(&pdev->dev);
  
  	dwc3_core_exit_mode(dwc);
@@ -210,7 +239,7 @@ Link: https://github.com/rockchip-toybrick/kernel/blob/a80be5749ac552821967eff31
  	dwc3_debugfs_exit(dwc);
  
  	dwc3_core_exit(dwc);
-@@ -2450,7 +2556,11 @@ static int dwc3_suspend_common(struct dwc3 *dwc, pm_message_t msg)
+@@ -2450,7 +2585,11 @@ static int dwc3_suspend_common(struct dwc3 *dwc, pm_message_t msg)
  		dwc3_core_exit(dwc);
  		break;
  	default:
@@ -223,7 +252,7 @@ Link: https://github.com/rockchip-toybrick/kernel/blob/a80be5749ac552821967eff31
  		break;
  	}
  
-@@ -2517,7 +2627,18 @@ static int dwc3_resume_common(struct dwc3 *dwc, pm_message_t msg)
+@@ -2517,7 +2656,18 @@ static int dwc3_resume_common(struct dwc3 *dwc, pm_message_t msg)
  
  		break;
  	default:

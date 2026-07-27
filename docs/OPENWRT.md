@@ -31,10 +31,12 @@ Mini-PCIe 插座的机械外形不代表本板提供 PCIe 电气连接：它只�
 
 - 存储：`lsblk`、`blkid`、`blockdev`、`fdisk`、`fstrim`、`findmnt`（由 `mount-utils` 提供）、`mmc-utils`；内置 FAT32 与 exFAT 文件系统驱动，覆盖常见 U 盘和移动硬盘。
 - 板级与进程：`lscpu`、`wdctl`、`htop`、`lsof`、`strace`。
-- 网络：完整功能的 `ip`（以 `ip-full` 替换默认 `ip-tiny`）、`ss`、`ethtool`、`iperf3`、`tcpdump-mini`。
+- 网络：完整功能的 `ip`（以 `ip-full` 替换默认 `ip-tiny`）、`ss`、`ethtool`、`iperf3`、`tcpdump-mini`，以及 TUN、INET socket diagnostics 和 nftables TPROXY 内核模块。
+- DNS/DHCP：以 `dnsmasq-full` 替换默认 `dnsmasq`，保留 UCI 配置路径，并提供 DHCPv6、DNSSEC、authoritative DNS、nftset、conntrack 和 TFTP 能力。
+- Shell、脚本与归档：`bash`、Ruby、`ruby-yaml`、`unzip`；Ruby 的可选实现特性沿用锁定 packages feed 的上游默认值。
 - 通用数据访问：`curl`、`ca-bundle`、`jq`。
 
-BusyBox 已能满足的基础命令不重复引入 GNU coreutils；不预装编辑器、编译器、LuCI 或长期运行的附加服务。上述工具用于本机维护和故障定位，不改变默认网络服务或启动流程。
+BusyBox 已能满足的基础命令不重复引入 GNU coreutils；不预装编辑器、编译器或 LuCI。`dnsmasq-full` 继续使用 OpenWrt 原有 `/etc/config/dhcp` 和启动服务，其额外能力只有在对应配置中启用后才改变网络行为。
 
 网络性能基线、flow offload 适用边界、ARMv8 AES-CE、Rockchip Crypto 取舍和未来多队列/RSS 策略见 [网络性能与加速策略](NETWORK-PERFORMANCE.md)。
 
