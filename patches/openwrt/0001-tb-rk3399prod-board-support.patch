@@ -121,7 +121,7 @@ index b9f1fca..cf2065f 100644
 +  DEVICE_PACKAGES := bash block-mount blkid blockdev coreutils-base64 \
 +	coreutils-dd coreutils-stat diffutils e2fsprogs fdisk file findutils-find \
 +	findutils-xargs fstrim gawk grep gzip lsblk lscpu mount-utils mmc-utils \
-+	wdctl ca-bundle curl htop jq less lsof patch procps-ng sed tar \
++	wdctl ca-bundle curl htop jq less lsof patch procps-ng rsync sed tar vim-full \
 +	luci-ssl luci-i18n-base-zh-cn luci-i18n-firewall-zh-cn \
 +	luci-i18n-package-manager-zh-cn openssh-sftp-server strace tree \
 +	ethtool -dnsmasq dnsmasq-full -ip-tiny ip-full iperf3 ss tcpdump-mini \
