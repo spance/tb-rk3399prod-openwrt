@@ -247,7 +247,7 @@ fi
 for package in bash blkid blockdev coreutils-base64 coreutils-dd coreutils-stat \
 	diffutils dnsmasq-full fdisk file findutils-find findutils-xargs fstrim \
 	gawk grep gzip lsblk lscpu mount-utils wdctl ca-bundle curl htop jq less \
-	lsof patch procps-ng rsync sed tar vim-full \
+	lsof patch procps-ng rsync sed tar tmux vim-full \
 	luci-ssl luci-i18n-base-zh-cn luci-i18n-firewall-zh-cn \
 	luci-i18n-package-manager-zh-cn openssh-sftp-server strace tree \
 	ip-full tcpdump-mini kmod-fs-exfat kmod-fs-vfat kmod-inet-diag \

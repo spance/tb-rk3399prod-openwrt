@@ -14,7 +14,7 @@
 - **完整 USB 3.0 主机能力**：蓝色 Type-A 与 Type-C 均通过 UAS/`5000M` 高速存储测试；Type-C 支持正反插、热拔插和完整 runtime-PM 生命周期。
 - **双控制台与恢复路径**：UART2 1500000 baud、HDMI Linux console、USB 键盘登录，以及 TF/initramfs 恢复启动。
 - **内置 Web 管理**：LuCI、简体中文界面、uhttpd、Firewall 和 APK 软件包管理随镜像提供，默认使用 HTTPS。
-- **完整的日常命令体验**：保留 BusyBox 作为启动与救援底座，同时内置 GNU `tar`、`gzip`、`grep`、`sed`、`gawk`、`diff`、`patch`、`dd`、`stat`、`find`、`xargs`、`procps-ng`、完整 Vim 和 rsync；SFTP 服务端与 LuCI 简体中文界面随镜像提供。
+- **完整的日常命令体验**：保留 BusyBox 作为启动与救援底座，同时内置 GNU `tar`、`gzip`、`grep`、`sed`、`gawk`、`diff`、`patch`、`dd`、`stat`、`find`、`xargs`、`procps-ng`、tmux、完整 Vim 和 rsync；SFTP 服务端与 LuCI 简体中文界面随镜像提供。
 - **可验证的按需驱动**：可以从固定源码按包名构建 `kmod-*` APK；只有与当前固件内核依赖完全一致的模块才会交付，不覆盖 ABI，也不强制安装。
 - **面向升级维护**：DTS、Linux 补丁和 rootfs 文件各自只有一个权威来源；全部上游精确锁定到 commit，并由自动检查保护关键不变量。
 

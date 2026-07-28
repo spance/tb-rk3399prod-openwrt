@@ -40,7 +40,7 @@ Mini-PCIe 插座的机械外形不代表本板提供 PCIe 电气连接：它只�
 - 板级与进程：`lscpu`、`wdctl`、`htop`、`lsof`、`strace` 和 `procps-ng`。
 - 网络：完整功能的 `ip`（以 `ip-full` 替换默认 `ip-tiny`）、`ss`、`ethtool`、`iperf3`、`tcpdump-mini`，以及 TUN、INET socket diagnostics 和 nftables TPROXY 内核模块。
 - DNS/DHCP：以 `dnsmasq-full` 替换默认 `dnsmasq`，保留 UCI 配置路径，并提供 DHCPv6、DNSSEC、authoritative DNS、nftset、conntrack 和 TFTP 能力。
-- Shell、编辑、传输与归档：`bash`、`vim-full`、`python3-light`、`rsync`、`openssh-sftp-server`、`unzip`；`type` 由 Bash/ash 直接提供，SFTP 子系统与系统现有 Dropbear SSH 服务配合，不额外引入完整 OpenSSH daemon。`python3-light` 提供 Python 解释器和常用标准库，并保持与 OpenWrt 的 musl ABI 和软件包生命周期一致。
+- Shell、会话、编辑、传输与归档：`bash`、`tmux`、`vim-full`、`python3-light`、`rsync`、`openssh-sftp-server`、`unzip`；`type` 由 Bash/ash 直接提供，SFTP 子系统与系统现有 Dropbear SSH 服务配合，不额外引入完整 OpenSSH daemon。`python3-light` 提供 Python 解释器和常用标准库，并保持与 OpenWrt 的 musl ABI 和软件包生命周期一致。
 - 通用数据访问：`curl`、`ca-bundle`、`jq`。
 
 BusyBox 继续作为 OpenWrt 的启动、基础脚本和救援底座；日常交互、归档、文本处理和排障则优先使用上述完整 GNU/procps 工具。镜像不安装完整 coreutils/findutils 元包，也不预装编译器。`dnsmasq-full` 继续使用 OpenWrt 原有 `/etc/config/dhcp` 和启动服务，其额外能力只有在对应配置中启用后才改变网络行为。
