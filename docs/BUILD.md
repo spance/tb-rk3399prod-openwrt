@@ -60,7 +60,7 @@ make init
 | OpenWrt | `v25.12.5` / `f0a60eee2fe051741c643ea6118718aae1ef17fb` |
 | Linux | OpenWrt 官方 `6.12.94` |
 
-OpenWrt 只使用一个工作树和一个正式配置，独立 x4 插座的 PCIe host、常用维护工具和 HDMI Linux console 默认启用；板载 Mini-PCIe 插座仅接 USB2，无线驱动不纳入镜像。
+OpenWrt 只使用一个工作树和一个正式配置，标准 PCIe 插槽的 Gen2 host、RTL8125BG 主线驱动/固件、常用维护工具和 HDMI Linux console 默认启用；板载 Mini-PCIe 插座仅接 USB2，无线驱动不纳入镜像。
 
 初始化是幂等的。网络 fetch 会自动重试三次；中断后再次执行可以继续未完成的初始 checkout。补丁状态只由 Git 判断，不写额外状态文件；每个补丁必须是“可应用”或“已完整应用”，其他状态立即失败。所有上游仓库固定到精确 commit；`configs/feeds.conf` 只保留当前固件需要的 `packages` 和 `luci` feed，并固定到 OpenWrt 25.12.5 官方源码使用的 commit，不会因远端分支变化而漂移。routing、telephony 和 video feed 不下载。
 
@@ -72,7 +72,7 @@ OpenWrt 只使用一个工作树和一个正式配置，独立 x4 插座的 PCIe
 
 驱动开发时建议在工程目录之外保留两棵独立、固定 commit 的参考树：OpenWrt 当前 Linux 6.12 用于生成和反向校验补丁，Toybrick stable Linux 4.4 用于核对本板的权威时序。它们不是构建输入，也不提交到本仓库；`make clean`/`make reset` 不应操作这些参考树。每次修改直接内核补丁后，至少应在干净 6.12 树验证可正向应用、在已修改树验证可反向应用，再由 `make init` 同步到 OpenWrt。
 
-`rootfs/` 同样是板级固件文件的唯一权威来源。`scripts/sync-openwrt-rootfs.sh` 将其中的 init 服务和 UCI 首次启动脚本复制到 Rockchip target base-files，并逐文件校验；可执行模式由同步脚本显式设置，不依赖 Windows Git 的 mode bit。当前包含 GMAC IRQ 绑核和软件 flow offload 默认值。
+`rootfs/` 同样是板级固件文件的唯一权威来源。`scripts/sync-openwrt-rootfs.sh` 将其中的 init 服务和 UCI 首次启动脚本复制到 Rockchip target base-files，并逐文件校验；可执行模式由同步脚本显式设置，不依赖 Windows Git 的 mode bit。当前包含 GMAC/RTL8125 IRQ 策略、软件 flow offload 默认值和板级诊断工具。
 
 `make init` 随后验证 feed 仓库的 origin、HEAD、索引、干净状态和仓库数量；精确匹配时不访问 feed 远端，不匹配时才执行更新。OpenWrt 的 `src-git` feed 获取本身使用 `--depth 1`，不会同步完整 Git 历史。之后安装 package 索引、写入唯一的 `configs/openwrt.config`、执行 `make defconfig` 和 `make download`。因此成功返回表示 OpenWrt/U-Boot 补丁、直接内核补丁、DTS、rootfs 文件、feeds、配置和编译所需源码都已经准备完成；使用 GNU Make 标准参数 `make -j4 init` 控制源包并行下载数。
 
@@ -91,7 +91,7 @@ make -j4 all
 make check
 ```
 
-该目标不下载也不编译源码。它检查 Shell 语法、Git whitespace、目录约束、OpenWrt/U-Boot/直接内核补丁可解析性、DTS/rootfs 唯一来源、Type-C 状态机与诊断日志不变量、网络调优、OpenWrt 关键配置、musl 目标、feed 的 40 位 commit 锁定以及启动地址/根分区参数。若 `.work/` 已初始化，还会验证上游 HEAD、补丁反向校验、feed 仓库、OpenWrt `.config`，以及内核补丁、DTS、rootfs 的逐字节同步结果。`make init` 完成前也会自动执行同一套检查。
+该目标不下载也不编译源码。它检查 Shell 语法、Git whitespace、目录约束、OpenWrt/U-Boot/直接内核补丁可解析性、DTS/rootfs 唯一来源、Type-C 状态机与诊断日志不变量、OpenWrt 关键配置、musl 目标、feed 的 40 位 commit 锁定以及启动地址/根分区参数；还会用临时 sysfs/proc 夹具实际验证 GMAC/RTL8125 硬件身份、CPU4/CPU5 affinity 和离线 CPU 保护逻辑。若 `.work/` 已初始化，还会验证上游 HEAD、补丁反向校验、feed 仓库、OpenWrt `.config`，以及内核补丁、DTS、rootfs 的逐字节同步结果。`make init` 完成前也会自动执行同一套检查。
 
 ## 3. 构建
 

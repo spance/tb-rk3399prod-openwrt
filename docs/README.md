@@ -22,7 +22,8 @@
 - [U-Boot 适配](U-BOOT.md)：厂商 U-Boot 基线、补丁、启动地址和从 TF 更新 `boot_linux`。
 - [OpenWrt 适配](OPENWRT.md)：OpenWrt profile、硬件范围、持久化 overlay 和恢复启动。
 - [USB Type-C SuperSpeed 主机](USB-TYPE-C.md)：4.4 行为基线、6.12 驱动设计、诊断边界和复验流程。
-- [网络性能与加速策略](NETWORK-PERFORMANCE.md)：千兆压测、IRQ 绑核、软件 flow offload、AES 和 PCIe RSS。
+- [网络性能与加速策略](NETWORK-PERFORMANCE.md)：千兆压测、双网卡 IRQ 绑核、软件 flow offload 和 AES。
+- [PCIe RTL8125BG 2.5GbE](PCIE-RTL8125.md)：Gen2 链路、主线 r8169、固件、接口策略和实卡验收。
 
 ## 部署与验收
 

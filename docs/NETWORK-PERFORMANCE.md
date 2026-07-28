@@ -15,9 +15,9 @@
 
 RK3399 的 CPU0–CPU3 是 Cortex-A53，CPU4–CPU5 是 Cortex-A72。板载 GMAC 当前只有一组 RX/TX queue，实机 IRQ 名称为 `eth0`；IRQ 编号可能随内核和设备 probe 顺序改变，不能固定写成 41。
 
-`rootfs/etc/init.d/tb-net-tuning` 先通过固定平台设备 `fe300000.ethernet` 找到板载 GMAC 的当前接口名，再从 `/proc/interrupts` 动态解析它的全部 IRQ，并将 `smp_affinity_list` 设为 CPU4，即第一颗 Cortex-A72。它不依赖未来可能变化的 `eth0/eth1` 编号。运行时 A/B 验证表明硬中断计数从 CPU0 转移到 CPU4；随后 30 秒、4 流复测为 942/941 Mbit/s、0 重传，错误计数仍为 0。
+`rootfs/etc/init.d/tb-net-tuning` 先通过固定平台设备 `fe300000.ethernet` 找到板载 GMAC 的当前接口名，再从 `/proc/interrupts` 动态解析它的全部 IRQ，并将 `smp_affinity_list` 设为 CPU4，即第一颗 Cortex-A72。RTL8125BG 则按 PCI ID `10ec:8125` 识别，从 sysfs 的 MSI IRQ 目录取得编号并绑定 CPU5。两者都不依赖可能变化的 `eth0/eth1` 名称。运行时 A/B 验证表明 GMAC 硬中断从 CPU0 转移到 CPU4；随后 30 秒、4 流复测为 942/941 Mbit/s、0 重传，错误计数仍为 0。RTL8125 的 CPU5 策略尚待实卡复验。
 
-GMAC IRQ 只有在 netifd 打开网卡后才会出现，因此不能在网络服务之前只执行一次。`rootfs/etc/hotplug.d/iface/90-tb-net-tuning` 在逻辑接口 `lan` 的 `ifup` 事件后调用上述服务，使正常开机和以后重启网络都能恢复 affinity；服务自身延后到 S99，再提供一次幂等兜底。二者最终都调用同一段按平台设备查找 IRQ 的逻辑，不维护重复规则。
+GMAC IRQ 只有在 netifd 打开网卡后才会出现，因此不能在网络服务之前只执行一次。`rootfs/etc/hotplug.d/iface/90-tb-net-tuning` 在任一逻辑接口的 `ifup` 事件后调用上述服务，使 RTL8125 无论被配置成 WAN、LAN 或测试接口都能恢复 affinity；服务自身延后到 S99，再提供一次幂等兜底。重复调用不会重写已经正确的 affinity。
 
 这只规定 GMAC 硬中断落点，不强制固定应用进程，也不启用 RPS/RFS。协议栈、NAPI 和发送线程仍可能在其他 CPU 上产生软中断负载。对于单队列千兆 GMAC，额外跨核 RPS 容易增加 cache miss，目前没有证据表明它能改善吞吐，因此不作为默认项。
 
@@ -68,16 +68,8 @@ RK3399 的两个 Crypto v1 引擎确实存在，但 Linux 6.12 的 `rk3288_crypt
 
 因此生产 profile 保留 ARMv8 AES-CE，不默认启用 Rockchip Crypto。以后只有在明确出现内核 CBC/SHA 吞吐瓶颈时才做独立实验镜像：加入两个 Crypto 节点和驱动、确认 DMA/IRQ/运行时 PM 无错误，然后用相同算法、块大小和并发度与 AES-CE 对照。它不能加速普通明文 IP 转发，也不能替代软件 flow offload。
 
-## PCIe 第二网卡
+## PCIe RTL8125BG
 
-安装 PCIe 网卡后，应先按真实驱动和硬件能力检查：
+Linux 6.12 主线 `r8169` 对 RTL8125B 使用一个 IRQ 和一个 NAPI，不提供可分散到多个 CPU 的 RX/TX queue。默认策略因此让 GMAC 使用 CPU4、RTL8125 使用 CPU5，避免两个物理口的硬中断互相争用；不启用没有硬件队列支撑的 RPS/RSS。详细的链路、驱动和验收流程见 [PCIe RTL8125BG 2.5GbE](PCIE-RTL8125.md)。
 
-```sh
-ethtool -l eth1
-ethtool -x eth1
-grep -E 'eth1|PCI-MSI' /proc/interrupts
-ethtool -k eth1
-ethtool -S eth1
-```
-
-若网卡提供多组 RX/TX queue 和 MSI-X，再把各 queue IRQ 分散到 CPU4、CPU5，并用 RSS indirection table 保持流级一致性。不要把板载单队列 GMAC 的绑核规则机械套用到 PCIe 网卡。最终验收应包括普通路由、NAT、软件 flow offload 开/关、双向并发、MTU 变化、长时间错误计数和温控。
+需要注意，两口直接路由时板载 RTL8211E 的 1GbE 链路仍是端到端上限；RTL8125 的 2.5GbE 能力主要体现在访问本机服务，或把多个 VLAN 都承载在 RTL8125 上的单臂路由场景。真实 NAT 测试仍应比较 flow offload 开/关、双向并发、MTU、错误计数和 CPU/温度，而不能只看 RTL8125 自身的本机 `iperf3`。

@@ -11,6 +11,7 @@
 - **现代系统基线**：OpenWrt 25.12.5、Linux 6.12.94、musl 和 nftables/fw4。
 - **可用的 eMMC 系统**：HS400 Enhanced Strobe、ADMA、SquashFS + ext4 overlay，约 28.4 GiB 空间可持久保存软件和配置。
 - **稳定千兆网络**：RTL8211E 在双向 30 分钟压力测试中均达到 941 Mbit/s；GMAC IRQ 自动放置到 Cortex-A72，软件 flow offload 默认启用。
+- **2.5GbE 扩展就绪**：独立 PCIe 插槽启用 Gen2，镜像内置 Linux 主线 `r8169` 和 RTL8125B 固件，并按 PCI ID 将网卡 IRQ 放置到另一颗 Cortex-A72；实卡性能仍以部署验收为准。
 - **完整 USB 3.0 主机能力**：蓝色 Type-A 与 Type-C 均通过 UAS/`5000M` 高速存储测试；Type-C 支持正反插、热拔插和完整 runtime-PM 生命周期。
 - **双控制台与恢复路径**：UART2 1500000 baud、HDMI Linux console、USB 键盘登录，以及 TF/initramfs 恢复启动。
 - **内置 Web 管理**：LuCI、简体中文界面、uhttpd、Firewall 和 APK 软件包管理随镜像提供，默认使用 HTTPS。
@@ -35,7 +36,7 @@
 | HDMI console | VOPB + DW-HDMI，EDID 自动选模；保留串口 | Rockchip DRM/VOP、DW-HDMI、Innosilicon HDMI PHY、fbcon | 已验证文本 console 与 USB 键盘登录 |
 | Watchdog | RK3399 DesignWare WDT；30 秒超时、5 秒喂狗 | `dw_wdt` + OpenWrt `procd` | 已验证停止喂狗后硬件复位及系统自动恢复 |
 | 板载 LED | 蓝 GPIO2_A5、红 GPIO2_A4、绿 GPIO2_A3，高电平有效 | 标准 `gpio-leds`；OpenWrt 启动/failsafe/运行/升级状态别名 | 三路亮灭和运行状态已验证 |
-| PCIe x4 插座 | Gen1、x4 host，可经转接连接 x1 端点 | Rockchip PCIe host/PHY | 控制器已启用；尚无端点，第二网卡待验收 |
+| PCIe / 2.5GbE | 标准 x4 机械槽、Gen2 x4 host；RTL8125BG 使用 Gen2 x1 | Rockchip PCIe host/PHY + 主线 `r8169` + `rtl8125b-2.fw`；IRQ 绑定 CPU5 | 软件适配完成，实卡枚举与性能待验收 |
 | Mini-PCIe 插座 | 只有 USB2 走线，面向 LTE 模块 | 复用 USB2 host 驱动；不存在 PCIe lane | USB2-only，不能使用 RTL8822CE 等 PCIe 网卡 |
 | Wi-Fi / 蓝牙 | 不属于目标范围 | 不打包无线驱动和固件 | 有意禁用 |
 | GPU / NPU | 电源与 thermal 描述保留 | 不集成图形桌面、GPU 计算或 RKNN/NPU 软件栈 | 不属于目标范围 |
@@ -74,7 +75,7 @@ ARMv8 Crypto Extensions 已由 OpenSSL 3.5.7、16 KiB 数据块、固定单个 C
 
 仍需明确区分以下边界：
 
-- 独立 x4 插座尚未安装 PCIe 端点，因此尚未宣称第二网卡、双口 NAT 或 PCIe 长期稳定性已经通过。
+- RTL8125BG 的驱动、固件、Gen2 链路配置、IRQ 策略和诊断工具已经集成，但新卡尚未完成实机验收，因此暂不宣称 2.5GbE、双口 NAT 或 PCIe 长期稳定性已经通过。
 - Type-C 已通过功能与高速 I/O 验收；量产前仍建议增加 20～50 次方向交替/快速重插，以及 1～4 小时或 100 GiB 连续 I/O。
 - Wi-Fi、蓝牙、HDMI 音频、图形桌面、GPU 计算和 NPU 是明确的非目标。
 
@@ -87,7 +88,7 @@ ARMv8 Crypto Extensions 已由 OpenSSL 3.5.7、16 KiB 数据块、固定单个 C
 | U-Boot | 保留 Toybrick/Rockchip 2017.09 启动链；修复现代 Linux x86_64 主机构建兼容性，并将 TF 路径限制为 25 MHz、PIO、单次最多 1 MiB，以可靠加载恢复 FIT | `patches/u-boot/` |
 | Linux 驱动 | 为 RK3399 Type-C PHY 接入标准 orientation switch；为 DWC3 实现真实 `NONE ↔ HOST`、xHCI 创建/销毁、父子 runtime PM 与 OTG reset 生命周期；用标准 SDHCI quirk 禁用本板不稳定的 eMMC CQE | `patches/kernel/` 与 OpenWrt 板级补丁中的 CQE backport |
 | 板级描述与配置 | 固化 RK809/电源、CPU/温控、存储、GMAC、USB、HDMI、PCIe 等连线和参数；选择 Linux Kconfig、OpenWrt profile、软件包和镜像规则 | `dts/`、`patches/openwrt/`、`configs/` |
-| 运行策略 | 启用 ext4 overlay、把 GMAC IRQ 幂等绑定到 CPU4/A72、启用软件 flow offload，并提供一次性 Type-C 诊断工具 | `rootfs/` |
+| 运行策略 | 启用 ext4 overlay；按硬件身份把 GMAC/RTL8125 IRQ 分别幂等绑定到 CPU4/CPU5；启用软件 flow offload；提供 Type-C 与 RTL8125 一次性诊断工具 | `rootfs/` |
 | 构建与发布 | 固定全部上游 commit，下载到 `.work/`，同步唯一来源，执行检查并生成 `uboot.img`、`openwrt.img` 和发布包 | `scripts/`、`Makefile` |
 
 Type-C 不是把 Linux 4.4 代码逐行复制到 6.12：板级时序和生命周期以 Toybrick stable 4.4 为行为规范，再用 Linux 6.12 的 TCPM、role-switch、generic PHY、runtime PM 和 reset API 表达。FUSB302/TCPM 使用未修改的 Linux 6.12 标准驱动；实质驱动改造集中在 Rockchip Type-C PHY 与 DWC3 两个补丁。其余大多数硬件沿用上游驱动，通过 DTS、Kconfig 和 profile 完成板级集成。
@@ -121,7 +122,7 @@ make package
 
 | 目标 | 职责 |
 |---|---|
-| `make check` | 离线检查工程结构、脚本、补丁、配置和关键不变量 |
+| `make check` | 离线检查工程结构、脚本、补丁、配置、关键不变量和网络 IRQ 策略行为 |
 | `make init` | 获取固定上游和 `packages`/`luci` feed，应用补丁、同步 DTS/内核补丁/rootfs、生成配置并下载全部源包 |
 | `make all` | 验证初始化状态，编译 U-Boot/OpenWrt 并生成部署镜像 |
 | `make kmod KMODS="kmod-..."` | 使用同一工作树构建模块及其 kmod 依赖，ABI 完全匹配才输出 APK |
@@ -153,4 +154,5 @@ make package
 `make clean` 只删除发布产物。若 `.work` 因中断的补丁或人工修改而污染，使用显式的 `make reset`；它会丢弃上游工作树内的 Git 修改，但保留 ignored 下载和编译缓存。修改 DTS、Linux 补丁或 `rootfs/` 后重新运行 `make init`，再构建并按 [硬件状态](docs/HARDWARE-STATUS.md) 和各专项文档完成回归。
 
 Type-C 的一次性诊断使用固件内置 `tb-typec-diag`；设计、日志判读和升级测试见 [USB Type-C SuperSpeed 主机](docs/USB-TYPE-C.md)。
+RTL8125BG 的选型、主线驱动、链路目标、网络角色边界和上板验收见 [PCIe RTL8125BG 2.5GbE](docs/PCIE-RTL8125.md)，诊断使用固件内置 `tb-rtl8125-diag`。
 OpenWrt 官方预编译 `.ko` 与本项目内核配置不兼容，不能靠修改包管理哈希安全加载。普通扩展驱动使用 [按需 kmod 构建器](docs/KMOD-BUILDER.md)；启动和挂载 overlay 之前必需的驱动仍应内置固件。

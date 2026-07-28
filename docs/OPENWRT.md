@@ -23,13 +23,13 @@
 - TF：4-bit、50 MHz、Rockchip IDMAC。
 - eMMC：HS400 Enhanced Strobe、ADMA；为避免写入负载下反复进入 CQE recovery，使用 Linux 已有的 `SDHCI_QUIRK_BROKEN_CQE` 默认关闭 CQE。
 - RTL8211E 千兆以太网：RGMII，TX/RX delay `0x28/0x20`。
-- 网络调优：GMAC IRQ 动态绑定到第一颗 Cortex-A72，并在 LAN `ifup` 后及 S99 阶段幂等恢复；fw4 软件 flow offload 默认开启，硬件 flow offload 保持关闭。
+- 网络调优：GMAC IRQ 动态绑定 CPU4，RTL8125BG IRQ 按 PCI ID 动态绑定 CPU5；所有接口 `ifup` 后及 S99 阶段幂等恢复。fw4 软件 flow offload 默认开启，硬件 flow offload 保持关闭。
 - USB2 EHCI/OHCI、两组 USB3 控制器、板载 Hub 电源和复位；蓝色 Type-A 口已实测高速读写。Type-C 连接器对外固定为 5 V source/host，DWC3_0 内部使用 role-switch 管理断开时的 xHCI/core/PHY 关闭与重连恢复；TCPM 先给出方向，PHY 再在上电路径中配置对应 lanes。C 口首次插入、同向重插、翻转重插、UAS/`5000M` 和 exFAT 高速读写均已通过，详见 [USB Type-C SuperSpeed 主机](USB-TYPE-C.md)。
-- PCIe：默认启用，Gen1、x4 host，位于独立的 x4 板对板插座，并允许通过合适的转接板连接 x1 端点；无端点时 training timeout 与原厂 BSP 一致。
+- PCIe/RTL8125BG：标准 x4 机械槽使用 Gen2 x4 host 配置，x1 网卡目标协商 `5.0 GT/s x1`；镜像内置 Linux 主线 `r8169` 和 `rtl8125b-2.fw`。无端点时 training timeout 符合预期，实卡验收见 [PCIe RTL8125BG 2.5GbE](PCIE-RTL8125.md)。
 - HDMI console：内建 Rockchip DRM、VOPB、DW-HDMI、fbdev/fbcon，保留 UART2 并增加 `tty1` 键盘登录；详细设计和验收见 [HDMI Linux console](HDMI-CONSOLE.md)。
 - 无线、蓝牙、摄像、音频、图形桌面、GPU 和 NPU 不纳入当前目标，也不打包 `rtw88`、mac80211 或无线固件。
 
-Mini-PCIe 插座的机械外形不代表本板提供 PCIe 电气连接：它只适用于走 USB2 的 LTE 模块。若以后在独立 x4 插座改装 PCIe 有线网卡，应按具体型号增加 `igb`、`igc` 或 `r8169` 等驱动，并完成枚举、吞吐、错误计数和长时间稳定性验收。
+Mini-PCIe 插座的机械外形不代表本板提供 PCIe 电气连接：它只适用于走 USB2 的 LTE 模块。RTL8125BG 必须安装在标准 PCIe 槽；工程不按 `ethN` 名称自动改变网络配置，避免新端点改变现有 LAN 管理路径。
 
 两个容易被误判为冗余的内核选项需要保留：`CONFIG_USB_GADGET=y` 是 DWC3 dual-role 框架的构建依赖，但连接器 DTS 固定为 host/source 且 gadget-only 模式关闭，产品不会暴露 USB gadget；`CONFIG_DEBUG_FS=y` 用于 FUSB302/TCPM 事件环和 `tb-typec-diag` 的升级排障，只向本机 root 提供诊断接口。若未来删除 Type-C 板外补丁且不再需要事件环，才应一起评估移除 debugfs 和诊断工具。
 
@@ -38,7 +38,7 @@ Mini-PCIe 插座的机械外形不代表本板提供 PCIe 电气连接：它只�
 - 存储与文件：`lsblk`、`blkid`、`blockdev`、`fdisk`、`fstrim`、`findmnt`（由 `mount-utils` 提供）、`mmc-utils`、GNU `dd`、`stat`、`file`、`find`、`xargs`、`tar`、`gzip`、`tree`、`less` 和 `base64`；内置 FAT32 与 exFAT 文件系统驱动，覆盖常见 U 盘和移动硬盘。
 - 文本与源码处理：GNU `grep`、`sed`、`gawk`、`diffutils` 和 `patch`，避免日常命令及构建脚本受 BusyBox 精简参数和行为差异限制。
 - 板级与进程：`lscpu`、`wdctl`、`htop`、`lsof`、`strace` 和 `procps-ng`。
-- 网络：完整功能的 `ip`（以 `ip-full` 替换默认 `ip-tiny`）、`ss`、`ethtool`、`iperf3`、`tcpdump-mini`，以及 TUN、INET socket diagnostics 和 nftables TPROXY 内核模块。
+- 网络：完整功能的 `ip`（以 `ip-full` 替换默认 `ip-tiny`）、`ss`、`ethtool`、`iperf3`、`tcpdump-mini`，以及 TUN、INET socket diagnostics、nftables TPROXY、主线 `r8169` 和 RTL8125B firmware。
 - DNS/DHCP：以 `dnsmasq-full` 替换默认 `dnsmasq`，保留 UCI 配置路径，并提供 DHCPv6、DNSSEC、authoritative DNS、nftset、conntrack 和 TFTP 能力。
 - Shell、会话、编辑、传输与归档：`bash`、`tmux`、`vim-full`、`python3-light`、`rsync`、`openssh-sftp-server`、`unzip`；`type` 由 Bash/ash 直接提供，SFTP 子系统与系统现有 Dropbear SSH 服务配合，不额外引入完整 OpenSSH daemon。`python3-light` 提供 Python 解释器和常用标准库，并保持与 OpenWrt 的 musl ABI 和软件包生命周期一致。
 - 通用数据访问：`curl`、`ca-bundle`、`jq`。

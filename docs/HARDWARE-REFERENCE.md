@@ -20,7 +20,7 @@
 
 以后升级时，板级连线、供电、复位、时钟、引脚和外设事件顺序优先参考上述 Toybrick stable 4.4；目标 6.x 内核用于选择当前子系统 API 和已合入的通用修复；Rockchip 其他 6.x 分支及邮件列表补丁只能作为移植线索。任何无法静态证明等价的差异都必须保留为待验收项，并以本板实机测试闭环。
 
-当前正式 profile 默认启用独立 x4 插座的 PCIe host 和 HDMI Linux 文本 console。板载 Mini-PCIe 只接 USB2；无线、蓝牙、摄像、音频、图形桌面、GPU 功能和 NPU 不属于本阶段的完成条件，相关无线驱动和固件也不纳入镜像。
+当前正式 profile 默认启用独立 PCIe 插槽的 Gen2 host、RTL8125BG 主线驱动/固件和 HDMI Linux 文本 console。板载 Mini-PCIe 只接 USB2；无线、蓝牙、摄像、音频、图形桌面、GPU 功能和 NPU 不属于本阶段的完成条件，相关无线驱动和固件也不纳入镜像。
 
 ## 2. SoC、内存与控制台
 
@@ -147,17 +147,22 @@ HDMI 只承担 Linux 文本 console；U-Boot 显示、HDMI 音频、桌面和 GP
 |---|---|
 | Host 控制器 | `pcie@f8000000` |
 | PHY / host | 默认 `okay` |
-| 最大链路速率 | Gen1，`max-link-speed = 1` |
+| 最大链路速率 | Gen2，`max-link-speed = 2`；Gen2 二次训练失败时主线驱动自动保留 Gen1 链路 |
 | Root Complex lanes | x4，`num-lanes = 4` |
-| 物理出口 | 独立 PCIe x4 板对板插座；允许通过合适转接板连接 x1 端点 |
+| 物理出口 | 板载标准 PCIe x4 机械槽，四条 lane 均有连线；可直接安装 x1 卡 |
+| 当前目标端点 | Realtek RTL8125BG，PCI ID `10ec:8125`，PCIe 2.1 x1 |
+| Linux 驱动 | Linux 6.12 主线 `r8169`；OpenWrt `kmod-r8169` 自动带入 `r8169-firmware` |
+| RTL8125B 固件 | `/lib/firmware/rtl_nic/rtl8125b-2.fw` |
 | ASPM | 禁用 L0s（`aspm-no-l0s`） |
 | EP GPIO | GPIO0_B4，高有效 |
 | CLKREQ# pinctrl | `pcie_clkreqn_cpm` |
 | 电源 | 0.9 V、1.8 V、3.3 V；3.3 V 由 GPIO2_A6 使能 |
 
-本板有两个容易混淆的插座：上述 SoC PCIe host 只连接到独立 x4 板对板插座；板载 Mini-PCIe 插座只接 USB2，面向 LTE 模块，没有 PCIe lane。标准 PCIe 端点插入 Mini-PCIe 后不会出现在 `lspci`，DTS 或驱动无法弥补缺失的电气连线；`pcie@f8000000` 的 Gen1 training timeout 表示独立 x4 插座没有建立端点链路，与 Mini-PCIe 中是否插卡无关。
+本板有两个容易混淆的插座：上述 SoC PCIe host 连接到标准 PCIe x4 机械槽；板载 Mini-PCIe 插座只接 USB2，面向 LTE 模块，没有 PCIe lane。标准 PCIe 端点插入 Mini-PCIe 后不会出现在 `lspci`，DTS 或驱动无法弥补缺失的电气连线；`pcie@f8000000` 的 link training timeout 表示标准 PCIe 槽没有建立端点链路，与 Mini-PCIe 中是否插卡无关。
 
-独立 x4 插座仍保持启用，供未来通过匹配其板对板定义的转接板安装 PCIe 网卡或其他端点。具体设备驱动应在确定型号后按需加入，不预装当前没有硬件用途的无线驱动。安装端点后必须验证 `lspci -nnk`、实际链路宽度/速率、AER 错误、吞吐与重启稳定性。
+RTL8125BG 以一条 lane 工作，正确目标是 `5.0 GT/s, Width x1`。Gen1 x1 的有效单向带宽只有约 2 Gbit/s，无法承载 2.5GbE 线速，因此本工程显式使用 Gen2；这也与 Toybrick stable 4.4 DTS 未设置 Gen1 限制、Linux 6.12 RK3399 host 默认选择 Gen2 的行为一致。主线 host 先建立 Gen1 再请求 Gen2 重训练，失败会自动回退而不是丢弃已经建立的 Gen1 链路。
+
+生产镜像使用 Linux 主线 `r8169`，不引入 Realtek 外置 `r8125`。Linux 6.12 已包含 `10ec:8125` ID、RTL8125B 初始化路径和 `rtl8125b-2.fw` 声明；OpenWrt 的 `kmod-r8169` 对相应 firmware 包是强依赖。板级脚本按 PCI ID 识别它并把单 IRQ/NAPI 放到 CPU5，板载 GMAC 则继续位于 CPU4。固件不按可能变化的 `ethN` 名称自动分配 WAN/LAN，首次部署需在 LuCI/UCI 中明确选择。详细设计和验收见 [PCIe RTL8125BG 2.5GbE](PCIE-RTL8125.md)。
 
 ## 9. 升级回归清单
 
@@ -177,6 +182,7 @@ ip -s link show dev eth0
 lsusb -t
 find /sys/class/typec -maxdepth 2 -type f -print 2>/dev/null
 lspci -nnvv
+tb-rtl8125-diag
 dmesg | grep -Ei 'pcie|aer|usb|typec|tcpm|fusb|xhci|ehci|ohci|stmmac|gmac|drm|vop|hdmi|fbcon'
 ```
 

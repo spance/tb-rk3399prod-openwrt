@@ -18,3 +18,4 @@ patches/openwrt/0002-tb-rk3399prod-official-kmod-abi-compat.patch whitespace=-bl
 rootfs/etc/init.d/* text eol=lf
 rootfs/etc/uci-defaults/* text eol=lf
 rootfs/etc/hotplug.d/*/* text eol=lf
+rootfs/usr/sbin/* text eol=lf

@@ -5,17 +5,42 @@ START=99
 BOARD="rockchip,rk3399pro-toybrick-prod"
 GMAC_PLATFORM="fe300000.ethernet"
 GMAC_IRQ_CPU="4"
+RTL8125_VENDOR="0x10ec"
+RTL8125_DEVICE="0x8125"
+RTL8125_IRQ_CPU="5"
+SYSFS_ROOT="${TB_SYSFS_ROOT:-/sys}"
+PROC_INTERRUPTS="${TB_PROC_INTERRUPTS:-/proc/interrupts}"
+IRQ_ROOT="${TB_IRQ_ROOT:-/proc/irq}"
+BOARD_NAME_FILE="${TB_BOARD_NAME_FILE:-/tmp/sysinfo/board_name}"
 
 board_name()
 {
-	cat /tmp/sysinfo/board_name 2>/dev/null
+	cat "$BOARD_NAME_FILE" 2>/dev/null
 }
 
 find_gmac_device()
 {
 	local device_path
-	for device_path in "/sys/bus/platform/devices/$GMAC_PLATFORM/net/"*; do
+	for device_path in "$SYSFS_ROOT/bus/platform/devices/$GMAC_PLATFORM/net/"*; do
 		[ -e "$device_path" ] || continue
+		basename "$device_path"
+		return 0
+	done
+	return 1
+}
+
+find_rtl8125_device()
+{
+	local device_path vendor device driver
+	for device_path in "$SYSFS_ROOT/class/net/"*; do
+		[ -f "$device_path/device/vendor" ] || continue
+		[ -f "$device_path/device/device" ] || continue
+		vendor=$(cat "$device_path/device/vendor" 2>/dev/null)
+		device=$(cat "$device_path/device/device" 2>/dev/null)
+		[ "$vendor" = "$RTL8125_VENDOR" ] || continue
+		[ "$device" = "$RTL8125_DEVICE" ] || continue
+		driver=$(basename "$(readlink -f "$device_path/device/driver" 2>/dev/null)")
+		[ "$driver" = "r8169" ] || continue
 		basename "$device_path"
 		return 0
 	done
@@ -24,47 +49,70 @@ find_gmac_device()
 
 find_device_irqs()
 {
+	local irq_path found=0
+	for irq_path in "$SYSFS_ROOT/class/net/$1/device/msi_irqs/"*; do
+		[ -e "$irq_path" ] || continue
+		basename "$irq_path"
+		found=1
+	done
+	[ "$found" = 1 ] && return 0
+
 	awk -v device="$1" '
 		$NF == device {
 			gsub(":", "", $1)
 			print $1
 		}
-	' /proc/interrupts
+	' "$PROC_INTERRUPTS"
+}
+
+cpu_available()
+{
+	local cpu="$1"
+	[ -d "$SYSFS_ROOT/devices/system/cpu/cpu$cpu" ] || return 1
+	[ ! -f "$SYSFS_ROOT/devices/system/cpu/cpu$cpu/online" ] ||
+		[ "$(cat "$SYSFS_ROOT/devices/system/cpu/cpu$cpu/online")" = 1 ]
+}
+
+tune_device_irqs()
+{
+	local label="$1" device="$2" cpu="$3"
+	local irq affinity_file current_affinity found=0
+
+	cpu_available "$cpu" || {
+		logger -t tb-net-tuning "CPU$cpu is unavailable or offline; leaving $label $device IRQ affinity unchanged"
+		return 0
+	}
+
+	for irq in $(find_device_irqs "$device"); do
+		affinity_file="$IRQ_ROOT/$irq/smp_affinity_list"
+		[ -w "$affinity_file" ] || continue
+		found=1
+		current_affinity=$(cat "$affinity_file" 2>/dev/null)
+		[ "$current_affinity" = "$cpu" ] && continue
+		echo "$cpu" >"$affinity_file" || {
+			logger -t tb-net-tuning "failed to assign $label $device IRQ $irq to CPU$cpu"
+			continue
+		}
+		logger -t tb-net-tuning "$label $device IRQ $irq assigned to CPU$cpu"
+	done
+
+	[ "$found" = 1 ] || {
+		logger -t tb-net-tuning "no writable IRQ found for $label $device"
+		return 0
+	}
 }
 
 start()
 {
 	[ "$(board_name)" = "$BOARD" ] || return 0
-	local device irq affinity_file current_affinity found=0
+	local device
+
 	device=$(find_gmac_device) || {
 		logger -t tb-net-tuning "on-board GMAC netdev is unavailable"
-		return 0
+		device=""
 	}
-	[ -d "/sys/devices/system/cpu/cpu$GMAC_IRQ_CPU" ] || {
-		logger -t tb-net-tuning "CPU$GMAC_IRQ_CPU is unavailable; leaving $device IRQ affinity unchanged"
-		return 0
-	}
-	[ ! -f "/sys/devices/system/cpu/cpu$GMAC_IRQ_CPU/online" ] ||
-		[ "$(cat "/sys/devices/system/cpu/cpu$GMAC_IRQ_CPU/online")" = 1 ] || {
-		logger -t tb-net-tuning "CPU$GMAC_IRQ_CPU is offline; leaving $device IRQ affinity unchanged"
-		return 0
-	}
+	[ -z "$device" ] || tune_device_irqs "on-board GMAC" "$device" "$GMAC_IRQ_CPU"
 
-	for irq in $(find_device_irqs "$device"); do
-		affinity_file="/proc/irq/$irq/smp_affinity_list"
-		[ -w "$affinity_file" ] || continue
-		found=1
-		current_affinity=$(cat "$affinity_file" 2>/dev/null)
-		[ "$current_affinity" = "$GMAC_IRQ_CPU" ] && continue
-		echo "$GMAC_IRQ_CPU" >"$affinity_file" || {
-			logger -t tb-net-tuning "failed to assign $device IRQ $irq to CPU$GMAC_IRQ_CPU"
-			continue
-		}
-		logger -t tb-net-tuning "$device IRQ $irq assigned to CPU$GMAC_IRQ_CPU"
-	done
-
-	[ "$found" = 1 ] || {
-		logger -t tb-net-tuning "no writable IRQ found for $device"
-		return 0
-	}
+	device=$(find_rtl8125_device) || return 0
+	tune_device_irqs "RTL8125" "$device" "$RTL8125_IRQ_CPU"
 }

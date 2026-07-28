@@ -21,6 +21,7 @@ assert_exact_line()
 for script in "$SCRIPT_DIR"/*.sh; do
 	bash -n "$script"
 done
+bash "$SCRIPT_DIR/test-net-tuning.sh"
 for script in "$PROJECT_DIR"/rootfs/etc/init.d/* \
 	"$PROJECT_DIR"/rootfs/etc/uci-defaults/* \
 	"$PROJECT_DIR"/rootfs/etc/hotplug.d/iface/* \
@@ -71,6 +72,7 @@ assert_file "$PROJECT_DIR/rootfs/etc/init.d/tb-net-tuning"
 assert_file "$PROJECT_DIR/rootfs/etc/hotplug.d/iface/90-tb-net-tuning"
 assert_file "$PROJECT_DIR/rootfs/etc/uci-defaults/99-tb-network-offload"
 assert_file "$PROJECT_DIR/rootfs/usr/sbin/tb-typec-diag"
+assert_file "$PROJECT_DIR/rootfs/usr/sbin/tb-rtl8125-diag"
 assert_file "$PROJECT_DIR/configs/openwrt.config"
 assert_file "$PROJECT_DIR/configs/feeds.conf"
 assert_file "$PROJECT_DIR/boot/boot.cmd"
@@ -85,6 +87,7 @@ assert_file "$PROJECT_DIR/docs/BOOT-CHAIN.md"
 assert_file "$PROJECT_DIR/docs/HDMI-CONSOLE.md"
 assert_file "$PROJECT_DIR/docs/KMOD-BUILDER.md"
 assert_file "$PROJECT_DIR/docs/NETWORK-PERFORMANCE.md"
+assert_file "$PROJECT_DIR/docs/PCIE-RTL8125.md"
 assert_file "$PROJECT_DIR/docs/USB-TYPE-C.md"
 
 grep -Fq '## 适配分层与改造点' "$PROJECT_DIR/README.md" || \
@@ -251,10 +254,13 @@ for package in bash blkid blockdev coreutils-base64 coreutils-dd coreutils-stat 
 	luci-ssl luci-i18n-base-zh-cn luci-i18n-firewall-zh-cn \
 	luci-i18n-package-manager-zh-cn openssh-sftp-server strace tree \
 	ip-full tcpdump-mini kmod-fs-exfat kmod-fs-vfat kmod-inet-diag \
-	kmod-nft-tproxy kmod-tun python3-light unzip; do
+	kmod-nft-tproxy kmod-r8169 kmod-tun python3-light unzip; do
 	grep -Eq "[[:space:]]$package([[:space:]\\\\]|$)" "$openwrt_patch" || \
 		fail "required maintenance package is missing: $package"
 done
+if grep -Eq '[[:space:]]kmod-r8125([[:space:]\\]|$)' "$openwrt_patch"; then
+	fail "out-of-tree Realtek r8125 driver must not replace mainline r8169"
+fi
 if grep -Eq '[[:space:]]luci([[:space:]\\]|$)|luci-app-attendedsysupgrade' \
 	"$openwrt_patch"; then
 	fail "unsupported attended sysupgrade must not be exposed through LuCI"
@@ -373,11 +379,29 @@ fi
 grep -Fq 'Mini-PCIe 插座只接 USB2' \
 	"$PROJECT_DIR/docs/HARDWARE-REFERENCE.md" || \
 	fail "Mini-PCIe USB-only wiring constraint is not documented"
+grep -Fq 'max-link-speed = <2>;' \
+	"$PROJECT_DIR/dts/rk3399pro-toybrick-prod.dts" || \
+	fail "PCIe Gen2 is required for RTL8125BG 2.5GbE throughput"
+grep -Fq 'num-lanes = <4>;' \
+	"$PROJECT_DIR/dts/rk3399pro-toybrick-prod.dts" || \
+	fail "RK3399 PCIe root-complex lane configuration changed unexpectedly"
 grep -Fq 'kmod-usb-hid' "$openwrt_patch" || \
 	fail "USB HID support for the HDMI console is missing from the device profile"
 grep -Fq 'GMAC_IRQ_CPU="4"' \
 	"$PROJECT_DIR/rootfs/etc/init.d/tb-net-tuning" || \
 	fail "GMAC IRQ is not assigned to the first Cortex-A72"
+grep -Fq 'RTL8125_IRQ_CPU="5"' \
+	"$PROJECT_DIR/rootfs/etc/init.d/tb-net-tuning" || \
+	fail "RTL8125 IRQ is not assigned to the second Cortex-A72"
+grep -Fq 'RTL8125_VENDOR="0x10ec"' \
+	"$PROJECT_DIR/rootfs/etc/init.d/tb-net-tuning" || \
+	fail "RTL8125 discovery does not use the Realtek PCI vendor ID"
+grep -Fq 'RTL8125_DEVICE="0x8125"' \
+	"$PROJECT_DIR/rootfs/etc/init.d/tb-net-tuning" || \
+	fail "RTL8125 discovery does not use the PCI device ID"
+grep -Fq 'device/msi_irqs/' \
+	"$PROJECT_DIR/rootfs/etc/init.d/tb-net-tuning" || \
+	fail "PCIe NIC MSI discovery is missing"
 grep -Fq 'current_affinity=$(cat "$affinity_file"' \
 	"$PROJECT_DIR/rootfs/etc/init.d/tb-net-tuning" || \
 	fail "GMAC IRQ tuning is not idempotent"
@@ -389,10 +413,20 @@ grep -Fq '/etc/init.d/tb-net-tuning start' \
 	fail "GMAC IRQ affinity is not restored by the interface hotplug hook"
 grep -Fq '[ "$ACTION" = "ifup" ] || exit 0' \
 	"$PROJECT_DIR/rootfs/etc/hotplug.d/iface/90-tb-net-tuning" || \
-	fail "GMAC IRQ hotplug hook is not restricted to interface-up events"
-grep -Fq '[ "$INTERFACE" = "lan" ] || exit 0' \
-	"$PROJECT_DIR/rootfs/etc/hotplug.d/iface/90-tb-net-tuning" || \
-	fail "GMAC IRQ hotplug hook is not restricted to the LAN interface"
+	fail "network IRQ hotplug hook is not restricted to interface-up events"
+if grep -Fq '[ "$INTERFACE" = "lan" ]' \
+	"$PROJECT_DIR/rootfs/etc/hotplug.d/iface/90-tb-net-tuning"; then
+	fail "network IRQ hotplug hook must cover the future RTL8125 WAN or LAN role"
+fi
+for marker in \
+	'RTL8125_FIRMWARE="/lib/firmware/rtl_nic/rtl8125b-2.fw"' \
+	'/sys/bus/pci/devices/*' \
+	'current_link_speed' \
+	'ethtool -S "$netdev"' \
+	"dmesg | grep -Ei 'pcie|aer|r8169|rtl8125|rtl_nic|firmware'"; do
+	grep -Fq "$marker" "$PROJECT_DIR/rootfs/usr/sbin/tb-rtl8125-diag" || \
+		fail "RTL8125 diagnostic coverage is missing: $marker"
+done
 grep -Fq "flow_offloading='1'" \
 	"$PROJECT_DIR/rootfs/etc/uci-defaults/99-tb-network-offload" || \
 	fail "software flow offload is not enabled by default"
@@ -527,6 +561,10 @@ if [ -d "$WORK_DIR/openwrt/.git" ]; then
 		fail "OpenWrt worktree does not enable the Dropbear SFTP subsystem"
 	grep -Fqx 'CONFIG_USE_MUSL=y' "$WORK_DIR/openwrt/.config" || \
 		fail "OpenWrt worktree does not use musl"
+	grep -Fqx 'CONFIG_PACKAGE_kmod-r8169=y' "$WORK_DIR/openwrt/.config" || \
+		fail "OpenWrt worktree does not include mainline RTL8125 support"
+	grep -Fqx 'CONFIG_PACKAGE_r8169-firmware=y' "$WORK_DIR/openwrt/.config" || \
+		fail "OpenWrt worktree does not include RTL8125 firmware"
 	if grep -Fqx 'CONFIG_USE_GLIBC=y' "$WORK_DIR/openwrt/.config"; then
 		fail "OpenWrt worktree unexpectedly selects glibc"
 	fi

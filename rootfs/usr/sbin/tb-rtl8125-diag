@@ -1,0 +1,125 @@
+#!/bin/sh
+
+BOARD="rockchip,rk3399pro-toybrick-prod"
+RTL8125_VENDOR="0x10ec"
+RTL8125_DEVICE="0x8125"
+RTL8125_FIRMWARE="/lib/firmware/rtl_nic/rtl8125b-2.fw"
+
+section()
+{
+	printf '\n===== %s =====\n' "$1"
+}
+
+show_file()
+{
+	[ -r "$1" ] || return 0
+	printf '%s: ' "$2"
+	cat "$1"
+}
+
+board_name=$(cat /tmp/sysinfo/board_name 2>/dev/null)
+
+section "system"
+printf 'board: %s\n' "${board_name:-unknown}"
+uname -a
+uptime
+
+[ "$board_name" = "$BOARD" ] || {
+	printf 'This diagnostic is intended for %s.\n' "$BOARD" >&2
+	exit 1
+}
+
+section "driver and firmware"
+if [ -r "$RTL8125_FIRMWARE" ]; then
+	printf 'firmware: %s\n' "$RTL8125_FIRMWARE"
+	sha256sum "$RTL8125_FIRMWARE"
+else
+	printf 'MISSING: %s\n' "$RTL8125_FIRMWARE"
+fi
+lsmod | grep -E '(^|[[:space:]])r8169([[:space:]]|$)' || true
+
+section "PCI inventory"
+lspci -nnk
+lspci -tv
+lspci -vv
+
+endpoint_found=0
+netdev_found=0
+for pci_path in /sys/bus/pci/devices/*; do
+	[ -f "$pci_path/vendor" ] || continue
+	[ -f "$pci_path/device" ] || continue
+	[ "$(cat "$pci_path/vendor" 2>/dev/null)" = "$RTL8125_VENDOR" ] || continue
+	[ "$(cat "$pci_path/device" 2>/dev/null)" = "$RTL8125_DEVICE" ] || continue
+
+	endpoint_found=1
+	device_path=$(readlink -f "$pci_path")
+	bdf=$(basename "$device_path")
+	root_path=$(dirname "$device_path")
+	root_port=$(basename "$root_path")
+	driver="unbound"
+	[ ! -L "$pci_path/driver" ] || \
+		driver=$(basename "$(readlink -f "$pci_path/driver" 2>/dev/null)")
+	netdev=""
+	for net_path in "$pci_path/net/"*; do
+		[ -e "$net_path" ] || continue
+		netdev=$(basename "$net_path")
+		break
+	done
+
+	section "RTL8125 endpoint"
+	printf 'PCI BDF: %s\ndriver: %s\nnetdev: %s\n' \
+		"$bdf" "$driver" "${netdev:-unavailable}"
+	show_file "$pci_path/current_link_speed" "current PCIe speed"
+	show_file "$pci_path/current_link_width" "current PCIe width"
+	show_file "$pci_path/max_link_speed" "endpoint maximum speed"
+	show_file "$pci_path/max_link_width" "endpoint maximum width"
+	lspci -nnk -s "$bdf"
+	lspci -vv -s "$bdf"
+
+	section "root port"
+	printf 'root-port BDF: %s\n' "$root_port"
+	show_file "$root_path/current_link_speed" "current PCIe speed"
+	show_file "$root_path/current_link_width" "current PCIe width"
+	lspci -nnk -s "$root_port"
+	lspci -vv -s "$root_port"
+
+	[ -n "$netdev" ] || {
+		printf '\nRTL8125 is visible on PCIe but no network interface was created.\n' >&2
+		continue
+	}
+	netdev_found=1
+	net_path="$pci_path/net/$netdev"
+
+	section "network link"
+	ip -details -statistics link show dev "$netdev"
+	ethtool -i "$netdev"
+	ethtool "$netdev"
+	ethtool --show-eee "$netdev"
+	ethtool -k "$netdev"
+	ethtool -l "$netdev"
+	ethtool -g "$netdev"
+	ethtool -c "$netdev"
+
+	section "interrupts"
+	for irq_path in "$pci_path/msi_irqs/"*; do
+		[ -e "$irq_path" ] || continue
+		irq=$(basename "$irq_path")
+		printf 'IRQ %s affinity: ' "$irq"
+		cat "/proc/irq/$irq/smp_affinity_list" 2>/dev/null || printf 'unavailable\n'
+	done
+	awk -v device="$netdev" '$NF == device { print }' /proc/interrupts
+
+	section "driver statistics"
+	ethtool -S "$netdev"
+done
+
+section "PCIe and r8169 kernel log"
+dmesg | grep -Ei 'pcie|aer|r8169|rtl8125|rtl_nic|firmware' | tail -n 300
+
+[ "$endpoint_found" = 1 ] || {
+	printf '\nNo PCI device %s:%s was found.\n' \
+		"${RTL8125_VENDOR#0x}" "${RTL8125_DEVICE#0x}" >&2
+	exit 1
+}
+
+[ "$netdev_found" = 1 ] || exit 2
