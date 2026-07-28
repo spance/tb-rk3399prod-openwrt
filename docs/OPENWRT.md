@@ -35,7 +35,7 @@ Mini-PCIe 插座的机械外形不代表本板提供 PCIe 电气连接：它只�
 
 ## 内置维护工具
 
-- 存储与文件：`lsblk`、`blkid`、`blockdev`、`fdisk`、`fstrim`、`findmnt`（由 `mount-utils` 提供）、`mmc-utils`、GNU `dd`、`stat`、`file`、`find`、`xargs`、`tar`、`gzip`、`tree`、`less` 和 `base64`；内置 FAT32 与 exFAT 文件系统驱动，覆盖常见 U 盘和移动硬盘。
+- 存储与文件：`lsblk`、`blkid`、`blockdev`、`fdisk`、`fstrim`、`findmnt`（由 `mount-utils` 提供）、`mmc-utils`、GNU `dd`、`stat`、`file`、`find`、`xargs`、GNU `tar`（含 XZ 支持）、`gzip`、`xz`、`tree`、`less` 和 `base64`；内置 FAT32 与 exFAT 文件系统驱动，覆盖常见 U 盘和移动硬盘。
 - 文本与源码处理：GNU `grep`、`sed`、`gawk`、`diffutils` 和 `patch`，避免日常命令及构建脚本受 BusyBox 精简参数和行为差异限制。
 - 板级与进程：`lscpu`、`wdctl`、`htop`、`lsof`、`strace` 和 `procps-ng`。
 - 网络：完整功能的 `ip`（以 `ip-full` 替换默认 `ip-tiny`）、`ss`、`ethtool`、`iperf3`、`tcpdump-mini`，以及 TUN、INET socket diagnostics、nftables TPROXY、主线 `r8169` 和 RTL8125B firmware。

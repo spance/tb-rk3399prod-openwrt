@@ -128,7 +128,7 @@ index b9f1fca..cf2065f 100644
 +	ethtool -dnsmasq dnsmasq-full -ip-tiny ip-full iperf3 ss tcpdump-mini \
 +	kmod-fs-exfat kmod-fs-vfat kmod-inet-diag kmod-nft-tproxy kmod-r8169 \
 +	kmod-tun kmod-usb-hid kmod-usb-storage kmod-usb-storage-uas pciutils \
-+	python3-light unzip usbutils
++	python3-light unzip usbutils xz-utils
 +endef
 +TARGET_DEVICES += toybrick_tb-rk3399prod
 +

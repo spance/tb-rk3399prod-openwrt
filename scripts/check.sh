@@ -254,7 +254,7 @@ for package in bash blkid blockdev coreutils-base64 coreutils-dd coreutils-stat 
 	luci-ssl luci-i18n-base-zh-cn luci-i18n-firewall-zh-cn \
 	luci-i18n-package-manager-zh-cn openssh-sftp-server strace tree \
 	ip-full tcpdump-mini kmod-fs-exfat kmod-fs-vfat kmod-inet-diag \
-	kmod-nft-tproxy kmod-r8169 kmod-tun python3-light unzip; do
+	kmod-nft-tproxy kmod-r8169 kmod-tun python3-light unzip xz-utils; do
 	grep -Eq "[[:space:]]$package([[:space:]\\\\]|$)" "$openwrt_patch" || \
 		fail "required maintenance package is missing: $package"
 done
@@ -565,6 +565,13 @@ if [ -d "$WORK_DIR/openwrt/.git" ]; then
 		fail "OpenWrt worktree does not include mainline RTL8125 support"
 	grep -Fqx 'CONFIG_PACKAGE_r8169-firmware=y' "$WORK_DIR/openwrt/.config" || \
 		fail "OpenWrt worktree does not include RTL8125 firmware"
+	for required_archive_package in tar xz xz-utils; do
+		grep -Fqx "CONFIG_PACKAGE_$required_archive_package=y" \
+			"$WORK_DIR/openwrt/.config" || \
+			fail "OpenWrt worktree does not include $required_archive_package"
+	done
+	grep -Fqx 'CONFIG_PACKAGE_TAR_XZ=y' "$WORK_DIR/openwrt/.config" || \
+		fail "OpenWrt GNU tar does not include XZ support"
 	if grep -Fqx 'CONFIG_USE_GLIBC=y' "$WORK_DIR/openwrt/.config"; then
 		fail "OpenWrt worktree unexpectedly selects glibc"
 	fi

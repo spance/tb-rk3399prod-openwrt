@@ -74,6 +74,27 @@ build_openwrt()
 		-print0)
 	[ "$found" -eq 1 ] || fail "no TB-RK3399ProD OpenWrt output was found"
 
+	manifest_count=0
+	manifest=
+	while IFS= read -r -d '' file; do
+		manifest=$file
+		manifest_count=$((manifest_count + 1))
+	done < <(find "$dest" -maxdepth 1 -type f \
+		-name '*toybrick_tb-rk3399prod.manifest' -print0)
+	[ "$manifest_count" -eq 1 ] || \
+		fail "expected exactly one TB-RK3399ProD package manifest, found $manifest_count"
+	for package in tar xz xz-utils; do
+		grep -Eq "^${package}[[:space:]]+-[[:space:]]+" "$manifest" || \
+			fail "OpenWrt manifest does not contain required package: $package"
+	done
+
+	mapfile -d '' root_dirs < <(find "$source/build_dir" -mindepth 2 \
+		-maxdepth 2 -type d -name root-rockchip -print0)
+	[ "${#root_dirs[@]}" -eq 1 ] || \
+		fail "expected exactly one staged Rockchip rootfs, found ${#root_dirs[@]}"
+	[ -x "${root_dirs[0]}/usr/libexec/tar-gnu" ] || \
+		fail "staged rootfs does not contain GNU tar"
+
 	fit_count=0
 	fit_image=
 	while IFS= read -r -d '' file; do
