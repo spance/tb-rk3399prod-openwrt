@@ -33,7 +33,8 @@
 | USB3 Type-A | DWC3_1 / xHCI / `tcphy1`，固定 host | DWC3、xHCI、`phy-rockchip-typec` | 已验证 UAS/`5000M` 高速读写 |
 | USB3 Type-C | FUSB302 `0x22`，5 V/1.5 A source/host，DWC3_0 / `tcphy0` | 标准 FUSB302/TCPM + 本工程 Rockchip Type-C PHY、DWC3 生命周期补丁 | 已验证正反插、热拔插、UAS 和高速读写 |
 | HDMI console | VOPB + DW-HDMI，EDID 自动选模；保留串口 | Rockchip DRM/VOP、DW-HDMI、Innosilicon HDMI PHY、fbcon | 已验证文本 console 与 USB 键盘登录 |
-| Watchdog | RK3399 DesignWare WDT；30 秒超时、5 秒喂狗 | `dw_wdt` + OpenWrt `procd` | 驱动与运行状态已验证；故障复位待破坏性测试 |
+| Watchdog | RK3399 DesignWare WDT；30 秒超时、5 秒喂狗 | `dw_wdt` + OpenWrt `procd` | 已验证停止喂狗后硬件复位及系统自动恢复 |
+| 板载 LED | 蓝 GPIO2_A5、红 GPIO2_A4、绿 GPIO2_A3，高电平有效 | 标准 `gpio-leds`；OpenWrt 启动/failsafe/运行/升级状态别名 | 三路亮灭和运行状态已验证 |
 | PCIe x4 插座 | Gen1、x4 host，可经转接连接 x1 端点 | Rockchip PCIe host/PHY | 控制器已启用；尚无端点，第二网卡待验收 |
 | Mini-PCIe 插座 | 只有 USB2 走线，面向 LTE 模块 | 复用 USB2 host 驱动；不存在 PCIe lane | USB2-only，不能使用 RTL8822CE 等 PCIe 网卡 |
 | Wi-Fi / 蓝牙 | 不属于目标范围 | 不打包无线驱动和固件 | 有意禁用 |
@@ -69,12 +70,11 @@ ARMv8 Crypto Extensions 已由 OpenSSL 3.5.7、16 KiB 数据块、固定单个 C
 
 ## 当前交付范围
 
-当前版本已经达到本板 OpenWrt 基础硬件使能的工程交付条件，包括启动、电源、CPU/调频/温控、eMMC overlay、TF、千兆网、USB2/USB3、Type-C 热插拔、HDMI console 和 watchdog 运行链。
+当前版本已经达到本板 OpenWrt 基础硬件使能的工程交付条件，包括启动、电源、CPU/调频/温控、eMMC overlay、TF、千兆网、USB2/USB3、Type-C 热插拔、HDMI console、板载状态灯和 watchdog 故障复位链。
 
 仍需明确区分以下边界：
 
 - 独立 x4 插座尚未安装 PCIe 端点，因此尚未宣称第二网卡、双口 NAT 或 PCIe 长期稳定性已经通过。
-- watchdog 尚未通过故意停止喂狗验证整机复位。
 - Type-C 已通过功能与高速 I/O 验收；量产前仍建议增加 20～50 次方向交替/快速重插，以及 1～4 小时或 100 GiB 连续 I/O。
 - Wi-Fi、蓝牙、HDMI 音频、图形桌面、GPU 计算和 NPU 是明确的非目标。
 

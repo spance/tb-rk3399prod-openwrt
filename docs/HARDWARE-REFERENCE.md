@@ -33,8 +33,12 @@
 | earlycon | `uart8250,mmio32,0xff1a0000` | 已确认 |
 | HDMI console | RK3399 VOPB + DW-HDMI，`tty0`/`tty1` | 显示输出和文本 console 已确认 |
 | TSADC | `hw-tshut-mode=1`，`hw-tshut-polarity=1`；CPU cpufreq cooling | CPU/GPU thermal zone 与两个 CPU cooling device 的 trip 绑定已确认 |
-| Watchdog | RK3399 DesignWare WDT；TOP 计数为 2^16～2^31；`procd` 30 秒超时、每 5 秒喂狗 | 驱动、设备节点和运行状态已确认；故障复位未做破坏性测试 |
-| LEDs | 蓝 GPIO2_A5、红 GPIO2_A4、绿 GPIO2_A3，均高电平有效 | DTS 固定值 |
+| Watchdog | RK3399 DesignWare WDT；TOP 计数为 2^16～2^31；`procd` 30 秒超时、每 5 秒喂狗 | 已确认驱动、设备节点、喂狗及停止喂狗后的硬件复位 |
+| LEDs | 蓝 GPIO2_A5、红 GPIO2_A4、绿 GPIO2_A3，均高电平有效 | `leds-gpio` 已绑定，三路亮灭与 OpenWrt 状态切换已确认 |
+
+三个 LED 沿用 Toybrick stable 4.4 DTS 的 GPIO 和极性，但使用标准 LED common binding 命名。DTS aliases 将蓝灯用于 `led-boot`，红灯用于 `led-failsafe`/`led-upgrade`，绿灯用于 `led-running`；OpenWrt `/etc/diag.sh` 和 `/lib/functions/leds.sh` 会直接消费这些别名，因此无需再增加板级常驻脚本。正常运行状态为蓝灭、红灭、绿亮。
+
+临时人工控制可直接写 `/sys/class/leds/blue:status/brightness`、`red:fault/brightness` 或 `green:status/brightness`，取值为 `0`/`1`。这只适合调试；正式启动状态应继续由 OpenWrt 标准状态机管理，避免自定义脚本与 failsafe 或升级指示竞争。
 
 启动参数至少应保留：
 

@@ -2,7 +2,7 @@
 
 本表只记录可复现的实机结论；原始调试日志和设备唯一信息不纳入工程。固定连线、参数和升级不变量见 [硬件参考](HARDWARE-REFERENCE.md)，专项测试方法见相应设计文档。
 
-当前结论：本板的 OpenWrt 基础硬件使能已经达到工程交付条件。PCIe 第二网卡、真实双口 NAT 属于尚无实物端点的扩展能力，不能由“控制器 probe 成功”替代验收；硬件 watchdog 故障复位和更长周期耐久测试属于量产前补充验证。
+当前结论：本板的 OpenWrt 基础硬件使能已经达到工程交付条件。PCIe 第二网卡、真实双口 NAT 属于尚无实物端点的扩展能力，不能由“控制器 probe 成功”替代验收；更长周期耐久测试仍属于量产前补充验证。
 
 | 项目 | 状态 | 关键结果 |
 |---|---|---|
@@ -10,7 +10,8 @@
 | CPU | 已确认 | 4×A53 + 2×A72 全部上线，两个 cpufreq domain |
 | PMIC | 已确认 | RK809；vdd_center、vdd_cpu_l、vdd_cpu_b、vdd_gpu 正常 |
 | 温控 | 已确认 | CPU/GPU thermal zone、TSADC 及 A53/A72 两个 cpufreq cooling device 正常绑定；6 核满载 90 秒稳定，最高约 55.6 °C，未故意加热到降频点 |
-| 硬件 watchdog | 已确认运行 | RK3399 DesignWare watchdog 已由 `procd` 启用，30 秒超时、5 秒喂狗；DTS 显式提供与 Linux 驱动回退值一致的 TOP 表 |
+| 硬件 watchdog | 已确认故障复位 | RK3399 DesignWare watchdog 由 `procd` 启用，30 秒超时、5 秒喂狗；停止喂狗后整机按期掉线并以新 boot ID 重启，overlay、网络、LuCI 和 Type-C UAS 均自动恢复 |
+| 板载 LED | 已确认 | `leds-gpio` 驱动蓝 GPIO2_A5、红 GPIO2_A4、绿 GPIO2_A3；三路逐一亮灭通过，OpenWrt aliases 分别表达启动、failsafe/升级和运行状态，正常状态为蓝灭、红灭、绿亮 |
 | TF | 已确认读写 | Linux 50 MHz/4-bit/IDMAC，实测约 5.9 MiB/s 写、18.8 MiB/s 读；U-Boot 25 MHz/PIO 可靠读取 FIT |
 | eMMC | 已确认启动，CQE 已禁用 | 29.1 GiB，HS400 Enhanced Strobe、ADMA；正式内核使用 `SDHCI_QUIRK_BROKEN_CQE`，实机确认 `cmdq_en=0`；256 MiB 写入、同步与校验后 CQE recovery、MMC I/O 和 ext4 错误均为 0 |
 | eMMC 正常系统 | 已确认启动 | 224 MiB `openwrt.img` 已从 eMMC 正常启动；SquashFS + 约 28.4 GiB ext4 `/overlay` 正常挂载 |
@@ -25,13 +26,15 @@
 | NPU | 不要求 | 未纳入 OpenWrt 完成条件 |
 | Wi-Fi/蓝牙 | 不要求 | 保持禁用，不打包无线驱动或固件 |
 
+watchdog 故障测试在同步文件系统后，通过 procd 控制接口停止 keepalive，保持 `magicclose=false`，随后观察网络掉线和新 boot ID 上线。该测试会有意重启设备，只能在确认没有写入任务时执行；本次复位后所有关键服务与外设均自行恢复。
+
 ## 已知边界
 
 - Type-C 在当前测试范围内已通过工程验收；量产前仍建议执行 20～50 次方向交替/快速重插，以及至少 1～4 小时或 100 GiB 连续 I/O。Loader 刷写本版镜像后仍正常，Linux 侧改造不触及 BootROM、miniloader 或 U-Boot 的刷机协议。
 - PCIe host 已启用，但独立 x4 插座未安装端点；启动时的 link training timeout 在此条件下符合预期。安装第二网卡后必须另做枚举、AER/错误计数、IRQ/RSS、双向吞吐和真实 LAN/WAN NAT 验收。
-- watchdog 驱动和 `procd` 喂狗链已运行，尚未故意停止喂狗确认整机复位。eMMC 更长时间读写、HDMI 多次拔插/重启及 overlay 备份恢复流程也可在量产验收中补充。
+- eMMC 更长时间读写、HDMI 多次拔插/重启及 overlay 备份恢复流程仍可在量产验收中补充。
 - 无线/蓝牙、GPU 图形桌面、HDMI 音频和 NPU 是明确的非目标，不应作为当前固件缺陷。
 
 ## 允许的预期日志
 
-在没有 PCIe 端点时可以出现 PCIe link training timeout；`gpio_button_hotplug` 的 out-of-tree taint、旧式 GPIO API 提示也不影响当前功能。除此之外，电源/regulator probe、eMMC/MMC I/O、GMAC/PHY、Type-C PMA/PIPE、xHCI/UAS/SCSI 和文件系统错误都应视为回归并调查。
+在没有 PCIe 端点时可以出现 PCIe link training timeout；OpenWrt 的 GPIO 按键事件模块 `gpio_button_hotplug` 会产生 out-of-tree taint，它与使用内建 `leds-gpio` 的板载 LED 无关，也不表示内核故障。除此之外，电源/regulator probe、eMMC/MMC I/O、GMAC/PHY、Type-C PMA/PIPE、xHCI/UAS/SCSI 和文件系统错误都应视为回归并调查。

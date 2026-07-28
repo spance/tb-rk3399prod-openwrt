@@ -446,6 +446,25 @@ for dts_setting in \
 		"$PROJECT_DIR/dts/rk3399pro-toybrick-prod.dtsi" || \
 		fail "HDMI device-tree setting is missing: $dts_setting"
 done
+for led_setting in \
+	'led-boot = &led_blue;' \
+	'led-failsafe = &led_red;' \
+	'led-running = &led_green;' \
+	'led-upgrade = &led_red;' \
+	'compatible = "gpio-leds";' \
+	'function = LED_FUNCTION_STATUS;' \
+	'function = LED_FUNCTION_FAULT;' \
+	'gpios = <&gpio2 RK_PA5 GPIO_ACTIVE_HIGH>;' \
+	'gpios = <&gpio2 RK_PA4 GPIO_ACTIVE_HIGH>;' \
+	'gpios = <&gpio2 RK_PA3 GPIO_ACTIVE_HIGH>;'; do
+	grep -Fq "$led_setting" \
+		"$PROJECT_DIR/dts/rk3399pro-toybrick-prod.dtsi" || \
+		fail "board LED device-tree setting is missing: $led_setting"
+done
+grep -Fq '已确认故障复位' "$PROJECT_DIR/docs/HARDWARE-STATUS.md" || \
+	fail "hardware watchdog reset acceptance result is not documented"
+grep -Fq '三路逐一亮灭通过' "$PROJECT_DIR/docs/HARDWARE-STATUS.md" || \
+	fail "board LED acceptance result is not documented"
 for typec_setting in \
 	'&i2c8 {' \
 	'compatible = "fcs,fusb302";' \
