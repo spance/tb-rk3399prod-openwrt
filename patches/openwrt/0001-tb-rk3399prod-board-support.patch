@@ -103,7 +103,7 @@ diff --git a/target/linux/rockchip/image/armv8.mk b/target/linux/rockchip/image/
 index b9f1fca..cf2065f 100644
 --- a/target/linux/rockchip/image/armv8.mk
 +++ b/target/linux/rockchip/image/armv8.mk
-@@ -436,6 +436,29 @@ define Device/radxa_zero-3w
+@@ -436,6 +436,30 @@ define Device/radxa_zero-3w
  endef
  TARGET_DEVICES += radxa_zero-3w
  
@@ -119,8 +119,9 @@ index b9f1fca..cf2065f 100644
 +  IMAGE_SIZE := 128m
 +  IMAGE/rootfs.img := append-rootfs | check-size 120m | pad-to 128M
 +  DEVICE_PACKAGES := bash block-mount blkid blockdev coreutils-base64 \
-+	coreutils-stat e2fsprogs fdisk file findutils-find findutils-xargs fstrim \
-+	lsblk lscpu mount-utils mmc-utils wdctl ca-bundle curl htop jq less lsof \
++	coreutils-dd coreutils-stat diffutils e2fsprogs fdisk file findutils-find \
++	findutils-xargs fstrim gawk grep gzip lsblk lscpu mount-utils mmc-utils \
++	wdctl ca-bundle curl htop jq less lsof patch procps-ng sed tar \
 +	luci-ssl luci-i18n-base-zh-cn luci-i18n-firewall-zh-cn \
 +	luci-i18n-package-manager-zh-cn openssh-sftp-server strace tree \
 +	ethtool -dnsmasq dnsmasq-full -ip-tiny ip-full iperf3 ss tcpdump-mini \

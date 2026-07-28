@@ -244,9 +244,10 @@ grep -Fq 'root=PARTLABEL=rootfs' "$PROJECT_DIR/boot/boot.cmd" || \
 if grep -Eq 'kmod-rtw88|rtl8822|mac80211|cfg80211' "$openwrt_patch"; then
 	fail "unused wireless drivers or firmware remain in the device profile"
 fi
-for package in bash blkid blockdev coreutils-base64 coreutils-stat \
-	dnsmasq-full fdisk file findutils-find findutils-xargs fstrim lsblk \
-	lscpu mount-utils wdctl ca-bundle curl htop jq less lsof \
+for package in bash blkid blockdev coreutils-base64 coreutils-dd coreutils-stat \
+	diffutils dnsmasq-full fdisk file findutils-find findutils-xargs fstrim \
+	gawk grep gzip lsblk lscpu mount-utils wdctl ca-bundle curl htop jq less \
+	lsof patch procps-ng sed tar \
 	luci-ssl luci-i18n-base-zh-cn luci-i18n-firewall-zh-cn \
 	luci-i18n-package-manager-zh-cn openssh-sftp-server strace tree \
 	ip-full tcpdump-mini kmod-fs-exfat kmod-fs-vfat kmod-inet-diag \

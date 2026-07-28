@@ -35,14 +35,15 @@ Mini-PCIe 插座的机械外形不代表本板提供 PCIe 电气连接：它只�
 
 ## 内置维护工具
 
-- 存储与文件：`lsblk`、`blkid`、`blockdev`、`fdisk`、`fstrim`、`findmnt`（由 `mount-utils` 提供）、`mmc-utils`、GNU `stat`、`file`、`find`、`xargs`、`tree`、`less` 和 `base64`；内置 FAT32 与 exFAT 文件系统驱动，覆盖常见 U 盘和移动硬盘。
-- 板级与进程：`lscpu`、`wdctl`、`htop`、`lsof`、`strace`。
+- 存储与文件：`lsblk`、`blkid`、`blockdev`、`fdisk`、`fstrim`、`findmnt`（由 `mount-utils` 提供）、`mmc-utils`、GNU `dd`、`stat`、`file`、`find`、`xargs`、`tar`、`gzip`、`tree`、`less` 和 `base64`；内置 FAT32 与 exFAT 文件系统驱动，覆盖常见 U 盘和移动硬盘。
+- 文本与源码处理：GNU `grep`、`sed`、`gawk`、`diffutils` 和 `patch`，避免日常命令及构建脚本受 BusyBox 精简参数和行为差异限制。
+- 板级与进程：`lscpu`、`wdctl`、`htop`、`lsof`、`strace` 和 `procps-ng`。
 - 网络：完整功能的 `ip`（以 `ip-full` 替换默认 `ip-tiny`）、`ss`、`ethtool`、`iperf3`、`tcpdump-mini`，以及 TUN、INET socket diagnostics 和 nftables TPROXY 内核模块。
 - DNS/DHCP：以 `dnsmasq-full` 替换默认 `dnsmasq`，保留 UCI 配置路径，并提供 DHCPv6、DNSSEC、authoritative DNS、nftset、conntrack 和 TFTP 能力。
 - Shell、脚本、传输与归档：`bash`、`python3-light`、`openssh-sftp-server`、`unzip`；SFTP 子系统与系统现有 Dropbear SSH 服务配合，不额外引入完整 OpenSSH daemon。`python3-light` 提供 Python 解释器和常用标准库，并保持与 OpenWrt 的 musl ABI 和软件包生命周期一致。
 - 通用数据访问：`curl`、`ca-bundle`、`jq`。
 
-基础镜像只为 BusyBox 缺失或功能明显不足的文件操作引入独立 GNU 工具，不安装完整 coreutils/findutils 元包，也不预装编辑器或编译器。`dnsmasq-full` 继续使用 OpenWrt 原有 `/etc/config/dhcp` 和启动服务，其额外能力只有在对应配置中启用后才改变网络行为。
+BusyBox 继续作为 OpenWrt 的启动、基础脚本和救援底座；日常交互、归档、文本处理和排障则优先使用上述完整 GNU/procps 工具。镜像不安装完整 coreutils/findutils 元包，也不预装编辑器或编译器。`dnsmasq-full` 继续使用 OpenWrt 原有 `/etc/config/dhcp` 和启动服务，其额外能力只有在对应配置中启用后才改变网络行为。
 
 正式配置显式固定 `CONFIG_USE_MUSL=y`。上述工具全部由固定的 OpenWrt 25.12.5 `packages`/`luci` feed 面向目标架构编译，依赖的 `libc` 是 OpenWrt musl 1.2.5，不安装或链接 glibc；`file` 只额外依赖 `libmagic`，`less` 依赖 `libncursesw6`，SFTP 服务端只依赖 musl `libc`。
 
