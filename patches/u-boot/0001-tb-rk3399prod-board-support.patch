@@ -19,14 +19,21 @@ actually configured.  Otherwise the generic FIT support incorrectly tries to
 extract /images/resource from a standard OpenWrt FIT and aborts before the
 standard bootm implementation can select its kernel and FDT configuration.
 
+Restore the standard FIT rule that a flat device tree does not need a load
+property.  Also keep failed FDT loads from exporting uninitialized addresses
+or temporary configuration-name pointers, and only enable Rockchip's
+no-relocation policy when its environment switch is explicitly true.
+
 ---
  arch/arm/dts/rk3399-evb.dts      |  6 ++++++
- arch/arm/mach-rockchip/board.c   | 32 ++++++++++++++++----------------
+ arch/arm/mach-rockchip/board.c   |  6 +++---
  cmd/source.c                     | 20 +++++++++++++++++++-
+ common/image-fdt.c               |  5 +++++
+ common/image-fit.c               | 33 ++++++++++++++++++++++-----------
  configs/rk3399pro_defconfig      |  3 +++
  drivers/mmc/dw_mmc.c             | 28 ++++++++++++++++++++--------
  include/configs/rk3399_common.h  |  1 +
- 6 files changed, 65 insertions(+), 25 deletions(-)
+ 8 files changed, 79 insertions(+), 23 deletions(-)
 
 diff --git a/arch/arm/dts/rk3399-evb.dts b/arch/arm/dts/rk3399-evb.dts
 index 7bb06881e9..940db6e4e8 100644
@@ -46,57 +53,47 @@ index 7bb06881e9..940db6e4e8 100644
  };
 
 diff --git a/arch/arm/mach-rockchip/board.c b/arch/arm/mach-rockchip/board.c
-index cd0ec30bac..f6b0357abf 100644
+index cd0ec30bac..c0b999eabe 100644
 --- a/arch/arm/mach-rockchip/board.c
 +++ b/arch/arm/mach-rockchip/board.c
-@@ -1112,17 +1112,17 @@ int board_do_bootm(int argc, char * const argv[])
+@@ -986,7 +986,7 @@ static void bootm_no_reloc(void)
+ 	char *ramdisk_high;
+ 	char *fdt_high;
+ 
+-	if (!env_get_yesno("bootm-no-reloc"))
++	if (env_get_yesno("bootm-no-reloc") != 1)
+ 		return;
+ 
+ 	ramdisk_high = env_get("initrd_high");
+@@ -1109,8 +1109,8 @@ int board_do_bootm(int argc, char * const argv[])
+ 	}
+ #endif
+ 
 -	/* FIT */
 -#if IMAGE_ENABLE_FIT
--	if (format == IMAGE_FORMAT_FIT) {
--		char boot_cmd[64];
--		int ret;
--
--		printf("BOOTM: transferring to board FIT\n");
--
--		ret = bootm_image_populate_dtb(img);
--		if (ret) {
--			printf("bootm can't read dtb, ret=%d\n", ret);
--			return ret;
--		}
--		snprintf(boot_cmd, sizeof(boot_cmd), "boot_fit %s", argv[1]);
--		return run_command(boot_cmd, 0);
--	}
 +	/* Rockchip FIT */
 +#ifdef CONFIG_ROCKCHIP_FIT_IMAGE
-+	if (format == IMAGE_FORMAT_FIT) {
-+		char boot_cmd[64];
-+		int ret;
-+
-+		printf("BOOTM: transferring to board FIT\n");
-+
-+		ret = bootm_image_populate_dtb(img);
-+		if (ret) {
-+			printf("bootm can't read dtb, ret=%d\n", ret);
-+			return ret;
-+		}
-+		snprintf(boot_cmd, sizeof(boot_cmd), "boot_fit %s", argv[1]);
-+		return run_command(boot_cmd, 0);
-+	}
- #endif
+ 	if (format == IMAGE_FORMAT_FIT) {
+ 		char boot_cmd[64];
+ 		int ret;
 
 diff --git a/cmd/source.c b/cmd/source.c
 index 6b1c8b744b..d9abc382b4 100644
 --- a/cmd/source.c
 +++ b/cmd/source.c
-@@ -30,3 +30,4 @@ source (ulong addr, const char *fit_uname)
+@@ -29,6 +29,7 @@ source (ulong addr, const char *fit_uname)
+ 	ulong		len;
  #if defined(CONFIG_IMAGE_FORMAT_LEGACY)
--	const image_header_t *hdr;
-+	const image_header_t *hdr;
+ 	const image_header_t *hdr;
 +	u32		*data_end;
  #endif
-@@ -90,3 +91,20 @@ source (ulong addr, const char *fit_uname)
+ 	u32		*data;
+ 
+@@ -87,7 +88,24 @@ source (ulong addr, const char *fit_uname)
+ 		 * past the zero-terminated sequence of image lengths to get
+ 		 * to the actual image data
+ 		 */
 -		while (*data++ != IMAGE_PARAM_INVAL);
--		break;
 +		/*
 +		 * Standard mkimage uses zero as the terminating size entry,
 +		 * while the Rockchip variant uses IMAGE_PARAM_INVAL. Accept
@@ -115,8 +112,101 @@ index 6b1c8b744b..d9abc382b4 100644
 +			puts ("Truncated Script\n");
 +			return 1;
 +		}
-+		break;
+ 		break;
  #endif
+ #if defined(CONFIG_FIT)
+diff --git a/common/image-fdt.c b/common/image-fdt.c
+index 066968ee56..65626be094 100644
+--- a/common/image-fdt.c
++++ b/common/image-fdt.c
+@@ -512,6 +512,11 @@ int boot_get_fdt(int flag, int argc, char * const argv[], uint8_t arch,
+ 					fdt_addr, &fit_uname_fdt,
+ 					&fit_uname_config,
+ 					arch, &load, &len);
++				if (fdt_noffset < 0) {
++					printf("Failed to load FDT from FIT image (%d)\n",
++					       fdt_noffset);
++					goto error;
++				}
+ 
+ 				images->fit_hdr_fdt = map_sysmem(fdt_addr, 0);
+ 				images->fit_uname_fdt = fit_uname_fdt;
+diff --git a/common/image-fit.c b/common/image-fit.c
+index fb4a4bd31d..cfde9033cc 100644
+--- a/common/image-fit.c
++++ b/common/image-fit.c
+@@ -2357,9 +2357,11 @@ int fit_image_load_index(bootm_headers_t *images, ulong addr,
+ 	}
+ 
+ #if !defined(USE_HOSTCC)
++#if defined(CONFIG_FIT_CIPHER) || defined(CONFIG_FIT_IMAGE_POST_PROCESS)
+ 	ret = fit_image_get_load(fit, noffset, &load);
+ 	if (ret < 0)
+ 		return ret;
++#endif
+ 
+ #if defined(CONFIG_FIT_CIPHER)
+ 	int cipher_noffset =
+@@ -2495,7 +2497,7 @@ int boot_get_fdt_fit(bootm_headers_t *images, ulong addr,
+ 	const char *fit_uname_config = NULL;
+ 	char *fit_uname_config_copy = NULL;
+ 	char *next_config = NULL;
+-	ulong load, len;
++	ulong load = 0, len = 0;
+ #ifdef CONFIG_OF_LIBFDT_OVERLAY
+ 	ulong image_start, image_end;
+ 	ulong ovload, ovlen;
+@@ -2513,9 +2515,10 @@ int boot_get_fdt_fit(bootm_headers_t *images, ulong addr,
+ 			return -ENOMEM;
+ 
+ 		next_config = strchr(fit_uname_config_copy, '#');
+-		if (next_config)
++		if (next_config) {
+ 			*next_config++ = '\0';
+-		if (next_config - 1 > fit_uname_config_copy)
++		}
++		if (*fit_uname_config_copy)
+ 			fit_uname_config = fit_uname_config_copy;
+ 	}
+ 
+@@ -2535,6 +2538,12 @@ int boot_get_fdt_fit(bootm_headers_t *images, ulong addr,
+ 	fit = map_sysmem(addr, 0);
+ 
+ 	cfg_noffset = fit_conf_get_node(fit, fit_uname_config);
++	if (cfg_noffset < 0) {
++		fdt_noffset = cfg_noffset;
++		goto out;
++	}
++	/* Keep the returned name inside the FIT, not in the temporary copy. */
++	fit_uname_config = fdt_get_name(fit, cfg_noffset, NULL);
+ 
+ 	/* single blob, or error just return as well */
+ 	count = fit_conf_get_prop_node_count(fit, cfg_noffset, FIT_FDT_PROP);
+@@ -2610,14 +2618,16 @@ int boot_get_fdt_fit(bootm_headers_t *images, ulong addr,
+ #endif
+ 
+ out:
+-	if (datap)
+-		*datap = load;
+-	if (lenp)
+-		*lenp = len;
+-	if (fit_unamep)
+-		*fit_unamep = fit_uname;
+-	if (fit_uname_configp)
+-		*fit_uname_configp = fit_uname_config;
++	if (fdt_noffset >= 0) {
++		if (datap)
++			*datap = load;
++		if (lenp)
++			*lenp = len;
++		if (fit_unamep)
++			*fit_unamep = fit_uname;
++		if (fit_uname_configp)
++			*fit_uname_configp = fit_uname_config;
++	}
+ 
+ 	if (fit_uname_config_copy)
+ 		free(fit_uname_config_copy);
 diff --git a/configs/rk3399pro_defconfig b/configs/rk3399pro_defconfig
 index 5af187c333..9828ec9efc 100644
 --- a/configs/rk3399pro_defconfig

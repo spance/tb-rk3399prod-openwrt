@@ -200,6 +200,15 @@ grep -Fq 'Standard mkimage uses zero as the terminating size entry' \
 	fail "U-Boot patch does not support standard legacy script images"
 grep -Fq '*data != IMAGE_PARAM_INVAL' "$uboot_patch" || \
 	fail "U-Boot patch no longer supports the Rockchip script terminator"
+grep -Fq 'env_get_yesno("bootm-no-reloc") != 1' "$uboot_patch" || \
+	fail "U-Boot patch does not require an explicit no-relocation setting"
+grep -Fq '#if defined(CONFIG_FIT_CIPHER) || defined(CONFIG_FIT_IMAGE_POST_PROCESS)' \
+	"$uboot_patch" || \
+	fail "U-Boot patch still requires load addresses for ordinary FIT images"
+grep -Fq 'Failed to load FDT from FIT image' "$uboot_patch" || \
+	fail "U-Boot patch does not reject failed FIT FDT loads"
+grep -Fq 'if (*fit_uname_config_copy)' "$uboot_patch" || \
+	fail "U-Boot patch retains unsafe FIT configuration-name parsing"
 if grep -Fq 'diff --git a/make.sh b/make.sh' "$uboot_patch"; then
 	fail "current Rockchip U-Boot must use its native rkbin packaging scripts"
 fi
