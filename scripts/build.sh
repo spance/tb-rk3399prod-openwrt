@@ -31,8 +31,8 @@ mark_managed_dir "$OUT_DIR" out
 
 build_uboot()
 {
-	uboot_toolchain="$WORK_DIR/prebuilts/gcc/aarch64/"\
-		"gcc-linaro-6.3.1-2017.05-x86_64_aarch64-linux-gnu/bin"
+	uboot_toolchain_name=gcc-linaro-6.3.1-2017.05-x86_64_aarch64-linux-gnu
+	uboot_toolchain="$WORK_DIR/prebuilts/gcc/aarch64/$uboot_toolchain_name/bin"
 	uboot_cross="$uboot_toolchain/aarch64-linux-gnu-"
 	[ -x "${uboot_cross}gcc" ] || \
 		fail "U-Boot cross compiler not found: ${uboot_cross}gcc"
