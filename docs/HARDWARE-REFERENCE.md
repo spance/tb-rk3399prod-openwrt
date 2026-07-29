@@ -14,7 +14,7 @@
 | OpenWrt | `v25.12.5`，commit `f0a60eee2fe051741c643ea6118718aae1ef17fb` |
 | OpenWrt 目标 Linux | `6.12.94` |
 | Toybrick U-Boot | commit `22af63bad708ff41513375a8ecf7fe8d2d521c84`，带本工程补丁 |
-| Toybrick rkbin | commit `78c1c4939634a76f6f4531c912c1a52a83f0451b` |
+| Rockchip rkbin | commit `ecb4fcbe954edf38b3ae037d5de6d9f5bccf81f4`；BL31 v1.35、BL32 v2.12、DDR v1.30、miniloader v1.26 与官方 merger 的固定构建输入 |
 | Toybrick linux-x86 工具链 | commit `32505a8032d04e9320dbdb817b08bf67bdfb5a0c` |
 | OpenWrt target | `rockchip/armv8`，profile `toybrick_tb-rk3399prod` |
 
@@ -28,7 +28,7 @@
 |---|---|---|
 | SoC | Rockchip RK3399Pro，AArch64 | 已确认启动 |
 | CPU | 4× Cortex-A53 + 2× Cortex-A72，两个 cpufreq domain；`CONFIG_CPU_FREQ_THERMAL=y` | 6 核、负载调频和 cpufreq cooling device 已确认；未故意加热到降频点 |
-| 内存 | 4 GiB LPDDR3，双通道；每通道 2 GiB、32-bit、双 CS，DDR 初始化日志为 800 MHz | 原厂 DDR 日志已确认 |
+| 内存 | 4 GiB LPDDR3，双通道；每通道 2 GiB、32-bit、双 CS；当前实机为 DDR bin v1.27、BL31 v1.30、800 MHz；构建目标为 DDR v1.30、BL31 v1.35 | 原厂基线已确认；新版 loader/trust 和无损 ROUND 探测待实机验收 |
 | UART | UART2，`ttyS2`，1500000 baud，8N1 | 已确认 |
 | earlycon | `uart8250,mmio32,0xff1a0000` | 已确认 |
 | HDMI console | RK3399 VOPB + DW-HDMI，`tty0`/`tty1` | 显示输出和文本 console 已确认 |

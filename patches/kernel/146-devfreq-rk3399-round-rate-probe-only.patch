@@ -1,0 +1,145 @@
+From: TB-RK3399ProD OpenWrt project
+Subject: [PATCH] devfreq: rk3399: add a non-mutating DDR round-rate probe
+
+Before enabling DDR frequency transitions on a board without an upstream DMC
+validation history, verify the BL31 GET_RATE and ROUND_RATE services first.
+The probe-only Kconfig option binds the standard RK3399 DMC device, reads its
+clock, logs the BSP frequency candidates, and returns without enabling DFI,
+initializing DRAM DFS, changing a regulator, or calling clk_set_rate().
+
+This is deliberately a compile-time staging mode.  It adds no private DT
+property and keeps the normal upstream driver path unchanged when disabled.
+
+---
+ drivers/devfreq/Kconfig      | 12 ++++++++++++
+ drivers/devfreq/rk3399_dmc.c | 58 ++++++++++++++++++++++++++++++++++++++------
+ 2 files changed, 65 insertions(+), 5 deletions(-)
+
+--- a/drivers/devfreq/Kconfig
++++ b/drivers/devfreq/Kconfig
+@@ -141,6 +141,18 @@ config ARM_RK3399_DMC_DEVFREQ
+ 	  It sets the frequency for the memory controller and reads the usage counts
+ 	  from hardware.
+ 
++config ARM_RK3399_DMC_DEVFREQ_ROUND_PROBE_ONLY
++	bool "Probe RK3399 BL31 DDR round-rate support without changing rate"
++	depends on ARM_RK3399_DMC_DEVFREQ=y
++	help
++	  Bind the RK3399 DMC driver only far enough to acquire the DDR clock,
++	  read its current rate and call clk_round_rate() for the frequencies
++	  used by the RK3399Pro vendor BSP.
++
++	  No DFI monitor, DRAM DFS initialization, regulator change or
++	  clk_set_rate() call is made.  This is a temporary board-validation
++	  mode; disable it before enabling normal DMC devfreq operation.
++
+ config ARM_SUN8I_A33_MBUS_DEVFREQ
+ 	tristate "sun8i/sun50i MBUS DEVFREQ Driver"
+ 	depends on ARCH_SUNXI || COMPILE_TEST
+--- a/drivers/devfreq/rk3399_dmc.c
++++ b/drivers/devfreq/rk3399_dmc.c
+@@ -47,6 +47,7 @@ struct rk3399_dmcfreq {
+ 	struct mutex lock;
+ 	struct regulator *vdd_center;
+ 	struct regmap *regmap_pmu;
++	bool probe_only;
+ 	unsigned long rate, target_rate;
+ 	unsigned long volt, target_volt;
+ 	unsigned int odt_dis_freq;
+@@ -248,6 +249,9 @@ static __maybe_unused int rk3399_dmcfreq_suspend(struct device *dev)
+ 	struct rk3399_dmcfreq *dmcfreq = dev_get_drvdata(dev);
+ 	int ret = 0;
+
++	if (dmcfreq->probe_only)
++		return 0;
++
+ 	ret = devfreq_event_disable_edev(dmcfreq->edev);
+ 	if (ret < 0) {
+ 		dev_err(dev, "failed to disable the devfreq-event devices\n");
+@@ -268,6 +272,9 @@ static __maybe_unused int rk3399_dmcfreq_resume(struct device *dev)
+ 	struct rk3399_dmcfreq *dmcfreq = dev_get_drvdata(dev);
+ 	int ret = 0;
+
++	if (dmcfreq->probe_only)
++		return 0;
++
+ 	ret = devfreq_event_enable_edev(dmcfreq->edev);
+ 	if (ret < 0) {
+ 		dev_err(dev, "failed to enable the devfreq-event devices\n");
+@@ -331,6 +338,42 @@ static int rk3399_dmcfreq_of_props(struct rk3399_dmcfreq *data,
+ 	return ret;
+ }
+ 
++static int rk3399_dmcfreq_round_probe(struct platform_device *pdev,
++				      struct rk3399_dmcfreq *data)
++{
++	static const unsigned long bsp_rates[] = {
++		200000000,
++		400000000,
++		528000000,
++		600000000,
++		800000000,
++	};
++	struct device *dev = &pdev->dev;
++	unsigned long current;
++	long rounded;
++	size_t i;
++
++	current = clk_get_rate(data->dmc_clk);
++	dev_info(dev,
++		 "DDR round-rate probe only: current=%lu Hz; no rate or voltage changes will be made\n",
++		 current);
++	for (i = 0; i < ARRAY_SIZE(bsp_rates); i++) {
++		rounded = clk_round_rate(data->dmc_clk, bsp_rates[i]);
++		if (rounded < 0)
++			dev_warn(dev, "DDR round-rate request=%lu Hz failed: %ld\n",
++				 bsp_rates[i], rounded);
++		else
++			dev_info(dev, "DDR round-rate request=%lu Hz result=%ld Hz\n",
++				 bsp_rates[i], rounded);
++	}
++
++	data->probe_only = true;
++	data->rate = current;
++	data->dev = dev;
++	platform_set_drvdata(pdev, data);
++	return 0;
++}
++
+ static int rk3399_dmcfreq_probe(struct platform_device *pdev)
+ {
+ 	struct arm_smccc_res res;
+@@ -348,16 +391,19 @@ static int rk3399_dmcfreq_probe(struct platform_device *pdev)
+ 
+ 	mutex_init(&data->lock);
+ 
+-	data->vdd_center = devm_regulator_get(dev, "center");
+-	if (IS_ERR(data->vdd_center))
+-		return dev_err_probe(dev, PTR_ERR(data->vdd_center),
+-				     "Cannot get the regulator \"center\"\n");
+-
+ 	data->dmc_clk = devm_clk_get(dev, "dmc_clk");
+ 	if (IS_ERR(data->dmc_clk))
+ 		return dev_err_probe(dev, PTR_ERR(data->dmc_clk),
+ 				     "Cannot get the clk dmc_clk\n");
+ 
++	if (IS_ENABLED(CONFIG_ARM_RK3399_DMC_DEVFREQ_ROUND_PROBE_ONLY))
++		return rk3399_dmcfreq_round_probe(pdev, data);
++
++	data->vdd_center = devm_regulator_get(dev, "center");
++	if (IS_ERR(data->vdd_center))
++		return dev_err_probe(dev, PTR_ERR(data->vdd_center),
++				     "Cannot get the regulator \"center\"\n");
++
+ 	data->edev = devfreq_event_get_edev_by_phandle(dev, "devfreq-events", 0);
+ 	if (IS_ERR(data->edev))
+ 		return -EPROBE_DEFER;
+@@ -463,6 +509,8 @@ static void rk3399_dmcfreq_remove(struct platform_device *pdev)
+ {
+ 	struct rk3399_dmcfreq *dmcfreq = dev_get_drvdata(&pdev->dev);
+ 
++	if (dmcfreq->probe_only)
++		return;
+ 	devfreq_event_disable_edev(dmcfreq->edev);
+ }
+ 

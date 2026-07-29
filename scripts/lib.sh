@@ -9,8 +9,23 @@ DIST_DIR=$(readlink -m "${TB_DIST_DIR:-$PROJECT_DIR/dist}")
 
 UBOOT_URL=https://github.com/rockchip-toybrick/u-boot.git
 UBOOT_COMMIT=22af63bad708ff41513375a8ecf7fe8d2d521c84
-RKBIN_URL=https://github.com/rockchip-toybrick/rkbin.git
-RKBIN_COMMIT=78c1c4939634a76f6f4531c912c1a52a83f0451b
+RKBIN_URL=https://github.com/rockchip-linux/rkbin.git
+RKBIN_COMMIT=ecb4fcbe954edf38b3ae037d5de6d9f5bccf81f4
+RKBIN_DDR_VERSION=1.30
+RKBIN_MINILOADER_VERSION=1.26
+RKBIN_BL31_VERSION=1.35
+RKBIN_BL32_VERSION=2.12
+RKBIN_LOADER_IMAGE=rk3399pro_loader_v1.30.126.bin
+RKBIN_LOADER_IMAGE_SIZE=452942
+RKBIN_LOADER_DDR_SIZE=147456
+RKBIN_LOADER_DDR_SHA256=e35891be5ac1cd75230544530a5d7923e0cd59d31dd9f0138696f0e5de987ad3
+RKBIN_LOADER_MINILOADER_SIZE=86016
+RKBIN_LOADER_MINILOADER_SHA256=6f5e885f968225711f99ef4bd70f26551c11393bc90a6c853f032be67e42d93c
+RKBIN_LOADER_USBPLUG_SIZE=71680
+RKBIN_LOADER_USBPLUG_SHA256=099876f8d98e22dce58894d40176f5d49c6460edd3c417ed42f9cc952fd28979
+RKBIN_TRUST_IMAGE=trust.img
+RKBIN_TRUST_IMAGE_SIZE=4194304
+RKBIN_TRUST_IMAGE_SHA256=63ce40c87dc3cb0c0d8e84b46acb95fa5ab39601c77bfbedf3e112fb4c30d774
 TOOLCHAIN_URL=https://github.com/rockchip-toybrick/linux-x86.git
 TOOLCHAIN_COMMIT=32505a8032d04e9320dbdb817b08bf67bdfb5a0c
 OPENWRT_URL=https://git.openwrt.org/openwrt/openwrt.git
@@ -31,6 +46,17 @@ OPENWRT_ROOTFS_OFFSET=$(((ROOTFS_LBA - BOOT_LINUX_LBA) * SECTOR_SIZE))
 OPENWRT_IMAGE_SIZE=$((OPENWRT_ROOTFS_OFFSET + ROOTFS_IMAGE_SIZE))
 
 fail() { echo "ERROR: $*" >&2; exit 1; }
+
+verify_sha256()
+{
+	local file expected actual
+	file=$1
+	expected=$2
+	[ -f "$file" ] || fail "file not found for SHA256 verification: $file"
+	actual=$(sha256sum "$file" | awk '{ print $1 }')
+	[ "$actual" = "$expected" ] || \
+		fail "SHA256 mismatch for $file: expected $expected, got $actual"
+}
 
 normalize_kmod_names()
 {

@@ -83,5 +83,5 @@ apk add --allow-untrusted /tmp/tb-kmods/*.apk
 
 - 根文件系统、块设备、overlay、关键网络启动路径等早期启动必需驱动不能依赖 overlay 中的 APK，必须放进设备 profile。
 - 构建器交付 kmod 依赖；模块附带的用户态管理工具仍按普通 OpenWrt 软件包处理。
-- `make package` 的正式发布包仍只包含 `uboot.img` 和 `openwrt.img`；`out/kmods/` 是按具体内核生成的独立附加产物。
+- `make package` 的正式发布包包含 U-Boot 启动链三项固件和 `openwrt.img`；`out/kmods/` 是按具体内核生成的独立附加产物。
 - 不使用 `--force-depends`、`insmod -f`、哈希覆盖或官方预编译 `.ko`。

@@ -30,7 +30,8 @@ ensure_checkout "$TOOLCHAIN_URL" "$TOOLCHAIN_COMMIT" "$TOOLCHAIN_COMMIT" \
 
 ensure_patches_applied "$WORK_DIR/u-boot" \
 	"$PROJECT_DIR/patches/u-boot/0001-modern-linux-host-build-compat.patch" \
-	"$PROJECT_DIR/patches/u-boot/0002-tb-rk3399prod-dwmmc-tf-reliability.patch"
+	"$PROJECT_DIR/patches/u-boot/0002-tb-rk3399prod-dwmmc-tf-reliability.patch" \
+	"$PROJECT_DIR/patches/u-boot/0003-use-pinned-rkbin-merger-tools.patch"
 
 ensure_checkout "$OPENWRT_URL" "refs/tags/$OPENWRT_TAG" "$OPENWRT_COMMIT" \
 	"$WORK_DIR/openwrt"

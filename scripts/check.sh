@@ -63,9 +63,13 @@ openwrt_patch="$PROJECT_DIR/patches/openwrt/0001-tb-rk3399prod-board-support.pat
 kernel_patch_dir="$PROJECT_DIR/patches/kernel"
 typec_phy_patch="$kernel_patch_dir/144-phy-rockchip-typec-orientation-switch.patch"
 typec_dwc_patch="$kernel_patch_dir/145-usb-dwc3-rk3399-typec-runtime-pm.patch"
+ddr_probe_patch="$kernel_patch_dir/146-devfreq-rk3399-round-rate-probe-only.patch"
+uboot_merger_patch="$PROJECT_DIR/patches/u-boot/0003-use-pinned-rkbin-merger-tools.patch"
 assert_file "$openwrt_patch"
 assert_file "$typec_phy_patch"
 assert_file "$typec_dwc_patch"
+assert_file "$ddr_probe_patch"
+assert_file "$uboot_merger_patch"
 assert_file "$PROJECT_DIR/dts/rk3399pro-toybrick-prod.dts"
 assert_file "$PROJECT_DIR/dts/rk3399pro-toybrick-prod.dtsi"
 assert_file "$PROJECT_DIR/rootfs/etc/init.d/tb-net-tuning"
@@ -83,7 +87,9 @@ assert_file "$PROJECT_DIR/scripts/reset.sh"
 assert_file "$PROJECT_DIR/scripts/sync-openwrt-rootfs.sh"
 assert_file "$PROJECT_DIR/scripts/sync-openwrt-kernel-patches.sh"
 assert_file "$PROJECT_DIR/scripts/verify-openwrt-image.sh"
+assert_file "$PROJECT_DIR/scripts/verify-rkbin-images.sh"
 assert_file "$PROJECT_DIR/docs/BOOT-CHAIN.md"
+assert_file "$PROJECT_DIR/docs/DDR-DVFS.md"
 assert_file "$PROJECT_DIR/docs/HDMI-CONSOLE.md"
 assert_file "$PROJECT_DIR/docs/KMOD-BUILDER.md"
 assert_file "$PROJECT_DIR/docs/NETWORK-PERFORMANCE.md"
@@ -123,6 +129,59 @@ grep -Fq 'bash scripts/reset.sh' "$PROJECT_DIR/Makefile" || \
 grep -Fq 'bash scripts/build-kmod.sh "$(MAKE_JOBS)" "$(KMODS)"' \
 	"$PROJECT_DIR/Makefile" || \
 	fail "Makefile kmod target is missing"
+assert_exact_line "$PROJECT_DIR/scripts/lib.sh" \
+	'RKBIN_URL=https://github.com/rockchip-linux/rkbin.git'
+assert_exact_line "$PROJECT_DIR/scripts/lib.sh" \
+	'RKBIN_COMMIT=ecb4fcbe954edf38b3ae037d5de6d9f5bccf81f4'
+for firmware_setting in \
+	'RKBIN_LOADER_IMAGE=rk3399pro_loader_v1.30.126.bin' \
+	'RKBIN_LOADER_IMAGE_SIZE=452942' \
+	'RKBIN_LOADER_DDR_SIZE=147456' \
+	'RKBIN_LOADER_DDR_SHA256=e35891be5ac1cd75230544530a5d7923e0cd59d31dd9f0138696f0e5de987ad3' \
+	'RKBIN_LOADER_MINILOADER_SIZE=86016' \
+	'RKBIN_LOADER_MINILOADER_SHA256=6f5e885f968225711f99ef4bd70f26551c11393bc90a6c853f032be67e42d93c' \
+	'RKBIN_LOADER_USBPLUG_SIZE=71680' \
+	'RKBIN_LOADER_USBPLUG_SHA256=099876f8d98e22dce58894d40176f5d49c6460edd3c417ed42f9cc952fd28979' \
+	'RKBIN_TRUST_IMAGE=trust.img' \
+	'RKBIN_TRUST_IMAGE_SIZE=4194304' \
+	'RKBIN_TRUST_IMAGE_SHA256=63ce40c87dc3cb0c0d8e84b46acb95fa5ab39601c77bfbedf3e112fb4c30d774'; do
+	assert_exact_line "$PROJECT_DIR/scripts/lib.sh" "$firmware_setting"
+done
+grep -Fq 'bash "$SCRIPT_DIR/verify-rkbin-images.sh" "$loader" "$trust"' \
+	"$PROJECT_DIR/scripts/build.sh" || \
+	fail "U-Boot build does not structurally verify loader and trust images"
+grep -Fq '"$boot_merger" unpack -i "$loader" -o "$stage"' \
+	"$PROJECT_DIR/scripts/verify-rkbin-images.sh" || \
+	fail "loader verification does not use the pinned official unpacker"
+grep -Fq '"$OUT_DIR/uboot/$RKBIN_LOADER_IMAGE"' \
+	"$PROJECT_DIR/scripts/package.sh" || \
+	fail "release package does not require the official loader"
+grep -Fq '"$OUT_DIR/uboot/$RKBIN_TRUST_IMAGE"' \
+	"$PROJECT_DIR/scripts/package.sh" || \
+	fail "release package does not require the official trust image"
+if grep -Eq '^\+[[:space:]]*cp \$\{RKTOOLS\}/(boot_merger|trust_merger)' \
+	"$uboot_merger_patch"; then
+	fail "U-Boot must not overwrite the merger tools from the pinned rkbin"
+fi
+grep -Eq '^\+[[:space:]]*\$\{RKTOOLS\}/boot_merger \$ini$' \
+	"$uboot_merger_patch" || \
+	fail "U-Boot patch does not invoke the pinned boot_merger directly"
+grep -Fq '+TOOLCHAIN_ARM32=../prebuilts/gcc/arm/' \
+	"$uboot_merger_patch" || \
+	fail "U-Boot patch does not select the pinned ARM32 toolchain layout"
+grep -Fq '+TOOLCHAIN_ARM64=../prebuilts/gcc/aarch64/' \
+	"$uboot_merger_patch" || \
+	fail "U-Boot patch does not select the pinned ARM64 toolchain layout"
+if grep -Fq 'diff --git a/make.sh b/make.sh' \
+	"$PROJECT_DIR/patches/u-boot/0001-modern-linux-host-build-compat.patch"; then
+	fail "U-Boot make.sh changes must remain in the final build-input patch"
+fi
+grep -Fq './tools/trust_merger RKTRUST/RK3399PROTRUST.ini' \
+	"$PROJECT_DIR/docs/EMMC-INSTALL.md" || \
+	fail "official trust generation command is not documented"
+grep -Fq './tools/boot_merger RKBOOT/RK3399PROMINIALL.ini' \
+	"$PROJECT_DIR/docs/EMMC-INSTALL.md" || \
+	fail "official loader generation command is not documented"
 grep -Fq 'bash scripts/init.sh "$(MAKE_JOBS)" "$(KMODS)"' \
 	"$PROJECT_DIR/Makefile" || \
 	fail "Makefile does not pass the optional kmod pool to init"
@@ -192,8 +251,8 @@ done
 
 [ "$(find "$kernel_patch_dir" -mindepth 1 -maxdepth 1 -type d | wc -l)" -eq 0 ] || \
 	fail "kernel patch directory must not contain subdirectories"
-[ "$(find "$kernel_patch_dir" -maxdepth 1 -type f -name '*.patch' | wc -l)" -eq 2 ] || \
-	fail "exactly two canonical Type-C kernel patches are required"
+[ "$(find "$kernel_patch_dir" -maxdepth 1 -type f -name '*.patch' | wc -l)" -eq 3 ] || \
+	fail "exactly three canonical kernel patches are required"
 for patch in "$kernel_patch_dir"/*.patch; do
 	git apply --numstat "$patch" >/dev/null
 done
@@ -202,8 +261,8 @@ done
 	-type d | wc -l)" -eq 0 ] || \
 	fail "U-Boot patch directory must not contain subdirectories"
 [ "$(find "$PROJECT_DIR/patches/u-boot" -maxdepth 1 -type f \
-	-name '*.patch' | wc -l)" -eq 2 ] || \
-	fail "exactly two current U-Boot patches are required"
+	-name '*.patch' | wc -l)" -eq 3 ] || \
+	fail "exactly three current U-Boot patches are required"
 for patch in "$PROJECT_DIR"/patches/u-boot/*.patch; do
 	git apply --numstat "$patch" >/dev/null
 done
@@ -434,6 +493,10 @@ grep -Fq "flow_offloading_hw='0'" \
 	"$PROJECT_DIR/rootfs/etc/uci-defaults/99-tb-network-offload" || \
 	fail "unsupported hardware flow offload must remain disabled"
 for config in \
+	'CONFIG_ARM_RK3399_DMC_DEVFREQ=y' \
+	'CONFIG_ARM_RK3399_DMC_DEVFREQ_ROUND_PROBE_ONLY=y' \
+	'CONFIG_DEVFREQ_EVENT_ROCKCHIP_DFI=y' \
+	'CONFIG_PM_DEVFREQ_EVENT=y' \
 	'CONFIG_CPU_FREQ_THERMAL=y' \
 	'CONFIG_DRM=y' \
 	'CONFIG_DRM_FBDEV_EMULATION=y' \
@@ -453,8 +516,24 @@ for config in \
 	'CONFIG_ROCKCHIP_VOP=y' \
 	'# CONFIG_ROCKCHIP_VOP2 is not set'; do
 	grep -Fq "$config" "$openwrt_patch" || \
-		fail "HDMI console kernel setting is missing: $config"
+		fail "required board kernel setting is missing: $config"
 done
+grep -Fq 'No DFI monitor, DRAM DFS initialization, regulator change or' \
+	"$ddr_probe_patch" || \
+	fail "DDR probe-only safety boundary is not documented in the kernel patch"
+grep -Fq 'return rk3399_dmcfreq_round_probe(pdev, data);' \
+	"$ddr_probe_patch" || \
+	fail "DDR probe-only path does not return before normal devfreq setup"
+grep -Fq 'if (dmcfreq->probe_only)' "$ddr_probe_patch" || \
+	fail "DDR probe-only suspend/remove guards are missing"
+for rate in 200000000 400000000 528000000 600000000 800000000; do
+	grep -Fq "$rate," "$ddr_probe_patch" || \
+		fail "DDR probe candidate is missing: $rate"
+done
+if grep -Eq '^\+[[:space:]]*err = clk_set_rate\(dmcfreq->dmc_clk' \
+	"$ddr_probe_patch"; then
+	fail "DDR probe patch adds a mutating clock-rate call"
+fi
 for obsolete_config in \
 	'CONFIG_DRM_KMS_FB_HELPER' \
 	'CONFIG_FB=y' \
@@ -468,6 +547,11 @@ done
 grep -Fq 'tty1::askfirst:/usr/libexec/login.sh' "$openwrt_patch" || \
 	fail "HDMI tty1 login entry is missing"
 for dts_setting in \
+	'&dfi {' \
+	'&dmc {' \
+	'center-supply = <&vdd_log>;' \
+	'operating-points-v2 = <&dmc_opp_table>;' \
+	'opp-hz = /bits/ 64 <800000000>;' \
 	'&{/watchdog@ff848000} {' \
 	'snps,watchdog-tops = <0x00010000 0x00020000 0x00040000 0x00080000' \
 	'&hdmi {' \
@@ -479,8 +563,12 @@ for dts_setting in \
 	'&vopb_mmu {'; do
 	grep -Fq "$dts_setting" \
 		"$PROJECT_DIR/dts/rk3399pro-toybrick-prod.dtsi" || \
-		fail "HDMI device-tree setting is missing: $dts_setting"
+		fail "required board device-tree setting is missing: $dts_setting"
 done
+sed -n '/^&dfi {$/,/^};$/p' \
+	"$PROJECT_DIR/dts/rk3399pro-toybrick-prod.dtsi" | \
+	grep -Fq 'status = "disabled";' || \
+	fail "DFI must remain disabled during the DDR ROUND-only probe"
 for led_setting in \
 	'led-boot = &led_blue;' \
 	'led-failsafe = &led_red;' \
@@ -606,7 +694,11 @@ if [ -d "$WORK_DIR/openwrt/.git" ]; then
 		fail "OpenWrt Linux version differs from the pinned project baseline"
 	rockchip_kernel_config="$WORK_DIR/openwrt/target/linux/rockchip/armv8/config-$kernel_patchver"
 	for required_kernel_config in \
+		'CONFIG_ARM_RK3399_DMC_DEVFREQ=y' \
+		'CONFIG_ARM_RK3399_DMC_DEVFREQ_ROUND_PROBE_ONLY=y' \
 		'CONFIG_DEBUG_FS=y' \
+		'CONFIG_DEVFREQ_EVENT_ROCKCHIP_DFI=y' \
+		'CONFIG_PM_DEVFREQ_EVENT=y' \
 		'CONFIG_PHY_ROCKCHIP_TYPEC=y' \
 		'CONFIG_REGULATOR_FIXED_VOLTAGE=y' \
 		'CONFIG_TYPEC=y' \
@@ -649,6 +741,15 @@ if [ -d "$WORK_DIR/u-boot/.git" ]; then
 	for patch in "$PROJECT_DIR"/patches/u-boot/*.patch; do
 		git -C "$WORK_DIR/u-boot" apply --reverse --check "$patch"
 	done
+fi
+
+if [ -d "$WORK_DIR/rkbin/.git" ]; then
+	[ "$(git -C "$WORK_DIR/rkbin" rev-parse HEAD)" = "$RKBIN_COMMIT" ] || \
+		fail "rkbin checkout is not at the pinned commit"
+	[ "$(git -C "$WORK_DIR/rkbin" remote get-url origin)" = "$RKBIN_URL" ] || \
+		fail "rkbin checkout has an unexpected origin"
+	[ -z "$(git -C "$WORK_DIR/rkbin" status --porcelain --untracked-files=all)" ] || \
+		fail "rkbin checkout contains generated or modified files"
 fi
 
 echo "Project checks passed"

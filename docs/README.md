@@ -17,6 +17,7 @@
 ## 系统架构
 
 - [启动链设计](BOOT-CHAIN.md)：厂商 miniloader、`trust.img`、BL31/BL32 及分区可变边界。
+- [DDR 固件与动态调频验证](DDR-DVFS.md)：DDR bin/BL31/Linux 分层、无损 ROUND 探测和进入真实 DVFS 的门槛。
 - [启动内存布局](BOOT-MEMORY-MAP.md)：TEE、FIT 和 Linux 的 DRAM 地址约束。
 - [HDMI Linux console](HDMI-CONSOLE.md)：Rockchip DRM、fbcon、双 console、键盘登录和验收。
 - [U-Boot 适配](U-BOOT.md)：厂商 U-Boot 基线、补丁、启动地址和从 TF 更新 `boot_linux`。

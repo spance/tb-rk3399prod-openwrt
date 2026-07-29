@@ -17,6 +17,7 @@
 - **内置 Web 管理**：LuCI、简体中文界面、uhttpd、Firewall 和 APK 软件包管理随镜像提供，默认使用 HTTPS。
 - **完整的日常命令体验**：保留 BusyBox 作为启动与救援底座，同时内置 GNU `tar`（含 XZ 支持）、`gzip`、`xz`、`grep`、`sed`、`gawk`、`diff`、`patch`、`dd`、`stat`、`find`、`xargs`、`procps-ng`、tmux、完整 Vim 和 rsync；SFTP 服务端与 LuCI 简体中文界面随镜像提供。
 - **可验证的按需驱动**：可以从固定源码按包名构建 `kmod-*` APK；只有与当前固件内核依赖完全一致的模块才会交付，不覆盖 ABI，也不强制安装。
+- **完整启动链交付**：U-Boot 构建同时生成 `uboot.img`、DDR v1.30/miniloader v1.26 loader 和 BL31 v1.35/BL32 v2.12 `trust.img`；全部固定到同一 Rockchip 官方 rkbin，并校验 trust 整体及 loader 解包载荷。DDR 调频先走绝不 SET 的 ROUND 探测。
 - **面向升级维护**：DTS、Linux 补丁和 rootfs 文件各自只有一个权威来源；全部上游精确锁定到 commit，并由自动检查保护关键不变量。
 
 ## 硬件支持矩阵
@@ -26,6 +27,7 @@
 | CPU / 调频 | 4× Cortex-A53（408～1416 MHz）+ 2× Cortex-A72（408～1800 MHz） | `cpufreq-dt`、OPP、`schedutil`、cpufreq cooling | 已验证六核、自动调频和温控绑定 |
 | 时钟 / 温控 | RK3399 CRU、TSADC、CPU/GPU thermal zone | `clk-rk3399`、`rockchip-thermal` | 已验证 |
 | PMIC / 电源 | RK809；`vdd_cpu_l`、`vdd_cpu_b`、`vdd_gpu`、`vdd_center` | `rk808`/`rk808-regulator`、`fan53555` 兼容 TCS4525/TCS4526 | 已验证关键电源轨 |
+| DDR / BL31 | 双通道 LPDDR3；当前实机为 DDR bin v1.27、BL31 v1.30；构建目标为 DDR v1.30、miniloader v1.26、BL31 v1.35、BL32 v2.12 | 固定官方 rkbin/merger；Linux DMC 仅执行 GET/ROUND，无 DFI/SET/调压 | 构建和强校验已集成；新版启动固件待实机验收 |
 | UART2 | `ttyS2`，1500000 8N1；earlycon `0xff1a0000` | DesignWare 8250 / `8250_dw` | 已验证启动与登录 |
 | TF 卡 | 4-bit；Linux 50 MHz；U-Boot 25 MHz/PIO | Linux `dw_mmc-rockchip`；U-Boot DWMMC 可靠性补丁 | 已验证 Linux 读写和 U-Boot FIT 加载 |
 | eMMC | 32 GB，8-bit，HS400 Enhanced Strobe、ADMA | `sdhci-of-arasan`、Rockchip eMMC PHY；标准 quirk 禁用不稳定 CQE | 已验证启动、读写和持久化 overlay |
@@ -85,11 +87,11 @@ ARMv8 Crypto Extensions 已由 OpenSSL 3.5.7、16 KiB 数据块、固定单个 C
 
 | 层次 | 本工程承担的改造 | 权威来源 |
 |---|---|---|
-| U-Boot | 保留 Toybrick/Rockchip 2017.09 启动链；修复现代 Linux x86_64 主机构建兼容性，并将 TF 路径限制为 25 MHz、PIO、单次最多 1 MiB，以可靠加载恢复 FIT | `patches/u-boot/` |
-| Linux 驱动 | 为 RK3399 Type-C PHY 接入标准 orientation switch；为 DWC3 实现真实 `NONE ↔ HOST`、xHCI 创建/销毁、父子 runtime PM 与 OTG reset 生命周期；用标准 SDHCI quirk 禁用本板不稳定的 eMMC CQE | `patches/kernel/` 与 OpenWrt 板级补丁中的 CQE backport |
+| U-Boot 启动链 | 保留 Toybrick/Rockchip 2017.09 BL33；修复现代 Linux x86_64 主机构建兼容性和 TF 可靠性；让厂商打包流程使用固定新版 rkbin 自带的 merger，统一生成 U-Boot、loader 和 trust | `patches/u-boot/`、`scripts/` |
+| Linux 驱动 | 为 RK3399 Type-C PHY 接入标准 orientation switch；为 DWC3 实现真实 `NONE ↔ HOST`、xHCI 创建/销毁、父子 runtime PM 与 OTG reset 生命周期；增加不改变频率/电压的 DDR GET/ROUND 探测；用标准 SDHCI quirk 禁用本板不稳定的 eMMC CQE | `patches/kernel/` 与 OpenWrt 板级补丁中的 CQE backport |
 | 板级描述与配置 | 固化 RK809/电源、CPU/温控、存储、GMAC、USB、HDMI、PCIe 等连线和参数；选择 Linux Kconfig、OpenWrt profile、软件包和镜像规则 | `dts/`、`patches/openwrt/`、`configs/` |
 | 运行策略 | 启用 ext4 overlay；按硬件身份把 GMAC/RTL8125 IRQ 分别幂等绑定到 CPU4/CPU5；启用软件 flow offload；提供 Type-C 与 RTL8125 一次性诊断工具 | `rootfs/` |
-| 构建与发布 | 固定全部上游 commit，下载到 `.work/`，同步唯一来源，执行检查并生成 `uboot.img`、`openwrt.img` 和发布包 | `scripts/`、`Makefile` |
+| 构建与发布 | 固定 U-Boot、rkbin、工具链、OpenWrt 和 feeds；生成并校验 `uboot.img`、官方 loader、`trust.img`、`openwrt.img` 和发布包 | `scripts/`、`Makefile` |
 
 Type-C 不是把 Linux 4.4 代码逐行复制到 6.12：板级时序和生命周期以 Toybrick stable 4.4 为行为规范，再用 Linux 6.12 的 TCPM、role-switch、generic PHY、runtime PM 和 reset API 表达。FUSB302/TCPM 使用未修改的 Linux 6.12 标准驱动；实质驱动改造集中在 Rockchip Type-C PHY 与 DWC3 两个补丁。其余大多数硬件沿用上游驱动，通过 DTS、Kconfig 和 profile 完成板级集成。
 
@@ -124,7 +126,7 @@ make package
 |---|---|
 | `make check` | 离线检查工程结构、脚本、补丁、配置、关键不变量和网络 IRQ 策略行为 |
 | `make init` | 获取固定上游和 `packages`/`luci` feed，应用补丁、同步 DTS/内核补丁/rootfs、生成配置并下载全部源包 |
-| `make all` | 验证初始化状态，编译 U-Boot/OpenWrt 并生成部署镜像 |
+| `make all` | 验证初始化状态，构建 U-Boot 完整启动链和 OpenWrt 部署镜像 |
 | `make kmod KMODS="kmod-..."` | 使用同一工作树构建模块及其 kmod 依赖，ABI 完全匹配才输出 APK |
 | `make package` | 校验 `out/` 并生成 `dist/` 发布包 |
 | `make clean` | 只删除 `out/` 和 `dist/` |
@@ -138,16 +140,18 @@ make package
 | 文件 | 用途 |
 |---|---|
 | `out/uboot/uboot.img` | 当前厂商 miniloader 启动链使用的 U-Boot |
+| `out/uboot/rk3399pro_loader_v1.30.126.bin` | DDR v1.30 + miniloader v1.26；供 Rockchip 工具执行 Upgrade Loader，不是 GPT 分区镜像 |
+| `out/uboot/trust.img` | BL31 v1.35 + BL32/OP-TEE v2.12；写入 `trust@0x4000` |
 | `out/openwrt/openwrt.img` | 从 LBA `0x6000` 连续写入的完整 OpenWrt 镜像，包含启动容器和 SquashFS rootfs |
 | `out/openwrt/boot_linux.img`、`rootfs.img` | 组合镜像的分区级组件；前者也可用于保留 rootfs/overlay 的 boot-only 更新 |
 | `out/openwrt/*initramfs-kernel.bin` | TF/串口恢复启动镜像 |
 | `out/openwrt/` 其他文件 | OpenWrt 校验、版本、manifest 和构建信息 |
 | `out/kmods/<kernel>/<request>/` | 与指定固件内核严格匹配的按需 kmod APK、依赖清单和校验文件 |
-| `dist/*.tar.gz` | 只包含两个部署镜像、版本信息和 SHA256 的发布包 |
+| `dist/*.tar.gz` | 包含三项启动链固件、OpenWrt 镜像、版本信息和 SHA256 的发布包 |
 
-正常部署只写入 `uboot.img` 和 `openwrt.img`；原厂 `trust@0x4000` 保留不动。只更新内核/DTB 时可以单独写入 `boot_linux.img`，但必须保证它与原 rootfs 的内核模块 ABI 一致。刷写映射、SD/U-Boot 更新、恢复启动和上板验收见 [eMMC 部署与验收](docs/EMMC-INSTALL.md)，启动固件和分区设计依据见 [启动链设计](docs/BOOT-CHAIN.md)。
+厂商 `make.sh` 原本就负责生成 U-Boot、loader 和 trust；本工程只做必要升级：把 rkbin 固定到 Rockchip 官方新版，并阻止旧 U-Boot 工具覆盖新版 merger。日常 OpenWrt 更新仍不需要反复写 loader、U-Boot 或 trust。只更新内核/DTB 时可以单独写入 `boot_linux.img`，但必须保证它与原 rootfs 的内核模块 ABI 一致。官方配置的独立复现命令、刷写映射和恢复边界见 [eMMC 部署与验收](docs/EMMC-INSTALL.md)，启动链组成见 [启动链设计](docs/BOOT-CHAIN.md)，DDR 探测与后续 DVFS 门槛见 [DDR 固件与动态调频验证](docs/DDR-DVFS.md)。
 
-本工程不提供自动刷写或整盘 `dd` 脚本。不要把 OpenWrt 镜像写入 `trust` 分区。
+本工程不提供自动刷写或整盘 `dd` 脚本。不要把 OpenWrt 镜像写入 `trust` 分区，也不要把 `trust.img` 写入 `boot_linux`。
 
 ## 维护与升级
 

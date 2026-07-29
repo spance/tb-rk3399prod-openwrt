@@ -6,14 +6,14 @@
 
 配套版本：
 
-- rkbin：`78c1c4939634a76f6f4531c912c1a52a83f0451b`。
+- Rockchip rkbin：`ecb4fcbe954edf38b3ae037d5de6d9f5bccf81f4`。
 - Toybrick linux-x86 工具链：`32505a8032d04e9320dbdb817b08bf67bdfb5a0c`。
 - 配置：`rk3399pro_defconfig`。
 - 设备树：厂商 `rk3399-evb`。
 
 ## 可信固件
 
-当前厂商 miniloader 从独立 `trust` 分区加载 BL31 和 BL32，再进入独立 `uboot.img`。本工程只构建 U-Boot，不重新生成 `trust.img`。其中 BL32/OP-TEE 对当前 OpenWrt 应用不是必需功能，但 BL31 仍是现有启动链的一部分，因此不能删除整个 `trust` 分区。组成、内存占用和替代启动方案见 [启动链设计](BOOT-CHAIN.md)。
+当前厂商 miniloader 从独立 `trust` 分区加载 BL31 和 BL32，再进入独立 `uboot.img`。厂商 `./make.sh rk3399pro` 本身会生成 U-Boot、loader 和 trust；本工程继续使用这一流程，但把相邻 rkbin 升级并固定到 Rockchip 官方基线。第三个 U-Boot 补丁阻止旧构建脚本覆盖新版 `boot_merger`/`trust_merger`，并去掉新版 `boot_merger` 不支持的旧参数。最终产物为 `uboot.img`、DDR v1.30/miniloader v1.26 loader、BL31 v1.35/BL32 v2.12 `trust.img`；trust 使用固定整文件哈希，loader 因含打包时间而改用官方解包器逐项校验有效载荷。BL32 对当前 OpenWrt 应用不是功能依赖，但 BL31 仍是现有启动链的一部分，因此不能删除整个 `trust` 分区。组成、独立复现方法和升级边界见 [启动链设计](BOOT-CHAIN.md) 与 [eMMC 部署与验收](EMMC-INSTALL.md)。
 
 ## 补丁
 

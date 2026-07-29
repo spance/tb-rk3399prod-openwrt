@@ -55,20 +55,20 @@ make init
 | 组件 | 版本 |
 |---|---|
 | Toybrick U-Boot | `22af63bad708ff41513375a8ecf7fe8d2d521c84` |
-| Toybrick rkbin | `78c1c4939634a76f6f4531c912c1a52a83f0451b` |
+| Rockchip rkbin | `ecb4fcbe954edf38b3ae037d5de6d9f5bccf81f4` |
 | Toybrick linux-x86 工具链 | `32505a8032d04e9320dbdb817b08bf67bdfb5a0c` |
 | OpenWrt | `v25.12.5` / `f0a60eee2fe051741c643ea6118718aae1ef17fb` |
 | Linux | OpenWrt 官方 `6.12.94` |
 
 OpenWrt 只使用一个工作树和一个正式配置，标准 PCIe 插槽的 Gen2 host、RTL8125BG 主线驱动/固件、常用维护工具和 HDMI Linux console 默认启用；板载 Mini-PCIe 插座仅接 USB2，无线驱动不纳入镜像。
 
-初始化是幂等的。网络 fetch 会自动重试三次；中断后再次执行可以继续未完成的初始 checkout。补丁状态只由 Git 判断，不写额外状态文件；每个补丁必须是“可应用”或“已完整应用”，其他状态立即失败。所有上游仓库固定到精确 commit；`configs/feeds.conf` 只保留当前固件需要的 `packages` 和 `luci` feed，并固定到 OpenWrt 25.12.5 官方源码使用的 commit，不会因远端分支变化而漂移。routing、telephony 和 video feed 不下载。
+初始化是幂等的。网络 fetch 会自动重试三次；中断后再次执行可以继续未完成的初始 checkout。补丁状态只由 Git 判断，不写额外状态文件；每个补丁必须是“可应用”或“已完整应用”，其他状态立即失败。所有项目构建输入固定到精确 commit。Rockchip rkbin 是 U-Boot 完整启动链的正式输入，提供 DDR v1.30、miniloader v1.26、BL31 v1.35、BL32 v2.12 及对应 merger。`configs/feeds.conf` 只保留当前固件需要的 `packages` 和 `luci` feed，并固定到 OpenWrt 25.12.5 官方源码使用的 commit，不会因远端分支变化而漂移。routing、telephony 和 video feed 不下载。
 
 工作树只接受当前基线的精确状态。调整任一上游基线、补丁模型或目录模型后，应使用一个空的 `TB_WORK_DIR` 重新初始化；这使代码路径保持单一，也避免把无法证明正确的状态带入固件。
 
 `dts/rk3399pro-toybrick-prod.dts` 和 `.dtsi` 是板级设备树的唯一权威文件。每次初始化都会读取 OpenWrt Rockchip target 的 `KERNEL_PATCHVER`，将这两个文件覆写到对应的 `target/linux/rockchip/files-<版本>/arch/arm64/boot/dts/rockchip/`，然后逐字节校验。OpenWrt 补丁不再保存 DTS 副本；更新设备树后必须先重新运行 `make init`，再执行构建。
 
-`patches/kernel/` 是 Type-C PHY/DWC3 关键 Linux 改动的唯一权威来源。初始化会把其中的直接内核补丁逐字节同步到 `target/linux/rockchip/patches-<版本>/`。这避免在 OpenWrt 外层补丁中嵌套维护驱动补丁，也允许保留一棵固定 Linux 源码树直接执行 apply/reverse 检查和继续迭代。
+`patches/kernel/` 是 Type-C PHY/DWC3 和 DDR ROUND-only 探测等关键 Linux 改动的唯一权威来源。初始化会把其中的直接内核补丁逐字节同步到 `target/linux/rockchip/patches-<版本>/`。这避免在 OpenWrt 外层补丁中嵌套维护驱动补丁，也允许保留一棵固定 Linux 源码树直接执行 apply/reverse 检查和继续迭代。
 
 驱动开发时建议在工程目录之外保留两棵独立、固定 commit 的参考树：OpenWrt 当前 Linux 6.12 用于生成和反向校验补丁，Toybrick stable Linux 4.4 用于核对本板的权威时序。它们不是构建输入，也不提交到本仓库；`make clean`/`make reset` 不应操作这些参考树。每次修改直接内核补丁后，至少应在干净 6.12 树验证可正向应用、在已修改树验证可反向应用，再由 `make init` 同步到 OpenWrt。
 
@@ -120,16 +120,18 @@ make openwrt
 bash scripts/build.sh all 16
 ```
 
-`make all` 不调用初始化，只检查主机依赖、工作树、固定基线、补丁、feed、`.config`、DTS 和 rootfs 同步状态；任一输入未准备好便要求先执行 `make init`。U-Boot 使用厂商命令 `./make.sh rk3399pro`。OpenWrt 构建阶段不执行 `feeds update/install`、`defconfig` 或 `make download`，只执行编译；并行构建失败时自动关闭标准输入并以 `-j1 V=sc` 重试，既保留命令和完整错误上下文，也确保遗漏的 Kconfig 项直接失败而不会进入交互式配置。构建完成后，脚本生成并验证 64 MiB `boot_linux.img` 与 128 MiB SquashFS `rootfs.img`，再按原厂 GPT 的相对偏移组合为 224 MiB `openwrt.img`。
+`make all` 不调用初始化，只检查主机依赖、工作树、固定基线、补丁、feed、`.config`、DTS 和 rootfs 同步状态；任一输入未准备好便要求先执行 `make init`。U-Boot 使用厂商命令 `./make.sh rk3399pro`，一次构建 BL33 并封装 U-Boot、loader 和 trust。本工程的 U-Boot 补丁让该流程使用固定新版 rkbin 自带的 merger，不再用旧 U-Boot 工具覆盖它们；构建脚本随后校验 trust 的固定大小/整文件 SHA256，并用官方 `boot_merger unpack` 校验 loader 中 DDR、miniloader、usbplug 的大小与 SHA256。OpenWrt 构建阶段不执行 `feeds update/install`、`defconfig` 或 `make download`，只执行编译；并行构建失败时自动关闭标准输入并以 `-j1 V=sc` 重试，既保留命令和完整错误上下文，也确保遗漏的 Kconfig 项直接失败而不会进入交互式配置。构建完成后，脚本生成并验证 64 MiB `boot_linux.img` 与 128 MiB SquashFS `rootfs.img`，再按原厂 GPT 的相对偏移组合为 224 MiB `openwrt.img`。
 
-正式部署只需要两个镜像：
+项目正式发布包含四个镜像：
 
 ```text
 out/uboot/uboot.img
+out/uboot/rk3399pro_loader_v1.30.126.bin
+out/uboot/trust.img
 out/openwrt/openwrt.img
 ```
 
-`openwrt.img` 从 eMMC LBA `0x6000` 连续写入：开头是包含正常 FIT 与 `boot.scr` 的 ext2 启动容器，96 MiB 偏移处是 SquashFS rootfs；首次启动会使用 grow `rootfs` 分区剩余空间建立 ext4 `/overlay`。`out/openwrt/` 同时保留 FIT、initramfs、manifest、独立 `boot_linux.img` 和 `rootfs.img` 等诊断/恢复产物；它们不进入 `dist` 发布包。
+`rk3399pro_loader_v1.30.126.bin` 是 Rockchip Upgrade Loader 输入，不是 GPT 分区镜像；`trust.img` 写入 `trust@0x4000`；`uboot.img` 写入 `uboot@0x2000`。`openwrt.img` 从 eMMC LBA `0x6000` 连续写入：开头是包含正常 FIT 与 `boot.scr` 的 ext2 启动容器，96 MiB 偏移处是 SquashFS rootfs；首次启动会使用 grow `rootfs` 分区剩余空间建立 ext4 `/overlay`。`out/openwrt/` 同时保留 FIT、initramfs、manifest、独立 `boot_linux.img` 和 `rootfs.img` 等诊断/恢复产物；它们不进入 `dist` 发布包。
 
 ## 4. 按需构建内核模块
 
@@ -147,14 +149,14 @@ make -j4 kmod KMODS="kmod-dummy"
 make package
 ```
 
-打包要求 U-Boot 和 OpenWrt 两个目标均已完成，并验证镜像尺寸、布局和文件系统签名。输出：
+打包要求 U-Boot 完整启动链和 OpenWrt 两个目标均已完成，并验证镜像大小、固定哈希、布局和文件系统签名。输出：
 
 ```text
 dist/tb-rk3399prod-openwrt-25.12.5.tar.gz
 dist/tb-rk3399prod-openwrt-25.12.5.tar.gz.sha256
 ```
 
-包内只发布 `firmware/uboot.img`、`firmware/openwrt.img`、逐文件 `SHA256SUMS` 和固定上游版本信息。`openwrt.img` 是按当前 GPT 布局生成的原始连续写入镜像，不是 Rockchip `update.img`；打包使用 GNU tar sparse 格式，避免镜像中的清零间隙和 rootfs 补零区无谓占用归档空间。
+包内发布 `firmware/uboot.img`、`firmware/rk3399pro_loader_v1.30.126.bin`、`firmware/trust.img`、`firmware/openwrt.img`、逐文件 `SHA256SUMS` 和固定上游版本信息。`openwrt.img` 是按当前 GPT 布局生成的原始连续写入镜像，不是 Rockchip `update.img`；打包使用 GNU tar sparse 格式，避免镜像中的清零间隙和 rootfs 补零区无谓占用归档空间。
 
 ## 6. 清理与工作树恢复
 
@@ -171,7 +173,7 @@ make reset
 make -j2 init
 ```
 
-`reset` 是显式的破坏性操作：它先校验每个上游仓库位于 `TB_WORK_DIR` 之下、origin 与工程固定 URL 完全一致、固定 commit 已在本地存在，然后才对 U-Boot、rkbin、工具链、OpenWrt 和 feeds 执行 `git reset --hard` 与 `git clean -fd`。因此 `.work` 内未提交的源码和未跟踪文件会丢失。它不使用 `git clean -fdx`，所以 OpenWrt 下载包、构建缓存等 ignored 数据会保留，随后 `make init` 重新应用补丁、DTS、feed 和正式配置。
+`reset` 是显式的破坏性操作：它先校验每个上游仓库位于 `TB_WORK_DIR` 之下、origin 与工程固定 URL 完全一致、固定 commit 已在本地存在，然后才对 U-Boot、Rockchip rkbin、工具链、OpenWrt 和 feeds 执行 `git reset --hard` 与 `git clean -fd`。因此 `.work` 内未提交的源码和未跟踪文件会丢失。它不使用 `git clean -fdx`，所以 OpenWrt 下载包、构建缓存等 ignored 数据会保留，随后 `make init` 重新应用补丁、DTS、feed 和正式配置。
 
 便捷写法：
 
@@ -183,4 +185,4 @@ make -j2 reinit
 
 ## 后续：部署
 
-构建和部署是两个独立阶段。产物写入映射、`trust.img` 保留要求、恢复启动与上板验收只在 [eMMC 部署与验收](EMMC-INSTALL.md) 中维护；启动固件和分区设计依据见 [启动链设计](BOOT-CHAIN.md)。
+构建和部署是两个独立阶段。项目产物写入映射、官方 trust/loader 独立复现方法、恢复启动与上板验收只在 [eMMC 部署与验收](EMMC-INSTALL.md) 中维护；启动固件和分区设计依据见 [启动链设计](BOOT-CHAIN.md)，DDR/BL31 探测流程见 [DDR 固件与动态调频验证](DDR-DVFS.md)。

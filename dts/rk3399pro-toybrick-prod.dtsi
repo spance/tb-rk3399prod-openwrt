@@ -60,6 +60,16 @@
 		};
 	};
 
+	dmc_opp_table: opp-table-dmc {
+		compatible = "operating-points-v2";
+
+		/* Probe-only baseline: the accepted boot rate and fixed BSP voltage. */
+		opp-800000000 {
+			opp-hz = /bits/ 64 <800000000>;
+			opp-microvolt = <900000>;
+		};
+	};
+
 	vcc5v0_sys: regulator-vcc5v0-sys {
 		compatible = "regulator-fixed";
 		regulator-name = "vcc5v0_sys";
@@ -136,6 +146,17 @@
 
 &cpu_b1 {
 	cpu-supply = <&vdd_cpu_b>;
+};
+
+&dfi {
+	/* ROUND-only validation does not consume the DDR load monitor. */
+	status = "disabled";
+};
+
+&dmc {
+	center-supply = <&vdd_log>;
+	operating-points-v2 = <&dmc_opp_table>;
+	status = "okay";
 };
 
 &emmc_phy {

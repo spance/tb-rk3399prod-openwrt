@@ -37,14 +37,25 @@ build_uboot()
 	)
 
 	image="$WORK_DIR/u-boot/uboot.img"
+	loader="$WORK_DIR/u-boot/$RKBIN_LOADER_IMAGE"
+	trust="$WORK_DIR/u-boot/$RKBIN_TRUST_IMAGE"
 	[ -f "$image" ] || fail "U-Boot build did not produce $image"
+	[ -f "$loader" ] || fail "U-Boot build did not produce $loader"
+	[ -f "$trust" ] || fail "U-Boot build did not produce $trust"
 	[ "$(stat -c '%s' "$image")" -eq 4194304 ] || \
 		fail "uboot.img is not exactly 4 MiB"
+	bash "$SCRIPT_DIR/verify-rkbin-images.sh" "$loader" "$trust"
 
 	dest="$OUT_DIR/uboot"
 	reset_generated_dir "$dest"
 	cp "$image" "$dest/uboot.img"
-	( cd "$dest" && sha256sum uboot.img > SHA256SUMS )
+	cp "$loader" "$dest/$RKBIN_LOADER_IMAGE"
+	cp "$trust" "$dest/$RKBIN_TRUST_IMAGE"
+	(
+		cd "$dest"
+		sha256sum uboot.img "$RKBIN_LOADER_IMAGE" \
+			"$RKBIN_TRUST_IMAGE" > SHA256SUMS
+	)
 }
 
 build_openwrt()
