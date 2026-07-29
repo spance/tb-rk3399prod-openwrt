@@ -209,6 +209,9 @@ grep -Fq 'Failed to load FDT from FIT image' "$uboot_patch" || \
 	fail "U-Boot patch does not reject failed FIT FDT loads"
 grep -Fq 'if (*fit_uname_config_copy)' "$uboot_patch" || \
 	fail "U-Boot patch retains unsafe FIT configuration-name parsing"
+grep -Fq '#define CONFIG_BOOTCOMMAND "run distro_bootcmd"' \
+	"$uboot_patch" || \
+	fail "RK3399Pro U-Boot does not enter standard distro boot directly"
 if grep -Fq 'diff --git a/make.sh b/make.sh' "$uboot_patch"; then
 	fail "current Rockchip U-Boot must use its native rkbin packaging scripts"
 fi

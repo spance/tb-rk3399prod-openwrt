@@ -27,12 +27,15 @@
 - 同时接受标准 `mkimage` 的零终止 legacy script 长度表和 Rockchip 私有的 `0xffffffff` 终止形式，并对表扫描和脚本长度做边界检查。OpenWrt 继续生成标准 `boot.scr`，不迁就厂商私有格式。
 - 只有在构建配置实际启用 `CONFIG_ROCKCHIP_FIT_IMAGE` 时，才把 FIT 交给 Rockchip 私有 `boot_fit` 路径；普通 `CONFIG_FIT` 镜像继续使用标准 `bootm`。这两种选项在厂商代码中含义不同，不能仅凭镜像格式无条件切换。
 - 保持标准 FIT 的 FDT `load` 属性可选；错误路径不会再向调用者返回未初始化的地址，也不会返回已释放的临时配置名。`bootm-no-reloc` 只有显式设为 `yes` 时才生效，变量不存在不再被误判为启用。
+- RK3399Pro 默认命令直接执行 `distro_bootcmd`，不再先尝试本板不存在的 Android `boot`、Rockchip 私有 FIT 和 RK image。distro 顺序仍是可拔 TF 优先、eMMC 回退，后续 USB/网络恢复目标也保留。
 
 旧基线需要的 host 构建和大块 IDMAC 修补不再携带：新 Rockchip 基线已经包含后续 host/DWMMC 修复，继续叠加旧实现会扩大补丁面并增加冲突风险。项目也不修改 `make.sh` 或复制 merger。
 
-新 U-Boot 与 BL32 v2.12 已在实机确认 API revision 2.0 协商成功。标准 script 兼容补丁也已确认能够自动执行 855-byte `boot.scr`，并从 eMMC 以约 223 MiB/s 读入约 18.7 MiB OpenWrt FIT。随后暴露出的失败不在 script、存储或 OpenWrt FIT：厂商 `board_do_bootm()` 在仅启用通用 `CONFIG_FIT`、没有启用 `CONFIG_ROCKCHIP_FIT_IMAGE` 和 `boot_fit` 命令时，仍无条件拦截所有 FIT，并试图读取 Rockchip 私有 `/images/resource` 节点。OpenWrt FIT 使用标准 `config-1`、`kernel-1` 和 `fdt-1`，因此该私有提取返回错误。当前补丁按 Kconfig 边界限制私有分支，让标准 FIT 回到标准 `bootm`；完成交付仍以这一修复重新上板并进入 Linux 为准。
+新 U-Boot 与 BL32 v2.12 已在实机确认 API revision 2.0 协商成功。标准 script 兼容补丁也已确认能够自动执行 855-byte `boot.scr`，并从 eMMC 以约 223 MiB/s 读入约 18.7 MiB OpenWrt FIT。厂商 `board_do_bootm()` 原本在仅启用通用 `CONFIG_FIT`、没有启用 `CONFIG_ROCKCHIP_FIT_IMAGE` 和 `boot_fit` 命令时，仍无条件拦截所有 FIT，并试图读取 Rockchip 私有 `/images/resource` 节点。OpenWrt FIT 使用标准 `config-1`、`kernel-1` 和 `fdt-1`，因此该私有提取返回错误。当前补丁按 Kconfig 边界限制私有分支，让标准 FIT 回到标准 `bootm`；实机已经完成 FIT 双哈希校验、FDT 重定位并进入 Linux。
 
-使用额外参数临时绕过私有分支后，实机已经确认标准 `bootm` 能选择并校验 `config-1`、`kernel-1` 和 `fdt-1`。这次测试也定位到厂商通用 FIT 代码的第二个缺陷：合法的 `fdt-1` 没有可选 `load` 属性时，加载函数错误地失败；上层又忽略失败并使用未初始化的 `load`，最终把随机高地址当作 DTB 地址并触发 EL2 SError。当前补丁恢复可选属性语义，并在所有失败出口保留调用者输出不变；这属于引导器修复，不通过给 OpenWrt FIT 强加固定地址来掩盖。
+实机已经确认标准 `bootm` 能选择并校验 `config-1`、`kernel-1` 和 `fdt-1`。调试期间还定位到厂商通用 FIT 代码的第二个缺陷：合法的 `fdt-1` 没有可选 `load` 属性时，加载函数错误地失败；上层又忽略失败并使用未初始化的 `load`，最终把随机高地址当作 DTB 地址并触发 EL2 SError。当前补丁恢复可选属性语义，并在所有失败出口保留调用者输出不变；这属于引导器修复，不通过给 OpenWrt FIT 强加固定地址来掩盖。
+
+完整冷启动日志已经确认 DDR v1.30/miniloader v1.26、BL32 v2.12、U-Boot 固定 commit、标准 FIT 双哈希和安全内存映射。默认命令进一步收敛为直接 distro boot，以消除此前先尝试 Android、私有 `boot_fit` 和 `bootrkp` 产生的非致命错误。资源 DTB、U-Boot 以太网和 loader-logo 的早期提示发生在 autoboot 之前或标准 `bootm` 的显示 fixup 中；Linux 使用 FIT 自带 DTB，GMAC 和 DRM 均已正常，当前不为隐藏这些提示而关闭 U-Boot 显示或扩大核心补丁面。
 
 该策略已稳定读取约 30 MiB FIT；Linux 启动后 TF 仍使用 50 MHz + IDMAC，不影响内核运行阶段性能。eMMC SDHCI 高速路径未被修改。
 

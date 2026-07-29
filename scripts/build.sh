@@ -64,6 +64,9 @@ build_uboot()
 		"$WORK_DIR/u-boot/u-boot.bin"; then
 		fail "U-Boot still intercepts standard FIT images with the private boot_fit path"
 	fi
+	grep -Fqx 'CONFIG_BOOTCOMMAND="run distro_bootcmd"' \
+		"$WORK_DIR/u-boot/include/autoconf.mk" || \
+		fail "U-Boot default command does not enter standard distro boot directly"
 	uboot_identity="tb-rk3399prod-g${UBOOT_COMMIT:0:7}"
 	grep -aFq "$uboot_identity" "$WORK_DIR/u-boot/u-boot.bin" || \
 		fail "U-Boot binary does not identify the pinned source commit"

@@ -17,7 +17,7 @@
 - **内置 Web 管理**：LuCI、简体中文界面、uhttpd、Firewall 和 APK 软件包管理随镜像提供，默认使用 HTTPS。
 - **完整的日常命令体验**：保留 BusyBox 作为启动与救援底座，同时内置 GNU `tar`（含 XZ 支持）、`gzip`、`xz`、`grep`、`sed`、`gawk`、`diff`、`patch`、`dd`、`stat`、`find`、`xargs`、`procps-ng`、tmux、完整 Vim 和 rsync；SFTP 服务端与 LuCI 简体中文界面随镜像提供。
 - **可验证的按需驱动**：可以从固定源码按包名构建 `kmod-*` APK；只有与当前固件内核依赖完全一致的模块才会交付，不覆盖 ABI，也不强制安装。
-- **完整启动链交付**：固定 Rockchip vendor U-Boot 新基线及官方 rkbin，构建相互兼容的 OP-TEE API 2.0 `uboot.img`、DDR v1.30/miniloader v1.26 loader 和 BL31 v1.35/BL32 v2.12 `trust.img`；校验 U-Boot 接口能力、trust 整体及 loader 解包载荷。DDR 调频先走绝不 SET 的 ROUND 探测。
+- **完整启动链交付**：固定 Rockchip vendor U-Boot 新基线及官方 rkbin，构建相互兼容的 OP-TEE API 2.0 `uboot.img`、DDR v1.30/miniloader v1.26 loader 和 BL31 v1.35/BL32 v2.12 `trust.img`；整条链路已完成冷启动、软重启、内存压力和绝不 SET 的 DDR ROUND 探测。
 - **面向升级维护**：DTS、Linux 补丁和 rootfs 文件各自只有一个权威来源；全部上游精确锁定到 commit，并由自动检查保护关键不变量。
 
 ## 硬件支持矩阵
@@ -27,7 +27,7 @@
 | CPU / 调频 | 4× Cortex-A53（408～1416 MHz）+ 2× Cortex-A72（408～1800 MHz） | `cpufreq-dt`、OPP、`schedutil`、cpufreq cooling | 已验证六核、自动调频和温控绑定 |
 | 时钟 / 温控 | RK3399 CRU、TSADC、CPU/GPU thermal zone | `clk-rk3399`、`rockchip-thermal` | 已验证 |
 | PMIC / 电源 | RK809；`vdd_cpu_l`、`vdd_cpu_b`、`vdd_gpu`、`vdd_center` | `rk808`/`rk808-regulator`、`fan53555` 兼容 TCS4525/TCS4526 | 已验证关键电源轨 |
-| DDR / BL31 | 双通道 LPDDR3；当前实机为 DDR bin v1.27、BL31 v1.30；构建目标为 DDR v1.30、miniloader v1.26、BL31 v1.35、BL32 v2.12 | 固定官方 rkbin/merger；Linux DMC 仅执行 GET/ROUND，无 DFI/SET/调压 | 构建和强校验已集成；新版启动固件待实机验收 |
+| DDR / BL31 | 双通道 LPDDR3；DDR bin v1.30、miniloader v1.26、BL31 v1.35、BL32 v2.12；固定 800 MHz | 固定官方 rkbin/merger；Linux DMC 仅执行 GET/ROUND，无 DFI/SET/调压 | 已验证冷启动、三次软重启、五组 ROUND 和 1.5 GiB 四图样内存测试 |
 | UART2 | `ttyS2`，1500000 8N1；earlycon `0xff1a0000` | DesignWare 8250 / `8250_dw` | 已验证启动与登录 |
 | TF 卡 | 4-bit；Linux 50 MHz；U-Boot 25 MHz/PIO | Linux `dw_mmc-rockchip`；U-Boot DWMMC 可靠性补丁 | 已验证 Linux 读写和 U-Boot FIT 加载 |
 | eMMC | 32 GB，8-bit，HS400 Enhanced Strobe、ADMA | `sdhci-of-arasan`、Rockchip eMMC PHY；标准 quirk 禁用不稳定 CQE | 已验证启动、读写和持久化 overlay |

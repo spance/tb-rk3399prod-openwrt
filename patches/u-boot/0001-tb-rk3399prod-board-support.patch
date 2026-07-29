@@ -24,6 +24,11 @@ property.  Also keep failed FDT loads from exporting uninitialized addresses
 or temporary configuration-name pointers, and only enable Rockchip's
 no-relocation policy when its environment switch is explicitly true.
 
+The RK3399Pro build is an OpenWrt-only target, so enter standard distro boot
+directly instead of first probing Android, Rockchip private FIT and RK image
+paths.  Distro boot still scans removable SD before eMMC and retains its later
+USB/network recovery targets.
+
 ---
  arch/arm/dts/rk3399-evb.dts      |  6 ++++++
  arch/arm/mach-rockchip/board.c   |  6 +++---
@@ -32,8 +37,9 @@ no-relocation policy when its environment switch is explicitly true.
  common/image-fit.c               | 33 ++++++++++++++++++++++-----------
  configs/rk3399pro_defconfig      |  3 +++
  drivers/mmc/dw_mmc.c             | 28 ++++++++++++++++++++--------
+ include/configs/evb_rk3399.h     |  4 ++++
  include/configs/rk3399_common.h  |  1 +
- 8 files changed, 79 insertions(+), 23 deletions(-)
+ 9 files changed, 83 insertions(+), 23 deletions(-)
 
 diff --git a/arch/arm/dts/rk3399-evb.dts b/arch/arm/dts/rk3399-evb.dts
 index 7bb06881e9..940db6e4e8 100644
@@ -280,6 +286,18 @@ index 1015066c2c..a0753d0bfe 100644
  
  	/* Enumerate at 400KHz */
  	dwmci_setup_bus(host, mmc->cfg->f_min);
+diff --git a/include/configs/evb_rk3399.h b/include/configs/evb_rk3399.h
+index 99e6c35d8e..39b97d07bf 100644
+--- a/include/configs/evb_rk3399.h
++++ b/include/configs/evb_rk3399.h
+@@ -13,3 +13,7 @@
+ #undef CONFIG_BOOTCOMMAND
++#ifdef CONFIG_ROCKCHIP_RK3399PRO
++#define CONFIG_BOOTCOMMAND "run distro_bootcmd"
++#else
+ #define CONFIG_BOOTCOMMAND RKIMG_BOOTCOMMAND
++#endif
+ #endif
 diff --git a/include/configs/rk3399_common.h b/include/configs/rk3399_common.h
 index c4bd586898..2d46b41365 100644
 --- a/include/configs/rk3399_common.h

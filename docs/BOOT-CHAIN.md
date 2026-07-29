@@ -42,7 +42,7 @@ Rockchip `rkbin` 的当前固定基线 `ecb4fcbe954edf38b3ae037d5de6d9f5bccf81f4
 
 ## DDR bin 不属于 `trust.img`
 
-当前实机启动日志显示 DDR bin v1.27。Rockchip 最新 RK3399Pro 配置使用 `rk3399pro_ddr_800MHz_v1.30.bin`，发布说明中 v1.29 修复 LPDDR3 位宽识别，v1.30 修复 LPDDR3 reboot 卡死，升级有实际价值。
+当前实机 UART 已确认 `DDR Version 1.30 20230417` 和 miniloader `version: 1.26`。双通道 LPDDR3 均识别为 2 GiB、32-bit、双 CS，合计 4 GiB，保持 800 MHz。Rockchip 发布说明中 v1.29 的 LPDDR3 位宽识别修复和 v1.30 的 LPDDR3 reboot 卡死修复因此已进入正式启动链，而不再只是构建目标。
 
 DDR bin 要和 `rk3399pro_miniloader_v1.26.bin` 通过官方 `boot_merger` 生成 loader，并写入早于 GPT 分区的启动区域；不能把 DDR bin 放进 `trust.img`，也不能把 loader 写到 `trust@0x4000`。构建时可以一次生成全部启动固件，部署时仍应分批验证：loader/DDR 更新失败会早于 U-Boot 和 Linux，恢复风险高于 trust 更新。细节见 [DDR 固件与动态调频验证](DDR-DVFS.md)。
 

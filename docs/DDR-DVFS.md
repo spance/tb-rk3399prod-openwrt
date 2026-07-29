@@ -6,13 +6,13 @@ TB-RK3399ProD 使用双通道 LPDDR3，当前稳定启动频率为 800 MHz。DDR
 
 | 层次 | 当前/本轮版本 | 职责 | 本轮动作 |
 |---|---|---|---|
-| loader 内 DDR bin | 实机为 v1.27；构建目标为 DDR v1.30 + miniloader v1.26 | 上电和复位后的 DDR 探测、训练与初始化 | 随 U-Boot 构建生成，最后独立部署验收 |
-| 官方 `trust.img` 内 BL31 | v1.30 → RK3399Pro v1.35；BL32 同步到官方 v2.12 | EL3/PSCI，以及 Linux 时钟驱动使用的 DDR GET/ROUND/SET SMC | 使用官方完整组合并验证 GET/ROUND |
+| loader 内 DDR bin | DDR v1.30 + miniloader v1.26 | 上电和复位后的 DDR 探测、训练与初始化 | 已独立部署并完成冷启动、内存和软复位验收 |
+| 官方 `trust.img` 内 BL31 | RK3399Pro v1.35；BL32 v2.12 | EL3/PSCI，以及 Linux 时钟驱动使用的 DDR GET/ROUND/SET SMC | 官方完整组合已部署，GET/ROUND 已验证 |
 | Linux 6.12 DMC/devfreq | 原先禁用 | 读取负载、选择 OPP、协调时钟与电压 | 仅启用无损 ROUND 探测，不允许 SET |
 
-Rockchip 的 RK3399Pro 发布说明把 DDR bin v1.29 的 LPDDR3 位宽识别修复和 v1.30 的 LPDDR3 reboot 卡死修复标为重要。v1.30 有明确升级价值，但 DDR bin 不在 `trust.img` 中；它要和 miniloader v1.26 通过官方 `boot_merger` 组成 loader 镜像，并写入比 GPT 分区更早的启动区域。工程现在随 U-Boot 构建生成并校验 v1.30.126 loader，但构建集成不改变部署原则：先把匹配的新 U-Boot/trust 作为一组完成启动验收，再更新 OpenWrt 完成 BL31/ROUND 验收，最后把 loader 作为独立启动变量进行冷启动和软复位回归。
+Rockchip 的 RK3399Pro 发布说明把 DDR bin v1.29 的 LPDDR3 位宽识别修复和 v1.30 的 LPDDR3 reboot 卡死修复标为重要。v1.30 有明确升级价值，但 DDR bin 不在 `trust.img` 中；它和 miniloader v1.26 通过官方 `boot_merger` 组成 loader 镜像，并写入比 GPT 分区更早的启动区域。本次部署严格隔离了三个变量：先配对升级 U-Boot/trust，再更新 OpenWrt 验证 BL31 ROUND，最后单独升级 loader 并做冷启动和软复位回归。
 
-官方仓库没有给出 miniloader v1.26 的逐项变更说明，当前实机使用的 miniloader 版本也尚未从日志中可靠确认。因此不能仅凭 DDR v1.30 的修复说明把整套 loader 判定为低风险更新；部署前必须核对 [启动链构建与独立复现](EMMC-INSTALL.md#启动链构建与独立复现) 中的固定哈希，并确认 Loader/Maskrom 恢复链可用。
+官方仓库没有给出 miniloader v1.26 的逐项变更说明，因此仍不能仅凭文件名把整套 loader 判定为低风险更新。本次实机 UART 已明确显示 `DDR Version 1.30 20230417` 和 `Boot1 ... version: 1.26`；启动链身份、内存拓扑和运行结果均已闭环。未来重新部署仍必须核对 [启动链构建与独立复现](EMMC-INSTALL.md#启动链构建与独立复现) 中的固定哈希，并保留 Loader/Maskrom 恢复链。
 
 ## 为什么 ROUND 探测是无损的
 
@@ -45,14 +45,17 @@ cat /sys/kernel/debug/clk/sclk_ddrc/clk_rate
 - `/sys/class/devfreq/` 下没有由本驱动创建的 DMC governor，属于预期行为；
 - 冷启动、连续软复位、六核满载、eMMC/USB/网络并发运行均保持稳定。
 
+本轮实机结果为：五个候选频率均原值返回，探测前后 `sclk_ddrc` 都是 `800000000`，没有注册 DMC devfreq governor。UART 确认双通道各 2 GiB、32-bit、双 CS；1.5 GiB 匿名内存依次完成 `00`、`ff`、`aa`、`55` 四图样全区域写入和逐块回读，约 19.8 秒全部通过；随后三次软重启均自动进入 Linux 并重复得到五组 ROUND 结果，未出现 SError、OOM、EDAC、MMC 或文件系统错误。
+
 ## 进入真实动态调频前的门槛
 
 ROUND 通过只证明 BL31 能接受频率查询，不能证明 SET、NOC timing、ODT、调压顺序和所有 LPDDR3 颗粒都稳定。下一阶段至少需要：
 
-1. 先单独部署 DDR v1.30/miniloader v1.26，完成冷启动、reboot 和固定 800 MHz 压力回归，不与首次 SET 测试合并；
-2. 根据 ROUND 返回值建立正式 OPP 表，并逐项确认 BSP timing 支持；
-3. 明确本板 DMC 的真实供电轨。Toybrick 4.4 使用固定 900 mV `vdd_log`，不能在没有原理图和测量依据时改成可调 `vdd_center`；
-4. 先用固定 governor 单步切换相邻频点，验证内存压力、DMA、PCIe、GMAC、USB3 和温控；
-5. 完成低频↔800 MHz 循环、冷启动和 reboot 循环，再启用 `simple_ondemand`。
+前置的 DDR v1.30/miniloader v1.26 冷启动、软重启和固定 800 MHz 压力回归已经完成。进入 SET 仍至少需要：
+
+1. 根据 ROUND 返回值建立正式 OPP 表，并逐项确认 BSP timing 支持；
+2. 明确本板 DMC 的真实供电轨。Toybrick 4.4 使用固定 900 mV `vdd_log`，不能在没有原理图和测量依据时改成可调 `vdd_center`；
+3. 先用固定 governor 单步切换相邻频点，验证内存压力、DMA、PCIe、GMAC、USB3 和温控；
+4. 完成低频↔800 MHz 循环、冷启动和 reboot 循环，再启用 `simple_ondemand`。
 
 在这些门槛完成前，本工程不宣称 DDR 动态调频可交付，也不会因 probe-only 模式而产生运行期节电收益。

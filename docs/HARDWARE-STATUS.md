@@ -8,7 +8,7 @@
 |---|---|---|
 | UART2 | 已确认 | ttyS2，1500000 n8，earlycon 正常 |
 | CPU | 已确认 | 4×A53 + 2×A72 全部上线，两个 cpufreq domain |
-| DDR / trust | 当前基线已确认；新版构建完成后待验收 | 当前实机为 DDR bin v1.27、BL31 v1.30、800 MHz；构建目标统一生成 DDR v1.30/miniloader v1.26 与 BL31 v1.35/BL32 v2.12，Linux 仅执行无损 GET/ROUND 探测；部署仍分阶段进行 |
+| DDR / trust | 已确认固定 800 MHz 启动链 | UART 确认 DDR bin v1.30、miniloader v1.26，trust 为 BL31 v1.35/BL32 v2.12；双通道各 2 GiB、32-bit、双 CS。五组 GET/ROUND 精确返回，1.5 GiB `00/ff/aa/55` 四图样写读校验和三次软重启通过；未启用 SET/DFI/devfreq governor |
 | PMIC | 已确认 | RK809；vdd_center、vdd_cpu_l、vdd_cpu_b、vdd_gpu 正常 |
 | 温控 | 已确认 | CPU/GPU thermal zone、TSADC 及 A53/A72 两个 cpufreq cooling device 正常绑定；6 核满载 90 秒稳定，最高约 55.6 °C，未故意加热到降频点 |
 | 硬件 watchdog | 已确认故障复位 | RK3399 DesignWare watchdog 由 `procd` 启用，30 秒超时、5 秒喂狗；停止喂狗后整机按期掉线并以新 boot ID 重启，overlay、网络、LuCI 和 Type-C UAS 均自动恢复 |
