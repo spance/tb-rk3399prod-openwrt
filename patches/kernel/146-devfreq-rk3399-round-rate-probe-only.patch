@@ -81,14 +81,14 @@ property and keeps the normal upstream driver path unchanged when disabled.
 +		800000000,
 +	};
 +	struct device *dev = &pdev->dev;
-+	unsigned long current;
++	unsigned long current_rate;
 +	long rounded;
 +	size_t i;
 +
-+	current = clk_get_rate(data->dmc_clk);
++	current_rate = clk_get_rate(data->dmc_clk);
 +	dev_info(dev,
 +		 "DDR round-rate probe only: current=%lu Hz; no rate or voltage changes will be made\n",
-+		 current);
++		 current_rate);
 +	for (i = 0; i < ARRAY_SIZE(bsp_rates); i++) {
 +		rounded = clk_round_rate(data->dmc_clk, bsp_rates[i]);
 +		if (rounded < 0)
@@ -100,7 +100,7 @@ property and keeps the normal upstream driver path unchanged when disabled.
 +	}
 +
 +	data->probe_only = true;
-+	data->rate = current;
++	data->rate = current_rate;
 +	data->dev = dev;
 +	platform_set_drvdata(pdev, data);
 +	return 0;

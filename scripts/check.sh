@@ -524,6 +524,11 @@ grep -Fq 'No DFI monitor, DRAM DFS initialization, regulator change or' \
 grep -Fq 'return rk3399_dmcfreq_round_probe(pdev, data);' \
 	"$ddr_probe_patch" || \
 	fail "DDR probe-only path does not return before normal devfreq setup"
+grep -Fq '+	unsigned long current_rate;' "$ddr_probe_patch" || \
+	fail "DDR probe-only clock-rate variable is missing or unsafe"
+if grep -Fq '+	unsigned long current;' "$ddr_probe_patch"; then
+	fail "DDR probe-only code collides with the Linux current task macro"
+fi
 grep -Fq 'if (dmcfreq->probe_only)' "$ddr_probe_patch" || \
 	fail "DDR probe-only suspend/remove guards are missing"
 for rate in 200000000 400000000 528000000 600000000 800000000; do
