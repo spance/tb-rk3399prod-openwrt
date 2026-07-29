@@ -172,6 +172,9 @@ grep -Fq './make.sh "CROSS_COMPILE=$uboot_cross" rk3399pro' \
 grep -Fq "grep -aFq 'optee api revision: %d.%d'" \
 	"$PROJECT_DIR/scripts/build.sh" || \
 	fail "U-Boot build does not verify the compatible OP-TEE client"
+grep -Fq 'uboot_identity="tb-rk3399prod-g${UBOOT_COMMIT:0:7}"' \
+	"$PROJECT_DIR/scripts/build.sh" || \
+	fail "U-Boot build does not verify the pinned source identity"
 if grep -Eq 'strings .*u-boot\.bin.*\|' "$PROJECT_DIR/scripts/build.sh"; then
 	fail "U-Boot binary checks must not use a pipe that fails under pipefail"
 fi

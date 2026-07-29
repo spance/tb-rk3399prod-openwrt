@@ -57,6 +57,9 @@ build_uboot()
 	grep -aFq 'optee api revision: %d.%d' \
 		"$WORK_DIR/u-boot/u-boot.bin" || \
 		fail "U-Boot is missing the OP-TEE API revision 2 client"
+	uboot_identity="tb-rk3399prod-g${UBOOT_COMMIT:0:7}"
+	grep -aFq "$uboot_identity" "$WORK_DIR/u-boot/u-boot.bin" || \
+		fail "U-Boot binary does not identify the pinned source commit"
 	[ "$(stat -c '%s' "$image")" -eq 4194304 ] || \
 		fail "uboot.img is not exactly 4 MiB"
 	bash "$SCRIPT_DIR/verify-rkbin-images.sh" "$loader" "$trust"
