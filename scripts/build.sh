@@ -54,9 +54,16 @@ build_uboot()
 	grep -Fqx 'CONFIG_TRUST_INI="RK3399PROTRUST.ini"' \
 		"$WORK_DIR/u-boot/.config" || \
 		fail "U-Boot did not select the RK3399Pro trust INI"
+	grep -Fqx '# CONFIG_ROCKCHIP_FIT_IMAGE is not set' \
+		"$WORK_DIR/u-boot/.config" || \
+		fail "U-Boot unexpectedly enabled the private Rockchip FIT boot path"
 	grep -aFq 'optee api revision: %d.%d' \
 		"$WORK_DIR/u-boot/u-boot.bin" || \
 		fail "U-Boot is missing the OP-TEE API revision 2 client"
+	if grep -aFq 'BOOTM: transferring to board FIT' \
+		"$WORK_DIR/u-boot/u-boot.bin"; then
+		fail "U-Boot still intercepts standard FIT images with the private boot_fit path"
+	fi
 	uboot_identity="tb-rk3399prod-g${UBOOT_COMMIT:0:7}"
 	grep -aFq "$uboot_identity" "$WORK_DIR/u-boot/u-boot.bin" || \
 		fail "U-Boot binary does not identify the pinned source commit"

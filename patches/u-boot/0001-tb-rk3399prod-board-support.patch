@@ -14,19 +14,25 @@ Accept both the standard zero and Rockchip 0xffffffff legacy-script table
 terminators.  This keeps distro boot compatible with OpenWrt's standard
 mkimage output while retaining compatibility with Rockchip's mkimage variant.
 
+Only divert FIT images into Rockchip's private boot_fit path when that path is
+actually configured.  Otherwise the generic FIT support incorrectly tries to
+extract /images/resource from a standard OpenWrt FIT and aborts before the
+standard bootm implementation can select its kernel and FDT configuration.
+
 ---
- arch/arm/dts/rk3399-evb.dts     |  6 ++++++
- cmd/source.c                    | 20 +++++++++++++++++++-
- configs/rk3399pro_defconfig     |  3 +++
- drivers/mmc/dw_mmc.c            | 28 ++++++++++++++++++++--------
- include/configs/rk3399_common.h |  1 +
- 5 files changed, 49 insertions(+), 9 deletions(-)
+ arch/arm/dts/rk3399-evb.dts      |  6 ++++++
+ arch/arm/mach-rockchip/board.c   | 32 ++++++++++++++++----------------
+ cmd/source.c                     | 20 +++++++++++++++++++-
+ configs/rk3399pro_defconfig      |  3 +++
+ drivers/mmc/dw_mmc.c             | 28 ++++++++++++++++++++--------
+ include/configs/rk3399_common.h  |  1 +
+ 6 files changed, 65 insertions(+), 25 deletions(-)
 
 diff --git a/arch/arm/dts/rk3399-evb.dts b/arch/arm/dts/rk3399-evb.dts
 index 7bb06881e9..940db6e4e8 100644
 --- a/arch/arm/dts/rk3399-evb.dts
 +++ b/arch/arm/dts/rk3399-evb.dts
-@@ -245,6 +245,12 @@
+@@ -245,5 +245,11 @@
  
  &sdmmc {
  	bus-width = <4>;
@@ -38,6 +44,45 @@ index 7bb06881e9..940db6e4e8 100644
 +	fifo-mode;
  	status = "okay";
  };
+
+diff --git a/arch/arm/mach-rockchip/board.c b/arch/arm/mach-rockchip/board.c
+index cd0ec30bac..f6b0357abf 100644
+--- a/arch/arm/mach-rockchip/board.c
++++ b/arch/arm/mach-rockchip/board.c
+@@ -1112,17 +1112,17 @@ int board_do_bootm(int argc, char * const argv[])
+-	/* FIT */
+-#if IMAGE_ENABLE_FIT
+-	if (format == IMAGE_FORMAT_FIT) {
+-		char boot_cmd[64];
+-		int ret;
+-
+-		printf("BOOTM: transferring to board FIT\n");
+-
+-		ret = bootm_image_populate_dtb(img);
+-		if (ret) {
+-			printf("bootm can't read dtb, ret=%d\n", ret);
+-			return ret;
+-		}
+-		snprintf(boot_cmd, sizeof(boot_cmd), "boot_fit %s", argv[1]);
+-		return run_command(boot_cmd, 0);
+-	}
++	/* Rockchip FIT */
++#ifdef CONFIG_ROCKCHIP_FIT_IMAGE
++	if (format == IMAGE_FORMAT_FIT) {
++		char boot_cmd[64];
++		int ret;
++
++		printf("BOOTM: transferring to board FIT\n");
++
++		ret = bootm_image_populate_dtb(img);
++		if (ret) {
++			printf("bootm can't read dtb, ret=%d\n", ret);
++			return ret;
++		}
++		snprintf(boot_cmd, sizeof(boot_cmd), "boot_fit %s", argv[1]);
++		return run_command(boot_cmd, 0);
++	}
+ #endif
 
 diff --git a/cmd/source.c b/cmd/source.c
 index 6b1c8b744b..d9abc382b4 100644
