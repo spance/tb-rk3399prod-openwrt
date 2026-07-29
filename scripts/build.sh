@@ -31,9 +31,15 @@ mark_managed_dir "$OUT_DIR" out
 
 build_uboot()
 {
+	uboot_toolchain="$WORK_DIR/prebuilts/gcc/aarch64/"\
+		"gcc-linaro-6.3.1-2017.05-x86_64_aarch64-linux-gnu/bin"
+	uboot_cross="$uboot_toolchain/aarch64-linux-gnu-"
+	[ -x "${uboot_cross}gcc" ] || \
+		fail "U-Boot cross compiler not found: ${uboot_cross}gcc"
 	(
 		cd "$WORK_DIR/u-boot"
-		./make.sh rk3399pro
+		rm -f -- uboot.img "$RKBIN_LOADER_IMAGE" "$RKBIN_TRUST_IMAGE"
+		./make.sh "CROSS_COMPILE=$uboot_cross" rk3399pro
 	)
 
 	image="$WORK_DIR/u-boot/uboot.img"
@@ -42,6 +48,15 @@ build_uboot()
 	[ -f "$image" ] || fail "U-Boot build did not produce $image"
 	[ -f "$loader" ] || fail "U-Boot build did not produce $loader"
 	[ -f "$trust" ] || fail "U-Boot build did not produce $trust"
+	grep -Fqx 'CONFIG_LOADER_INI="RK3399PROMINIALL.ini"' \
+		"$WORK_DIR/u-boot/.config" || \
+		fail "U-Boot did not select the RK3399Pro loader INI"
+	grep -Fqx 'CONFIG_TRUST_INI="RK3399PROTRUST.ini"' \
+		"$WORK_DIR/u-boot/.config" || \
+		fail "U-Boot did not select the RK3399Pro trust INI"
+	strings "$WORK_DIR/u-boot/u-boot.bin" | \
+		grep -Fq 'optee api revision: %d.%d' || \
+		fail "U-Boot is missing the OP-TEE API revision 2 client"
 	[ "$(stat -c '%s' "$image")" -eq 4194304 ] || \
 		fail "uboot.img is not exactly 4 MiB"
 	bash "$SCRIPT_DIR/verify-rkbin-images.sh" "$loader" "$trust"

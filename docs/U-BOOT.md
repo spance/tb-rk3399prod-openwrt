@@ -2,28 +2,30 @@
 
 ## 选择
 
-正式基线继续使用 Toybrick/Rockchip U-Boot 2017.09，commit `22af63bad708ff41513375a8ecf7fe8d2d521c84`。主线 U-Boot v2026.07 暂不采用，因为迁移还需要重新验证 LPDDR3、TPL/SPL、RK809、BL31/BL32/Trust、启动介质和完整板级 DTS，当前风险与收益不匹配。
+正式基线使用 Rockchip 官方 `rockchip-linux/u-boot` 的 `next-dev` commit `aeec6f2bfd5ce0cfcdfe0ffc7f84d9d143683856`。它仍是 Rockchip vendor U-Boot 2017.09，并非主线 U-Boot v2026.07；因此继续匹配现有 miniloader/trust 分区模型，同时取得较新的 RK3399Pro、DWMMC 和 OP-TEE 客户端实现。主线 v2026.07 仍不采用，因为切换到 SPL/TPL 和主线板级模型需要重新验证 LPDDR3、RK809、可信固件、启动介质及完整 DTS，风险与当前收益不匹配。
+
+旧 Toybrick commit `22af63bad708ff41513375a8ecf7fe8d2d521c84` 已退出正式基线。实机将 BL31 v1.35/BL32 v2.12 `trust.img` 与该旧 U-Boot 混用时，BL32 明确报出 `optee api revision mismatch with u-boot/kernel` 并停止启动；这不是 OpenWrt 或 DTS 故障。新基线包含 OP-TEE API revision 2.0 客户端，构建脚本还会从 `u-boot.bin` 检查对应接口字符串，缺失时拒绝发布。
 
 配套版本：
 
 - Rockchip rkbin：`ecb4fcbe954edf38b3ae037d5de6d9f5bccf81f4`。
-- Toybrick linux-x86 工具链：`32505a8032d04e9320dbdb817b08bf67bdfb5a0c`。
+- 固定 linux-x86 AArch64 交叉工具链：`32505a8032d04e9320dbdb817b08bf67bdfb5a0c`。
 - 配置：`rk3399pro_defconfig`。
 - 设备树：厂商 `rk3399-evb`。
 
 ## 可信固件
 
-当前厂商 miniloader 从独立 `trust` 分区加载 BL31 和 BL32，再进入独立 `uboot.img`。厂商 `./make.sh rk3399pro` 本身会生成 U-Boot、loader 和 trust；本工程继续使用这一流程，但把相邻 rkbin 升级并固定到 Rockchip 官方基线。第三个 U-Boot 补丁阻止旧构建脚本覆盖新版 `boot_merger`/`trust_merger`，并去掉新版 `boot_merger` 不支持的旧参数。最终产物为 `uboot.img`、DDR v1.30/miniloader v1.26 loader、BL31 v1.35/BL32 v2.12 `trust.img`；trust 使用固定整文件哈希，loader 因含打包时间而改用官方解包器逐项校验有效载荷。BL32 对当前 OpenWrt 应用不是功能依赖，但 BL31 仍是现有启动链的一部分，因此不能删除整个 `trust` 分区。组成、独立复现方法和升级边界见 [启动链设计](BOOT-CHAIN.md) 与 [eMMC 部署与验收](EMMC-INSTALL.md)。
+当前 miniloader 从独立 `trust` 分区加载 BL31 和 BL32，再进入独立 `uboot.img`。Rockchip `./make.sh rk3399pro` 原生生成 U-Boot、loader 和 trust，本工程显式传入固定交叉编译器，并让脚本直接使用相邻固定 rkbin 的 merger。最终产物为 `uboot.img`、DDR v1.30/miniloader v1.26 loader、BL31 v1.35/BL32 v2.12 `trust.img`；trust 使用固定整文件哈希，loader 因含打包时间而由官方解包器逐项校验有效载荷。BL32 对 OpenWrt 应用不是功能依赖，但它会在进入 BL33 时校验 U-Boot 消息接口；因此 `uboot.img` 和 `trust.img` 必须来自本工程同一次固定基线，不能任意混配。组成、独立复现方法和升级边界见 [启动链设计](BOOT-CHAIN.md) 与 [eMMC 部署与验收](EMMC-INSTALL.md)。
 
 ## 补丁
 
-1. `patches/u-boot/0001-modern-linux-host-build-compat.patch`
-   - 兼容现代 Linux x86_64、GCC/flex 和旧版 DTC。
-   - 修正工具链目录与 DTS include 处理。
-2. `patches/u-boot/0002-tb-rk3399prod-dwmmc-tf-reliability.patch`
-   - 修正 DWMMC IDMAC 完成等待和状态清理。
-   - 把单次 MMC 请求限制为 2048 blocks/1 MiB。
-   - 只对 U-Boot 的可拔 TF 控制器使用 25 MHz + PIO。
+唯一补丁 `patches/u-boot/0001-tb-rk3399prod-board-support.patch` 只维护板级增量：
+
+- 显式选择 `RK3399PROMINIALL.ini` 和 `RK3399PROTRUST.ini`。上游芯片名解析会把 RK3399Pro 化简成 RK3399，不显式固定会静默封装普通 RK3399 固件。
+- 只对 U-Boot 的可拔 TF 控制器使用 25 MHz + PIO，并把单次 MMC 请求限制为 2048 blocks/1 MiB。
+- 保留设备树明确请求的 FIFO 模式，并在 DWMMC 错误、超时和模式选择处输出足够的诊断信息。
+
+旧基线需要的 host 构建和大块 IDMAC 修补不再携带：新 Rockchip 基线已经包含后续 host/DWMMC 修复，继续叠加旧实现会扩大补丁面并增加冲突风险。项目也不修改 `make.sh` 或复制 merger。
 
 该策略已稳定读取约 30 MiB FIT；Linux 启动后 TF 仍使用 50 MHz + IDMAC，不影响内核运行阶段性能。eMMC SDHCI 高速路径未被修改。
 
@@ -33,7 +35,7 @@ OpenWrt FIT 统一加载到 `0x10000000`。不要使用 `0x08000000`，否则约
 
 ## 从 TF 卡更新 boot_linux
 
-当前 U-Boot 已启用 MMC 命令、TF 的 Rockchip DWMMC 和 eMMC 的 Rockchip SDHCI。实机编号固定为 `mmc 1` = TF、`mmc 0` = eMMC，因此可以把 `boot_linux.img` 放在 TF 卡第一个 FAT 分区，再从 U-Boot 手动写入 eMMC。
+当前配置已启用 MMC 命令、TF 的 Rockchip DWMMC 和 eMMC 的 Rockchip SDHCI。旧基线实机编号为 `mmc 1` = TF、`mmc 0` = eMMC；升级后的第一次维护操作必须先用 `mmc list`、`mmc info` 和分区内容重新确认编号，不允许只凭旧编号写盘。确认后可以把 `boot_linux.img` 放在 TF 卡第一个 FAT 分区，再从 U-Boot 手动写入 eMMC。
 
 64 MiB 镜像可以放在安全的 `0x10000000`；写入前必须确认 `filesize` 为十六进制 `4000000`：
 

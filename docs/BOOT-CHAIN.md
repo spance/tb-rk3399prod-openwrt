@@ -27,10 +27,7 @@ Rockchip `rkbin` 的当前固定基线 `ecb4fcbe954edf38b3ae037d5de6d9f5bccf81f4
 | `rk3399pro_loader_v1.30.126.bin` | DDR 800 MHz v1.30 + miniloader v1.26 | BootROM 后的 DRAM 初始化与一级 loader |
 | `uboot.img` | 不属于上述两个 merger 的输入 | 本工程继续构建带板级补丁的 BL33 |
 
-这些输入和封装规则都没有经过本工程修改。厂商 U-Boot 的 `./make.sh rk3399pro` 原本就会依次生成 `uboot.img`、loader 和 `trust.img`，所以本工程保留这一完整流程，并做两项必要升级：
-
-1. 把相邻的 rkbin 工作树固定到上述 Rockchip 官方 commit；
-2. 阻止旧 U-Boot `make.sh` 把自身携带的旧 merger 覆盖到新版 rkbin，并去掉新版 `boot_merger` 已不支持的旧 `--replace` 参数。
+这些输入和封装规则都没有经过本工程修改。Rockchip vendor U-Boot 固定到 `aeec6f2bfd5ce0cfcdfe0ffc7f84d9d143683856`，其 `./make.sh rk3399pro` 会依次生成 `uboot.img`、loader 和 `trust.img`。工程显式传入固定 AArch64 交叉编译器、固定相邻 rkbin，并通过板级 defconfig 指定 `RK3399PROMINIALL.ini` 与 `RK3399PROTRUST.ini`，避免脚本把 RK3399Pro 错化简为普通 RK3399。
 
 因此 `make uboot`/`make all` 会把三项启动链产物一起写入 `out/uboot/`，并校验 trust 的文件名、大小和整文件 SHA256，以及 loader 的文件名、大小和解包载荷 SHA256。若只需脱离 U-Boot 独立复现官方封装，仍可在固定 rkbin 根目录直接执行：
 
@@ -41,7 +38,7 @@ Rockchip `rkbin` 的当前固定基线 `ecb4fcbe954edf38b3ae037d5de6d9f5bccf81f4
 
 `trust_merger`/`boot_merger` 只负责官方二进制的格式封装，不编译 BL31、OP-TEE、DDR 初始化代码或 miniloader。Rockchip 对这一代平台主要发布二进制；只有未来确实修改可信固件源码或镜像格式时，才有理由在本工程建立相应构建链。
 
-官方发布说明没有列出 BL31 v1.30 到 v1.35 的逐项变化，所以不能预先宣称性能或功耗提升。静态 ELF 对比显示两个版本的三个 `PT_LOAD` 物理地址均为 `0x00040000`、`0xff8c0000` 和 `0xff8c2000`，新版没有扩大现有保留区。BL32 v2.11/v2.12 包含安全修复和参数检查增强，因此使用官方完整 v1.35/v2.12 组合比项目自行混配旧 BL32 更合理，但仍必须完成实机启动和安全内存回归。
+官方发布说明没有列出 BL31 v1.30 到 v1.35 的逐项变化，所以不能预先宣称性能或功耗提升。静态 ELF 对比显示两个版本的三个 `PT_LOAD` 物理地址均为 `0x00040000`、`0xff8c0000` 和 `0xff8c2000`，新版没有扩大现有保留区。BL32 v2.12 会检查 normal world 客户端的 OP-TEE 消息接口；实机已证明旧 Toybrick U-Boot 会因接口版本过低而 panic。因此正式构建改用含 API revision 2.0 客户端的新 Rockchip U-Boot，且部署时必须把 U-Boot 与 trust 当成配对，不能只更新其中一个。
 
 ## DDR bin 不属于 `trust.img`
 
@@ -52,10 +49,10 @@ DDR bin 要和 `rk3399pro_miniloader_v1.26.bin` 通过官方 `boot_merger` 生�
 ## 部署策略
 
 - `make uboot`/`make all` 生成 `uboot.img`、`rk3399pro_loader_v1.30.126.bin` 和 `trust.img`；`make all` 另外生成 `openwrt.img`。
-- 官方 BL31 v1.35 + BL32 v2.12 `trust.img` 属于一次性启动固件升级。必须先具备可工作的 Loader/Maskrom 恢复路径、UART 和已知可恢复镜像，再写到 `trust@0x4000`。
+- `uboot.img` 与 BL31 v1.35/BL32 v2.12 `trust.img` 是一次性配对升级。必须先具备可工作的 Loader/Maskrom 恢复路径、UART 和已知可恢复镜像，再在同一刷机会话分别写到 `uboot@0x2000` 与 `trust@0x4000`；两项完成前不得复位或上电启动。
 - 日常 OpenWrt 更新只写 `boot_linux.img` 或 `openwrt.img`，不应反复重写 `trust`。
 - `openwrt.img` 永远只能从 `0x6000` 写入，不能写到 `trust`；`trust.img` 也不能写到 `boot_linux`。
-- 首次升级推荐分三步落板：先只换 `trust.img` 并启动当前已验收系统；再换 OpenWrt 验证 BL31 GET/ROUND；最后才通过 Rockchip Upgrade Loader 操作更新 DDR v1.30/miniloader v1.26。构建的一致性不等于应把三个风险变量同时刷入。
+- 首次升级分三阶段：先同时写入匹配的 `uboot.img` 和 `trust.img` 并启动当前已验收 OpenWrt；再更新 OpenWrt 验证 BL31 GET/ROUND；最后才通过 Rockchip Upgrade Loader 操作更新 DDR v1.30/miniloader v1.26。U-Boot/trust 是一个接口兼容变量，OpenWrt 和 Loader/DDR 则继续隔离验证。
 
 BL32 当前占用解释了实机 DRAM 映射中的 `0x08400000-0x0a200000` 安全内存空洞。若未来取消 BL32、回收内存，必须重新验证冷启动、软复位、PSCI/SMP、CPU 与 DDR 调频、休眠/唤醒和内存映射；不能只从 INI 删除一个文件就视为完成。
 

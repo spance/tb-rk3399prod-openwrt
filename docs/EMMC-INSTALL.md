@@ -51,7 +51,7 @@ out/openwrt/openwrt.img
 
 ## 启动链构建与独立复现
 
-正常工程构建无需手工执行 merger：`make uboot` 或 `make all` 会调用厂商 `./make.sh rk3399pro`，生成 U-Boot、loader 和 trust，并把通过固定大小/SHA256 校验的文件复制到 `out/uboot/`。下面的命令用于脱离 U-Boot 工作树独立复现和审计官方 loader/trust，不是第二套项目构建入口。
+正常工程构建无需手工执行 merger：`make uboot` 或 `make all` 会调用固定 Rockchip vendor U-Boot 的 `./make.sh`，显式传入交叉编译器并选择 RK3399Pro 专用 INI，生成 U-Boot、loader 和 trust。构建还会检查 U-Boot 的 OP-TEE API revision 2.0 客户端，再把通过固定大小/SHA256 校验的文件复制到 `out/uboot/`。下面的命令用于脱离 U-Boot 工作树独立复现和审计官方 loader/trust，不是第二套项目构建入口。
 
 固定的官方 rkbin commit 不包含合并后的 RK3399Pro `trust.img`/loader 成品，但提供全部标准输入和 merger。两个 merger 都是 Rockchip 提供的 Linux x86_64 可执行文件，不需要 ARM 交叉编译器。独立复现时，请在 Linux x86_64 编译机上的临时目录取得同一固定 commit：
 
@@ -138,17 +138,19 @@ GPT 分区名比 `mmcblk0p4` 一类动态编号稳定。`fstools_overlay_fstype=
 | 文件 | 唯一目标 |
 |---|---:|
 | `rk3399pro_loader_v1.30.126.bin` | Rockchip 工具的 Upgrade Loader 操作；不是 GPT 分区镜像，没有普通 LBA 写入地址 |
-| `uboot.img` | `uboot`，LBA `0x2000` |
+| `uboot.img` | `uboot`，LBA `0x2000`；必须与下项 `trust.img` 接口兼容 |
 | `trust.img` | `trust`，LBA `0x4000`；BL31 v1.35 + BL32 v2.12 一次性升级 |
 | `openwrt.img` | 从 LBA `0x6000` 连续写入；内部 rootfs 自动落在 LBA `0x36000` |
 
-本轮首次部署可以使用构建产物升级 `trust.img`，并在独立阶段执行 Upgrade Loader；后续 OpenWrt 更新不需要反复写 loader、U-Boot 或 trust。写入 `openwrt.img` 会覆盖 `boot_linux`、rootfs 开头和已有 OpenWrt overlay。刷写仍使用 Rockchip 官方 RKDevTool/rkdeveloptool 和本板官方 parameter/GPT，本工程不提供自动化刷机程序。
+本轮首次部署必须把同一次正式构建产生的 `uboot.img` 和 `trust.img` 配对写入，并在独立阶段执行 Upgrade Loader；后续 OpenWrt 更新不需要反复写 loader、U-Boot 或 trust。写入 `openwrt.img` 会覆盖 `boot_linux`、rootfs 开头和已有 OpenWrt overlay。刷写仍使用 Rockchip 官方 RKDevTool/rkdeveloptool 和本板官方 parameter/GPT，本工程不提供自动化刷机程序。
 
-## 一次性升级官方 trust
+## 一次性升级 U-Boot/trust 配对
 
-升级 trust 之前必须同时满足：Rockchip Loader 或 Maskrom 能被主机识别；UART 可观察完整启动；已有可恢复镜像；官方输入哈希已经核对，并记录生成后 `trust.img` 的 SHA256。然后只选择 `trust.img`，目标地址严格为 `0x4000`。不得选择 loader、parameter 或整包升级，也不得把它写到 `0x6000`。
+升级前必须同时满足：Rockchip Loader 或 Maskrom 能被主机识别；UART 可观察完整启动；已有可恢复镜像；构建校验已经通过，并记录生成后 `uboot.img` 与 `trust.img` 的 SHA256。Windows RKDevTool 在同一下载镜像会话中同时选择 `uboot.img@0x2000` 和 `trust.img@0x4000`；使用 `rkdeveloptool` 时也必须连续写完两项后才执行 reset。不得在只写完其中一项时复位、断电或尝试启动，也不得选择 loader、parameter、`openwrt.img` 或整包升级。
 
-推荐分两步部署，避免把官方 trust 与新内核同时变成故障变量：先只写 `trust.img`，用当前已验收 OpenWrt 完成冷启动、六核、eMMC、网络、USB 和 reboot 冒烟；确认没有回归后，再写本轮 `openwrt.img` 启用 ROUND-only 探测。若同一次会话同时写入两者，虽然镜像布局允许，但启动失败时将难以区分可信固件和内核问题。
+这个配对要求来自已观察到的真实失败：BL31 v1.35/BL32 v2.12 `trust.img` 与旧 Toybrick U-Boot 混用时，BL32 报出 `optee api revision mismatch with u-boot/kernel` 并 panic。新 Rockchip U-Boot 含 OP-TEE API revision 2.0 客户端，所以 U-Boot 与 trust 是同一个接口兼容变量，不应人为拆成两次启动测试。它们写完后先保留当前已验收 OpenWrt，完成启动链冒烟；确认后再单独更新 OpenWrt 启用 ROUND-only 探测。这样仍把可信启动链与 Linux 变化隔离开。
+
+如果板上已经误先写入新 `trust.img` 且因旧 U-Boot panic，只要仍可进入 Rockchip Loader/Maskrom，就直接把同一正式构建的新 `uboot.img` 写到 `0x2000`，不要再改 OpenWrt 或 Loader。若无法获得匹配的新 U-Boot，则恢复旧 `trust.img`，不能靠修改 OpenWrt 绕过 BL32 校验。
 
 新 OpenWrt 启动后的第一轮验证：
 
@@ -158,7 +160,7 @@ GPT 分区名比 `mmcblk0p4` 一类动态编号稳定。`fstools_overlay_fstype=
 4. 探测前后 `/sys/kernel/debug/clk/sclk_ddrc/clk_rate` 都是 `800000000`；
 5. 完成多次冷启动和软复位，再进入持续 I/O/网络压力测试。
 
-若设备无法进入 U-Boot/Linux，立即通过 Loader/Maskrom 恢复原 trust，不继续更换 loader。`trust.img` 不包含 DDR bin；虽然 DDR v1.30 loader 已随构建生成，仍属于最后一个独立部署阶段，见 [DDR 固件与动态调频验证](DDR-DVFS.md)。
+若设备无法进入 U-Boot/Linux，立即通过 Loader/Maskrom 成对恢复原 U-Boot/trust，不继续更换 loader。`trust.img` 不包含 DDR bin；虽然 DDR v1.30 loader 已随构建生成，仍属于最后一个独立部署阶段，见 [DDR 固件与动态调频验证](DDR-DVFS.md)。
 
 ## 只更新 boot_linux 并保留 overlay
 

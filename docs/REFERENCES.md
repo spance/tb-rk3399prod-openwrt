@@ -3,6 +3,8 @@
 - [TB-RK3399ProD Board Guide](https://t.rock-chips.com/en/wiki.php?filename=Board_Guide/TB-RK3399ProD)
 - [Toybrick Kernel Guide](https://t.rock-chips.com/en/wiki.php?filename=Software_Development/Kernel)
 - [Toybrick U-Boot Guide](https://t.rock-chips.com/en/wiki.php?filename=Software_Development/U-Boot)
+- [Pinned Rockchip vendor U-Boot baseline](https://github.com/rockchip-linux/u-boot/tree/aeec6f2bfd5ce0cfcdfe0ffc7f84d9d143683856)
+- [Rockchip U-Boot OP-TEE API revision 2 update](https://github.com/rockchip-toybrick/u-boot/commit/74eb6027432600de60ed1c8bf892f1f8243c2c8a)
 - [Pinned Rockchip RK3399Pro trust composition](https://github.com/rockchip-linux/rkbin/blob/ecb4fcbe954edf38b3ae037d5de6d9f5bccf81f4/RKTRUST/RK3399PROTRUST.ini)
 - [Pinned Rockchip trust_merger](https://github.com/rockchip-linux/rkbin/blob/ecb4fcbe954edf38b3ae037d5de6d9f5bccf81f4/tools/trust_merger)
 - [Pinned Rockchip boot_merger](https://github.com/rockchip-linux/rkbin/blob/ecb4fcbe954edf38b3ae037d5de6d9f5bccf81f4/tools/boot_merger)

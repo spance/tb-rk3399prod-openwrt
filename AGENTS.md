@@ -24,7 +24,7 @@
 - `dts/`：板级 DTS/DTSI 的唯一权威副本。
 - `patches/kernel/`：直接作用于固定 Linux 内核的规范补丁。
 - `patches/openwrt/`：OpenWrt target、profile、内核配置和镜像规则。
-- `patches/u-boot/`：Toybrick U-Boot 的板级与构建补丁。
+- `patches/u-boot/`：固定 Rockchip vendor U-Boot 的板级补丁。
 - `rootfs/`：注入固件的板级运行策略、服务和诊断程序。
 - `configs/`：最小 OpenWrt 配置和 feed 固定信息。
 - `boot/`：`boot_linux` 容器使用的 U-Boot 启动脚本。
@@ -106,8 +106,10 @@ make package
   原始镜像，不是 Rockchip `update.img`，也不包含 GPT 分区表或启动链前三项。
 - 完整写入 `openwrt.img` 会重建 rootfs/overlay。只写 `boot_linux.img` 虽可保留
   rootfs 和 overlay，但必须先证明内核、rootfs 内置模块和外置 kmod ABI 一致。
-- 启动链更新应分阶段部署并保留 Loader/Maskrom、UART 和已知可恢复镜像；不要
-  为节省一次重启而同时引入多个无法隔离的启动变量。
+- `uboot.img` 的 OP-TEE 客户端必须和 `trust.img` 内 BL32 的消息接口兼容；两者
+  升级时应作为一个配对，在同一刷机会话写完且中间不重启。Loader/DDR 仍作为
+  风险更高的独立阶段最后升级，并始终保留 Loader/Maskrom、UART 和已知可恢复
+  镜像。
 
 ## 文档维护
 

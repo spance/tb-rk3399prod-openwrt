@@ -13,7 +13,7 @@
 | 官方板级行为基线 | `rockchip-toybrick/kernel` 的 `stable` 分支，Linux 4.4，固定提交 `a80be5749ac552821967eff313df53f9e0cd1e01` |
 | OpenWrt | `v25.12.5`，commit `f0a60eee2fe051741c643ea6118718aae1ef17fb` |
 | OpenWrt 目标 Linux | `6.12.94` |
-| Toybrick U-Boot | commit `22af63bad708ff41513375a8ecf7fe8d2d521c84`，带本工程补丁 |
+| Rockchip vendor U-Boot | `next-dev` commit `aeec6f2bfd5ce0cfcdfe0ffc7f84d9d143683856`，带本工程板级补丁和 OP-TEE API 2.0 客户端 |
 | Rockchip rkbin | commit `ecb4fcbe954edf38b3ae037d5de6d9f5bccf81f4`；BL31 v1.35、BL32 v2.12、DDR v1.30、miniloader v1.26 与官方 merger 的固定构建输入 |
 | Toybrick linux-x86 工具链 | commit `32505a8032d04e9320dbdb817b08bf67bdfb5a0c` |
 | OpenWrt target | `rockchip/armv8`，profile `toybrick_tb-rk3399prod` |
@@ -89,7 +89,7 @@ Linux 6.12 基线中，TCS4525/TCS4526 由兼容的 `fan53555` regulator 驱动�
 - 控制器别名 `mmc0 = &sdmmc`，硬件节点 `dwmmc@fe320000`，4-bit。
 - 卡检测 GPIO0_A7，低电平有效；无写保护。
 - DTS 保留 `max-frequency = 150000000`，但当前 Linux 实机确认的稳定工作值为 50 MHz、Rockchip IDMAC。
-- 厂商 U-Boot 的 TF 路径使用本工程可靠性补丁：25 MHz、PIO，单次请求最多 2048 blocks（1 MiB）。这个限制只用于 U-Boot 读卡，不应误套到 Linux eMMC。
+- Rockchip vendor U-Boot 的 TF 路径使用本工程可靠性参数：25 MHz、PIO，单次请求最多 2048 blocks（1 MiB），并保留错误/超时诊断。这个限制只用于 U-Boot 读卡，不应误套到 Linux eMMC。
 
 ### eMMC
 

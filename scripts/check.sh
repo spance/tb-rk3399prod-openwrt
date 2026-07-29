@@ -64,12 +64,12 @@ kernel_patch_dir="$PROJECT_DIR/patches/kernel"
 typec_phy_patch="$kernel_patch_dir/144-phy-rockchip-typec-orientation-switch.patch"
 typec_dwc_patch="$kernel_patch_dir/145-usb-dwc3-rk3399-typec-runtime-pm.patch"
 ddr_probe_patch="$kernel_patch_dir/146-devfreq-rk3399-round-rate-probe-only.patch"
-uboot_merger_patch="$PROJECT_DIR/patches/u-boot/0003-use-pinned-rkbin-merger-tools.patch"
+uboot_patch="$PROJECT_DIR/patches/u-boot/0001-tb-rk3399prod-board-support.patch"
 assert_file "$openwrt_patch"
 assert_file "$typec_phy_patch"
 assert_file "$typec_dwc_patch"
 assert_file "$ddr_probe_patch"
-assert_file "$uboot_merger_patch"
+assert_file "$uboot_patch"
 assert_file "$PROJECT_DIR/dts/rk3399pro-toybrick-prod.dts"
 assert_file "$PROJECT_DIR/dts/rk3399pro-toybrick-prod.dtsi"
 assert_file "$PROJECT_DIR/rootfs/etc/init.d/tb-net-tuning"
@@ -142,6 +142,10 @@ grep -Fq 'bash scripts/build-kmod.sh "$(MAKE_JOBS)" "$(KMODS)"' \
 	"$PROJECT_DIR/Makefile" || \
 	fail "Makefile kmod target is missing"
 assert_exact_line "$PROJECT_DIR/scripts/lib.sh" \
+	'UBOOT_URL=https://github.com/rockchip-linux/u-boot.git'
+assert_exact_line "$PROJECT_DIR/scripts/lib.sh" \
+	'UBOOT_COMMIT=aeec6f2bfd5ce0cfcdfe0ffc7f84d9d143683856'
+assert_exact_line "$PROJECT_DIR/scripts/lib.sh" \
 	'RKBIN_URL=https://github.com/rockchip-linux/rkbin.git'
 assert_exact_line "$PROJECT_DIR/scripts/lib.sh" \
 	'RKBIN_COMMIT=ecb4fcbe954edf38b3ae037d5de6d9f5bccf81f4'
@@ -162,6 +166,12 @@ done
 grep -Fq 'bash "$SCRIPT_DIR/verify-rkbin-images.sh" "$loader" "$trust"' \
 	"$PROJECT_DIR/scripts/build.sh" || \
 	fail "U-Boot build does not structurally verify loader and trust images"
+grep -Fq './make.sh "CROSS_COMPILE=$uboot_cross" rk3399pro' \
+	"$PROJECT_DIR/scripts/build.sh" || \
+	fail "U-Boot build does not pass the pinned cross compiler explicitly"
+grep -Fq "grep -Fq 'optee api revision: %d.%d'" \
+	"$PROJECT_DIR/scripts/build.sh" || \
+	fail "U-Boot build does not verify the compatible OP-TEE client"
 grep -Fq '"$boot_merger" unpack -i "$loader" -o "$stage"' \
 	"$PROJECT_DIR/scripts/verify-rkbin-images.sh" || \
 	fail "loader verification does not use the pinned official unpacker"
@@ -171,22 +181,16 @@ grep -Fq '"$OUT_DIR/uboot/$RKBIN_LOADER_IMAGE"' \
 grep -Fq '"$OUT_DIR/uboot/$RKBIN_TRUST_IMAGE"' \
 	"$PROJECT_DIR/scripts/package.sh" || \
 	fail "release package does not require the official trust image"
-if grep -Eq '^\+[[:space:]]*cp \$\{RKTOOLS\}/(boot_merger|trust_merger)' \
-	"$uboot_merger_patch"; then
-	fail "U-Boot must not overwrite the merger tools from the pinned rkbin"
-fi
-grep -Eq '^\+[[:space:]]*\$\{RKTOOLS\}/boot_merger \$ini$' \
-	"$uboot_merger_patch" || \
-	fail "U-Boot patch does not invoke the pinned boot_merger directly"
-grep -Fq '+TOOLCHAIN_ARM32=../prebuilts/gcc/arm/' \
-	"$uboot_merger_patch" || \
-	fail "U-Boot patch does not select the pinned ARM32 toolchain layout"
-grep -Fq '+TOOLCHAIN_ARM64=../prebuilts/gcc/aarch64/' \
-	"$uboot_merger_patch" || \
-	fail "U-Boot patch does not select the pinned ARM64 toolchain layout"
-if grep -Fq 'diff --git a/make.sh b/make.sh' \
-	"$PROJECT_DIR/patches/u-boot/0001-modern-linux-host-build-compat.patch"; then
-	fail "U-Boot make.sh changes must remain in the final build-input patch"
+grep -Fq '+CONFIG_LOADER_INI="RK3399PROMINIALL.ini"' "$uboot_patch" || \
+	fail "U-Boot patch does not pin the RK3399Pro loader INI"
+grep -Fq '+CONFIG_TRUST_INI="RK3399PROTRUST.ini"' "$uboot_patch" || \
+	fail "U-Boot patch does not pin the RK3399Pro trust INI"
+grep -Fq 'fifo-mode;' "$uboot_patch" || \
+	fail "U-Boot patch does not force the reliable TF FIFO path"
+grep -Fq 'if (!host->fifo_mode) {' "$uboot_patch" || \
+	fail "U-Boot patch does not preserve the board DT FIFO request"
+if grep -Fq 'diff --git a/make.sh b/make.sh' "$uboot_patch"; then
+	fail "current Rockchip U-Boot must use its native rkbin packaging scripts"
 fi
 grep -Fq './tools/trust_merger RKTRUST/RK3399PROTRUST.ini' \
 	"$PROJECT_DIR/docs/EMMC-INSTALL.md" || \
@@ -194,6 +198,16 @@ grep -Fq './tools/trust_merger RKTRUST/RK3399PROTRUST.ini' \
 grep -Fq './tools/boot_merger RKBOOT/RK3399PROMINIALL.ini' \
 	"$PROJECT_DIR/docs/EMMC-INSTALL.md" || \
 	fail "official loader generation command is not documented"
+grep -Fq '同一下载镜像会话' "$PROJECT_DIR/docs/EMMC-INSTALL.md" || \
+	fail "eMMC deployment guide does not require paired U-Boot/trust writes"
+grep -Fq 'optee api revision mismatch with u-boot/kernel' \
+	"$PROJECT_DIR/docs/EMMC-INSTALL.md" || \
+	fail "eMMC deployment guide is missing the observed compatibility failure"
+if grep -Eq '先只(写|换|刷).*trust\.img' \
+	"$PROJECT_DIR/docs/EMMC-INSTALL.md" \
+	"$PROJECT_DIR/docs/BOOT-CHAIN.md"; then
+	fail "U-Boot and trust must not be documented as independent boot trials"
+fi
 grep -Fq 'bash scripts/init.sh "$(MAKE_JOBS)" "$(KMODS)"' \
 	"$PROJECT_DIR/Makefile" || \
 	fail "Makefile does not pass the optional kmod pool to init"
@@ -273,8 +287,8 @@ done
 	-type d | wc -l)" -eq 0 ] || \
 	fail "U-Boot patch directory must not contain subdirectories"
 [ "$(find "$PROJECT_DIR/patches/u-boot" -maxdepth 1 -type f \
-	-name '*.patch' | wc -l)" -eq 3 ] || \
-	fail "exactly three current U-Boot patches are required"
+	-name '*.patch' | wc -l)" -eq 1 ] || \
+	fail "exactly one current U-Boot patch is required"
 for patch in "$PROJECT_DIR"/patches/u-boot/*.patch; do
 	git apply --numstat "$patch" >/dev/null
 done

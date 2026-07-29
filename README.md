@@ -17,7 +17,7 @@
 - **内置 Web 管理**：LuCI、简体中文界面、uhttpd、Firewall 和 APK 软件包管理随镜像提供，默认使用 HTTPS。
 - **完整的日常命令体验**：保留 BusyBox 作为启动与救援底座，同时内置 GNU `tar`（含 XZ 支持）、`gzip`、`xz`、`grep`、`sed`、`gawk`、`diff`、`patch`、`dd`、`stat`、`find`、`xargs`、`procps-ng`、tmux、完整 Vim 和 rsync；SFTP 服务端与 LuCI 简体中文界面随镜像提供。
 - **可验证的按需驱动**：可以从固定源码按包名构建 `kmod-*` APK；只有与当前固件内核依赖完全一致的模块才会交付，不覆盖 ABI，也不强制安装。
-- **完整启动链交付**：U-Boot 构建同时生成 `uboot.img`、DDR v1.30/miniloader v1.26 loader 和 BL31 v1.35/BL32 v2.12 `trust.img`；全部固定到同一 Rockchip 官方 rkbin，并校验 trust 整体及 loader 解包载荷。DDR 调频先走绝不 SET 的 ROUND 探测。
+- **完整启动链交付**：固定 Rockchip vendor U-Boot 新基线及官方 rkbin，构建相互兼容的 OP-TEE API 2.0 `uboot.img`、DDR v1.30/miniloader v1.26 loader 和 BL31 v1.35/BL32 v2.12 `trust.img`；校验 U-Boot 接口能力、trust 整体及 loader 解包载荷。DDR 调频先走绝不 SET 的 ROUND 探测。
 - **面向升级维护**：DTS、Linux 补丁和 rootfs 文件各自只有一个权威来源；全部上游精确锁定到 commit，并由自动检查保护关键不变量。
 
 ## 硬件支持矩阵
@@ -87,7 +87,7 @@ ARMv8 Crypto Extensions 已由 OpenSSL 3.5.7、16 KiB 数据块、固定单个 C
 
 | 层次 | 本工程承担的改造 | 权威来源 |
 |---|---|---|
-| U-Boot 启动链 | 保留 Toybrick/Rockchip 2017.09 BL33；修复现代 Linux x86_64 主机构建兼容性和 TF 可靠性；让厂商打包流程使用固定新版 rkbin 自带的 merger，统一生成 U-Boot、loader 和 trust | `patches/u-boot/`、`scripts/` |
+| U-Boot 启动链 | 固定 Rockchip `next-dev` vendor 2017.09 BL33；使用其 OP-TEE API 2.0 客户端和较新的 DWMMC 实现，增加本板 TF 可靠性参数，并显式选择 RK3399Pro loader/trust 配置 | `patches/u-boot/`、`scripts/` |
 | Linux 驱动 | 为 RK3399 Type-C PHY 接入标准 orientation switch；为 DWC3 实现真实 `NONE ↔ HOST`、xHCI 创建/销毁、父子 runtime PM 与 OTG reset 生命周期；增加不改变频率/电压的 DDR GET/ROUND 探测；用标准 SDHCI quirk 禁用本板不稳定的 eMMC CQE | `patches/kernel/` 与 OpenWrt 板级补丁中的 CQE backport |
 | 板级描述与配置 | 固化 RK809/电源、CPU/温控、存储、GMAC、USB、HDMI、PCIe 等连线和参数；选择 Linux Kconfig、OpenWrt profile、软件包和镜像规则 | `dts/`、`patches/openwrt/`、`configs/` |
 | 运行策略 | 启用 ext4 overlay；按硬件身份把 GMAC/RTL8125 IRQ 分别幂等绑定到 CPU4/CPU5；启用软件 flow offload；提供 Type-C 与 RTL8125 一次性诊断工具 | `rootfs/` |
@@ -104,7 +104,7 @@ docs/             架构、构建、硬件、部署和维护文档
 dts/              TB-RK3399ProD 唯一权威 DTS/DTSI
 patches/openwrt/  OpenWrt profile、内核配置和镜像规则
 patches/kernel/   直接作用于固定 Linux 6.12 的关键驱动补丁
-patches/u-boot/   Toybrick U-Boot 板级补丁
+patches/u-boot/   Rockchip vendor U-Boot 板级补丁
 rootfs/           注入固件的板级服务和首次启动默认值
 scripts/          检查、初始化、构建和打包脚本
 ```
@@ -140,7 +140,7 @@ make package
 
 | 文件 | 用途 |
 |---|---|
-| `out/uboot/uboot.img` | 当前厂商 miniloader 启动链使用的 U-Boot |
+| `out/uboot/uboot.img` | 带 OP-TEE API 2.0 客户端的 Rockchip vendor U-Boot；写入 `uboot@0x2000` |
 | `out/uboot/rk3399pro_loader_v1.30.126.bin` | DDR v1.30 + miniloader v1.26；供 Rockchip 工具执行 Upgrade Loader，不是 GPT 分区镜像 |
 | `out/uboot/trust.img` | BL31 v1.35 + BL32/OP-TEE v2.12；写入 `trust@0x4000` |
 | `out/openwrt/openwrt.img` | 从 LBA `0x6000` 连续写入的完整 OpenWrt 镜像，包含启动容器和 SquashFS rootfs |
@@ -150,7 +150,7 @@ make package
 | `out/kmods/<kernel>/<request>/` | 与指定固件内核严格匹配的按需 kmod APK、依赖清单和校验文件 |
 | `dist/*.tar.gz` | 包含三项启动链固件、OpenWrt 镜像、版本信息和 SHA256 的发布包 |
 
-厂商 `make.sh` 原本就负责生成 U-Boot、loader 和 trust；本工程只做必要升级：把 rkbin 固定到 Rockchip 官方新版，并阻止旧 U-Boot 工具覆盖新版 merger。日常 OpenWrt 更新仍不需要反复写 loader、U-Boot 或 trust。只更新内核/DTB 时可以单独写入 `boot_linux.img`，但必须保证它与原 rootfs 的内核模块 ABI 一致。官方配置的独立复现命令、刷写映射和恢复边界见 [eMMC 部署与验收](docs/EMMC-INSTALL.md)，启动链组成见 [启动链设计](docs/BOOT-CHAIN.md)，DDR 探测与后续 DVFS 门槛见 [DDR 固件与动态调频验证](docs/DDR-DVFS.md)。
+Rockchip `make.sh` 负责生成 U-Boot、loader 和 trust；工程固定 U-Boot、rkbin 和交叉工具链，并在输出前确认 U-Boot 的 OP-TEE 消息接口、RK3399Pro 专用 INI 以及三项镜像结构。首次升级时，`uboot.img` 与 `trust.img` 是不可拆开的兼容配对：必须在同一刷机会话分别写入 `0x2000` 和 `0x4000`，中间不得重启。Loader/DDR 作为风险更高的独立阶段最后升级；日常 OpenWrt 更新不需要重写前三项。只更新内核/DTB 时可以单独写入 `boot_linux.img`，但必须保证它与原 rootfs 的内核模块 ABI 一致。独立复现命令、刷写映射和恢复边界见 [eMMC 部署与验收](docs/EMMC-INSTALL.md)，启动链组成见 [启动链设计](docs/BOOT-CHAIN.md)，DDR 探测与后续 DVFS 门槛见 [DDR 固件与动态调频验证](docs/DDR-DVFS.md)。
 
 本工程不提供自动刷写或整盘 `dd` 脚本。不要把 OpenWrt 镜像写入 `trust` 分区，也不要把 `trust.img` 写入 `boot_linux`。
 

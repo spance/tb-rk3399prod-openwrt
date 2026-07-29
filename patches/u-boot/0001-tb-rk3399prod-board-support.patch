@@ -1,0 +1,121 @@
+From: TB-RK3399ProD OpenWrt project
+Subject: [PATCH] rk3399pro: add TB-RK3399ProD boot reliability settings
+
+Keep the removable-card path conservative and deterministic on the
+TB-RK3399ProD.  The current Rockchip DWMMC driver contains the later FIFO
+transfer fixes, so preserve an explicit DT request for PIO instead of
+carrying the older IDMAC workaround.
+
+Select the RK3399Pro-specific loader and trust INIs explicitly.  The generic
+chip-name parser otherwise reduces CONFIG_ROCKCHIP_RK3399PRO to RK3399 and
+silently packages the wrong firmware pair.
+
+---
+ arch/arm/dts/rk3399-evb.dts     |  6 ++++++
+ configs/rk3399pro_defconfig     |  3 +++
+ drivers/mmc/dw_mmc.c            | 28 ++++++++++++++++++++--------
+ include/configs/rk3399_common.h |  1 +
+ 4 files changed, 30 insertions(+), 8 deletions(-)
+
+diff --git a/arch/arm/dts/rk3399-evb.dts b/arch/arm/dts/rk3399-evb.dts
+index 7bb06881e9..940db6e4e8 100644
+--- a/arch/arm/dts/rk3399-evb.dts
++++ b/arch/arm/dts/rk3399-evb.dts
+@@ -245,6 +245,12 @@
+ 
+ &sdmmc {
+ 	bus-width = <4>;
++	/*
++	 * TB-RK3399ProD: use the fixed FIFO path for reliable large reads from
++	 * removable media. Linux configures its own transfer mode after boot.
++	 */
++	max-frequency = <25000000>;
++	fifo-mode;
+ 	status = "okay";
+ };
+ 
+diff --git a/configs/rk3399pro_defconfig b/configs/rk3399pro_defconfig
+index 5af187c333..9828ec9efc 100644
+--- a/configs/rk3399pro_defconfig
++++ b/configs/rk3399pro_defconfig
+@@ -1,4 +1,5 @@
+ CONFIG_ARM=y
++CONFIG_LOCALVERSION="-tb-rk3399prod"
+ CONFIG_ARCH_ROCKCHIP=y
+ CONFIG_SPL_LIBCOMMON_SUPPORT=y
+ CONFIG_SPL_LIBGENERIC_SUPPORT=y
+@@ -6,6 +7,8 @@ CONFIG_SYS_MALLOC_F_LEN=0x4000
+ CONFIG_SPL_FIT_GENERATOR="arch/arm/mach-rockchip/make_fit_atf.py"
+ CONFIG_ROCKCHIP_RK3399=y
+ CONFIG_ROCKCHIP_RK3399PRO=y
++CONFIG_LOADER_INI="RK3399PROMINIALL.ini"
++CONFIG_TRUST_INI="RK3399PROTRUST.ini"
+ CONFIG_ROCKCHIP_VENDOR_PARTITION=y
+ CONFIG_CHIP_NAME="RK3399PRO"
+ CONFIG_UBOOT_SIZE_KB=2048
+diff --git a/drivers/mmc/dw_mmc.c b/drivers/mmc/dw_mmc.c
+index 1015066c2c..a0753d0bfe 100644
+--- a/drivers/mmc/dw_mmc.c
++++ b/drivers/mmc/dw_mmc.c
+@@ -227,7 +227,13 @@ static int dwmci_data_transfer(struct dwmci_host *host, struct mmc_data *data)
+ 		mask = dwmci_readl(host, DWMCI_RINTSTS);
+ 		/* Error during data transfer. */
+ 		if (mask & (DWMCI_DATA_ERR | DWMCI_DATA_TOUT)) {
+-			debug("%s: DATA ERROR!\n", __func__);
++			printf("DWMMC %s data error: RINTSTS=%08x STATUS=%08x "
++			       "CTRL=%08x BMOD=%08x mode=%s\n",
++			       host->name, mask,
++			       dwmci_readl(host, DWMCI_STATUS),
++			       dwmci_readl(host, DWMCI_CTRL),
++			       dwmci_readl(host, DWMCI_BMOD),
++			       host->fifo_mode ? "PIO" : "IDMAC");
+ 			/*
+ 			 * It is necessary to wait for several cycles before
+ 			 * resetting the controller while data timeout or error.
+@@ -326,8 +332,10 @@ write_again:
+ 
+ 		/* Check for timeout. */
+ 		if (get_timer(start) > timeout) {
+-			debug("%s: Timeout waiting for data!\n",
+-			      __func__);
++			printf("DWMMC %s data timeout: RINTSTS=%08x STATUS=%08x "
++			       "mode=%s\n", host->name, mask,
++			       dwmci_readl(host, DWMCI_STATUS),
++			       host->fifo_mode ? "PIO" : "IDMAC");
+ 			ret = -ETIMEDOUT;
+ 			break;
+ 		}
+@@ -821,12 +829,16 @@ static int dwmci_init(struct mmc *mmc)
+ 		return -EIO;
+ 	}
+ 
+-	use_dma = SDMMC_GET_TRANS_MODE(dwmci_readl(host, DWMCI_HCON));
+-	if (use_dma == DMA_INTERFACE_IDMA) {
+-		host->fifo_mode = 0;
+-	} else {
+-		host->fifo_mode = 1;
++	/* Preserve an explicit board-DT request for PIO. */
++	if (!host->fifo_mode) {
++		use_dma = SDMMC_GET_TRANS_MODE(dwmci_readl(host, DWMCI_HCON));
++		if (use_dma == DMA_INTERFACE_IDMA)
++			host->fifo_mode = 0;
++		else
++			host->fifo_mode = 1;
+ 	}
++	if (host->fifo_mode)
++		printf("DWMMC %s: using PIO data transfers\n", host->name);
+ 
+ 	/* Enumerate at 400KHz */
+ 	dwmci_setup_bus(host, mmc->cfg->f_min);
+diff --git a/include/configs/rk3399_common.h b/include/configs/rk3399_common.h
+index c4bd586898..2d46b41365 100644
+--- a/include/configs/rk3399_common.h
++++ b/include/configs/rk3399_common.h
+@@ -35,6 +35,7 @@
+ 
+ /* MMC/SD IP block */
+ #define CONFIG_BOUNCE_BUFFER
++#define CONFIG_SYS_MMC_MAX_BLK_COUNT	2048
+ #define CONFIG_ROCKCHIP_SDHCI_MAX_FREQ	200000000
+ 
+ #define CONFIG_SUPPORT_VFAT

@@ -7,8 +7,8 @@ WORK_DIR=$(readlink -m "${TB_WORK_DIR:-$PROJECT_DIR/.work}")
 OUT_DIR=$(readlink -m "${TB_OUT_DIR:-$PROJECT_DIR/out}")
 DIST_DIR=$(readlink -m "${TB_DIST_DIR:-$PROJECT_DIR/dist}")
 
-UBOOT_URL=https://github.com/rockchip-toybrick/u-boot.git
-UBOOT_COMMIT=22af63bad708ff41513375a8ecf7fe8d2d521c84
+UBOOT_URL=https://github.com/rockchip-linux/u-boot.git
+UBOOT_COMMIT=aeec6f2bfd5ce0cfcdfe0ffc7f84d9d143683856
 RKBIN_URL=https://github.com/rockchip-linux/rkbin.git
 RKBIN_COMMIT=ecb4fcbe954edf38b3ae037d5de6d9f5bccf81f4
 RKBIN_DDR_VERSION=1.30

@@ -10,7 +10,7 @@ TB-RK3399ProD 使用双通道 LPDDR3，当前稳定启动频率为 800 MHz。DDR
 | 官方 `trust.img` 内 BL31 | v1.30 → RK3399Pro v1.35；BL32 同步到官方 v2.12 | EL3/PSCI，以及 Linux 时钟驱动使用的 DDR GET/ROUND/SET SMC | 使用官方完整组合并验证 GET/ROUND |
 | Linux 6.12 DMC/devfreq | 原先禁用 | 读取负载、选择 OPP、协调时钟与电压 | 仅启用无损 ROUND 探测，不允许 SET |
 
-Rockchip 的 RK3399Pro 发布说明把 DDR bin v1.29 的 LPDDR3 位宽识别修复和 v1.30 的 LPDDR3 reboot 卡死修复标为重要。v1.30 有明确升级价值，但 DDR bin 不在 `trust.img` 中；它要和 miniloader v1.26 通过官方 `boot_merger` 组成 loader 镜像，并写入比 GPT 分区更早的启动区域。工程现在随 U-Boot 构建生成并校验 v1.30.126 loader，但构建集成不改变部署原则：先完成 BL31/ROUND 验收，再把 loader 作为最后一个独立启动变量进行冷启动和软复位回归。
+Rockchip 的 RK3399Pro 发布说明把 DDR bin v1.29 的 LPDDR3 位宽识别修复和 v1.30 的 LPDDR3 reboot 卡死修复标为重要。v1.30 有明确升级价值，但 DDR bin 不在 `trust.img` 中；它要和 miniloader v1.26 通过官方 `boot_merger` 组成 loader 镜像，并写入比 GPT 分区更早的启动区域。工程现在随 U-Boot 构建生成并校验 v1.30.126 loader，但构建集成不改变部署原则：先把匹配的新 U-Boot/trust 作为一组完成启动验收，再更新 OpenWrt 完成 BL31/ROUND 验收，最后把 loader 作为独立启动变量进行冷启动和软复位回归。
 
 官方仓库没有给出 miniloader v1.26 的逐项变更说明，当前实机使用的 miniloader 版本也尚未从日志中可靠确认。因此不能仅凭 DDR v1.30 的修复说明把整套 loader 判定为低风险更新；部署前必须核对 [启动链构建与独立复现](EMMC-INSTALL.md#启动链构建与独立复现) 中的固定哈希，并确认 Loader/Maskrom 恢复链可用。
 
@@ -30,7 +30,7 @@ DTS 仍使用标准 `rockchip,rk3399-dmc` binding，不增加项目私有属性�
 
 ## 上板判读
 
-刷入官方 BL31 v1.35 + BL32 v2.12 `trust.img` 和本轮 OpenWrt 后执行：
+刷入匹配的新 `uboot.img`、官方 BL31 v1.35 + BL32 v2.12 `trust.img` 和本轮 OpenWrt 后执行：
 
 ```sh
 dmesg | grep -E 'DDR round-rate|rk3399-dmc'

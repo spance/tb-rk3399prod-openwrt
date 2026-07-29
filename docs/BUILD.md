@@ -17,7 +17,7 @@ sudo apt-get install -y bc bison build-essential bzip2 ca-certificates \
 该清单只针对当前固定的 TB-RK3399ProD 构建路径，不是通用 OpenWrt 开发机的全量套件集。复核后的依据如下：
 
 - 工程直接使用 `e2fsprogs` 生成并校验 `boot_linux.img`。
-- 固定的厂商 U-Boot 路径使用 `bc`，需要 flex/bison 构建 Kconfig/DTC，且其 `CONFIG_MKIMAGE_DTC_PATH="dtc"` 要求 host `dtc`。
+- 固定的 Rockchip vendor U-Boot 路径使用 `bc`，需要 flex/bison 构建 Kconfig/DTC，且其 `CONFIG_MKIMAGE_DTC_PATH="dtc"` 要求 host `dtc`。
 - OpenWrt 25.12.5 的 host 前置检查要求 GNU 工具、Git、Perl、Python、rsync、ncurses、zlib 及归档/下载工具；HTTPS 获取依赖 `ca-certificates`。
 - OpenWrt 会自行构建 bc、bison、cpio、elfutils、flex、LibreSSL、pkgconf、xz 和 zlib 等 staged host tools，但其中少数工具在完成自举之前仍需要系统命令或开发库，因此保留上述最小集。
 
@@ -54,7 +54,7 @@ make init
 
 | 组件 | 版本 |
 |---|---|
-| Toybrick U-Boot | `22af63bad708ff41513375a8ecf7fe8d2d521c84` |
+| Rockchip vendor U-Boot `next-dev` | `aeec6f2bfd5ce0cfcdfe0ffc7f84d9d143683856` |
 | Rockchip rkbin | `ecb4fcbe954edf38b3ae037d5de6d9f5bccf81f4` |
 | Toybrick linux-x86 工具链 | `32505a8032d04e9320dbdb817b08bf67bdfb5a0c` |
 | OpenWrt | `v25.12.5` / `f0a60eee2fe051741c643ea6118718aae1ef17fb` |
@@ -120,7 +120,7 @@ make openwrt
 bash scripts/build.sh all 16
 ```
 
-`make all` 不调用初始化，只检查主机依赖、工作树、固定基线、补丁、feed、`.config`、DTS 和 rootfs 同步状态；任一输入未准备好便要求先执行 `make init`。U-Boot 使用厂商命令 `./make.sh rk3399pro`，一次构建 BL33 并封装 U-Boot、loader 和 trust。本工程的 U-Boot 补丁让该流程使用固定新版 rkbin 自带的 merger，不再用旧 U-Boot 工具覆盖它们；构建脚本随后校验 trust 的固定大小/整文件 SHA256，并用官方 `boot_merger unpack` 校验 loader 中 DDR、miniloader、usbplug 的大小与 SHA256。OpenWrt 构建阶段不执行 `feeds update/install`、`defconfig` 或 `make download`，只执行编译；并行构建失败时自动关闭标准输入并以 `-j1 V=sc` 重试，既保留命令和完整错误上下文，也确保遗漏的 Kconfig 项直接失败而不会进入交互式配置。构建完成后，脚本生成并验证 64 MiB `boot_linux.img` 与 128 MiB SquashFS `rootfs.img`，再按原厂 GPT 的相对偏移组合为 224 MiB `openwrt.img`。
+`make all` 不调用初始化，只检查主机依赖、工作树、固定基线、补丁、feed、`.config`、DTS 和 rootfs 同步状态；任一输入未准备好便要求先执行 `make init`。U-Boot 使用 Rockchip 命令 `./make.sh CROSS_COMPILE=<固定前缀> rk3399pro`，一次构建 BL33 并封装 U-Boot、loader 和 trust。板级补丁显式选择 RK3399Pro 专用 loader/trust INI；构建脚本清除旧输出后再编译，确认 `.config` 的 INI 选择和 `u-boot.bin` 的 OP-TEE API revision 2.0 客户端，随后校验 trust 固定大小/整文件 SHA256，并用官方 `boot_merger unpack` 校验 loader 中 DDR、miniloader、usbplug 的大小与 SHA256。OpenWrt 构建阶段不执行 `feeds update/install`、`defconfig` 或 `make download`，只执行编译；并行构建失败时自动关闭标准输入并以 `-j1 V=sc` 重试，既保留命令和完整错误上下文，也确保遗漏的 Kconfig 项直接失败而不会进入交互式配置。构建完成后，脚本生成并验证 64 MiB `boot_linux.img` 与 128 MiB SquashFS `rootfs.img`，再按原厂 GPT 的相对偏移组合为 224 MiB `openwrt.img`。
 
 项目正式发布包含四个镜像：
 
