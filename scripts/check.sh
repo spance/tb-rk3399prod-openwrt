@@ -169,9 +169,12 @@ grep -Fq 'bash "$SCRIPT_DIR/verify-rkbin-images.sh" "$loader" "$trust"' \
 grep -Fq './make.sh "CROSS_COMPILE=$uboot_cross" rk3399pro' \
 	"$PROJECT_DIR/scripts/build.sh" || \
 	fail "U-Boot build does not pass the pinned cross compiler explicitly"
-grep -Fq "grep -Fq 'optee api revision: %d.%d'" \
+grep -Fq "grep -aFq 'optee api revision: %d.%d'" \
 	"$PROJECT_DIR/scripts/build.sh" || \
 	fail "U-Boot build does not verify the compatible OP-TEE client"
+if grep -Eq 'strings .*u-boot\.bin.*\|' "$PROJECT_DIR/scripts/build.sh"; then
+	fail "U-Boot binary checks must not use a pipe that fails under pipefail"
+fi
 grep -Fq '"$boot_merger" unpack -i "$loader" -o "$stage"' \
 	"$PROJECT_DIR/scripts/verify-rkbin-images.sh" || \
 	fail "loader verification does not use the pinned official unpacker"

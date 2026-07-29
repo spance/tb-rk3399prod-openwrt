@@ -54,8 +54,8 @@ build_uboot()
 	grep -Fqx 'CONFIG_TRUST_INI="RK3399PROTRUST.ini"' \
 		"$WORK_DIR/u-boot/.config" || \
 		fail "U-Boot did not select the RK3399Pro trust INI"
-	strings "$WORK_DIR/u-boot/u-boot.bin" | \
-		grep -Fq 'optee api revision: %d.%d' || \
+	grep -aFq 'optee api revision: %d.%d' \
+		"$WORK_DIR/u-boot/u-boot.bin" || \
 		fail "U-Boot is missing the OP-TEE API revision 2 client"
 	[ "$(stat -c '%s' "$image")" -eq 4194304 ] || \
 		fail "uboot.img is not exactly 4 MiB"
