@@ -10,12 +10,17 @@ Select the RK3399Pro-specific loader and trust INIs explicitly.  The generic
 chip-name parser otherwise reduces CONFIG_ROCKCHIP_RK3399PRO to RK3399 and
 silently packages the wrong firmware pair.
 
+Accept both the standard zero and Rockchip 0xffffffff legacy-script table
+terminators.  This keeps distro boot compatible with OpenWrt's standard
+mkimage output while retaining compatibility with Rockchip's mkimage variant.
+
 ---
  arch/arm/dts/rk3399-evb.dts     |  6 ++++++
+ cmd/source.c                    | 20 +++++++++++++++++++-
  configs/rk3399pro_defconfig     |  3 +++
  drivers/mmc/dw_mmc.c            | 28 ++++++++++++++++++++--------
  include/configs/rk3399_common.h |  1 +
- 4 files changed, 30 insertions(+), 8 deletions(-)
+ 5 files changed, 49 insertions(+), 9 deletions(-)
 
 diff --git a/arch/arm/dts/rk3399-evb.dts b/arch/arm/dts/rk3399-evb.dts
 index 7bb06881e9..940db6e4e8 100644
@@ -33,7 +38,40 @@ index 7bb06881e9..940db6e4e8 100644
 +	fifo-mode;
  	status = "okay";
  };
- 
+
+diff --git a/cmd/source.c b/cmd/source.c
+index 6b1c8b744b..d9abc382b4 100644
+--- a/cmd/source.c
++++ b/cmd/source.c
+@@ -30,3 +30,4 @@ source (ulong addr, const char *fit_uname)
+ #if defined(CONFIG_IMAGE_FORMAT_LEGACY)
+-	const image_header_t *hdr;
++	const image_header_t *hdr;
++	u32		*data_end;
+ #endif
+@@ -90,3 +91,20 @@ source (ulong addr, const char *fit_uname)
+-		while (*data++ != IMAGE_PARAM_INVAL);
+-		break;
++		/*
++		 * Standard mkimage uses zero as the terminating size entry,
++		 * while the Rockchip variant uses IMAGE_PARAM_INVAL. Accept
++		 * both formats without scanning beyond the verified payload.
++		 */
++		data_end = (u32 *)((char *)data + image_get_data_size(hdr));
++		while (data < data_end && *data != 0 &&
++		       *data != IMAGE_PARAM_INVAL)
++			data++;
++		if (data >= data_end) {
++			puts ("Malformed Script\n");
++			return 1;
++		}
++		data++;
++		if (len > (ulong)((char *)data_end - (char *)data)) {
++			puts ("Truncated Script\n");
++			return 1;
++		}
++		break;
+ #endif
 diff --git a/configs/rk3399pro_defconfig b/configs/rk3399pro_defconfig
 index 5af187c333..9828ec9efc 100644
 --- a/configs/rk3399pro_defconfig

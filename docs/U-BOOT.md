@@ -24,8 +24,11 @@
 - 显式选择 `RK3399PROMINIALL.ini` 和 `RK3399PROTRUST.ini`。上游芯片名解析会把 RK3399Pro 化简成 RK3399，不显式固定会静默封装普通 RK3399 固件。
 - 只对 U-Boot 的可拔 TF 控制器使用 25 MHz + PIO，并把单次 MMC 请求限制为 2048 blocks/1 MiB。
 - 保留设备树明确请求的 FIFO 模式，并在 DWMMC 错误、超时和模式选择处输出足够的诊断信息。
+- 同时接受标准 `mkimage` 的零终止 legacy script 长度表和 Rockchip 私有的 `0xffffffff` 终止形式，并对表扫描和脚本长度做边界检查。OpenWrt 继续生成标准 `boot.scr`，不迁就厂商私有格式。
 
 旧基线需要的 host 构建和大块 IDMAC 修补不再携带：新 Rockchip 基线已经包含后续 host/DWMMC 修复，继续叠加旧实现会扩大补丁面并增加冲突风险。项目也不修改 `make.sh` 或复制 merger。
+
+新 U-Boot 与 BL32 v2.12 的首轮实机启动已经确认 API revision 2.0 协商成功，但随后发现 Rockchip 分支只接受其私有 `0xffffffff` legacy script 终止符，会把 OpenWrt 标准零终止 `boot.scr` 的正文地址解析错。当前兼容补丁直接修复 U-Boot 解析器，并拒绝越界或截断脚本；是否完成交付仍以再次上板后自动执行 `boot.scr`、加载 FIT 并进入 Linux 为准。
 
 该策略已稳定读取约 30 MiB FIT；Linux 启动后 TF 仍使用 50 MHz + IDMAC，不影响内核运行阶段性能。eMMC SDHCI 高速路径未被修改。
 

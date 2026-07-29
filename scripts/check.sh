@@ -195,6 +195,11 @@ grep -Fq 'fifo-mode;' "$uboot_patch" || \
 	fail "U-Boot patch does not force the reliable TF FIFO path"
 grep -Fq 'if (!host->fifo_mode) {' "$uboot_patch" || \
 	fail "U-Boot patch does not preserve the board DT FIFO request"
+grep -Fq 'Standard mkimage uses zero as the terminating size entry' \
+	"$uboot_patch" || \
+	fail "U-Boot patch does not support standard legacy script images"
+grep -Fq '*data != IMAGE_PARAM_INVAL' "$uboot_patch" || \
+	fail "U-Boot patch no longer supports the Rockchip script terminator"
 if grep -Fq 'diff --git a/make.sh b/make.sh' "$uboot_patch"; then
 	fail "current Rockchip U-Boot must use its native rkbin packaging scripts"
 fi
