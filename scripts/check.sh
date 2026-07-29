@@ -81,6 +81,7 @@ assert_file "$PROJECT_DIR/configs/openwrt.config"
 assert_file "$PROJECT_DIR/configs/feeds.conf"
 assert_file "$PROJECT_DIR/boot/boot.cmd"
 assert_file "$PROJECT_DIR/scripts/clean.sh"
+assert_file "$PROJECT_DIR/scripts/clean-openwrt-kernel.sh"
 assert_file "$PROJECT_DIR/scripts/build-kmod.sh"
 assert_file "$PROJECT_DIR/scripts/make-openwrt-image.sh"
 assert_file "$PROJECT_DIR/scripts/reset.sh"
@@ -124,6 +125,17 @@ for file in "$PROJECT_DIR/Makefile" "$PROJECT_DIR/README.md" \
 done
 grep -Fq 'bash scripts/clean.sh' "$PROJECT_DIR/Makefile" || \
 	fail "Makefile clean target is missing"
+grep -Fq 'bash scripts/clean-openwrt-kernel.sh' "$PROJECT_DIR/Makefile" || \
+	fail "Makefile kernel-clean target is missing"
+grep -Fq 'remove_openwrt_kernel_build_state "$openwrt_dir"' \
+	"$PROJECT_DIR/scripts/sync-openwrt-kernel-patches.sh" || \
+	fail "changed canonical kernel patches do not invalidate the kernel build"
+grep -Fq 'remove_openwrt_kernel_build_state "$source"' \
+	"$PROJECT_DIR/scripts/build-kmod.sh" || \
+	fail "failed kmod builds do not use the non-interactive kernel cleanup"
+if grep -R -Eq 'make[[:space:]]+target/linux/clean' "$PROJECT_DIR/scripts"; then
+	fail "OpenWrt target/linux/clean can enter interactive configuration"
+fi
 grep -Fq 'bash scripts/reset.sh' "$PROJECT_DIR/Makefile" || \
 	fail "Makefile reset target is missing"
 grep -Fq 'bash scripts/build-kmod.sh "$(MAKE_JOBS)" "$(KMODS)"' \

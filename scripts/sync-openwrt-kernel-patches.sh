@@ -29,14 +29,22 @@ dest="$openwrt_dir/target/linux/rockchip/patches-$kernel_patchver"
 [ -d "$dest" ] || fail "OpenWrt kernel patch directory not found: $dest"
 
 count=0
+changed=0
 for source_file in "$source_dir"/*.patch; do
 	[ -f "$source_file" ] || continue
 	name=${source_file##*/}
-	install -m 0644 "$source_file" "$dest/$name"
+	if [ ! -f "$dest/$name" ] || ! cmp -s "$source_file" "$dest/$name"; then
+		install -m 0644 "$source_file" "$dest/$name"
+		changed=1
+	fi
 	cmp -s "$source_file" "$dest/$name" || \
 		fail "kernel patch synchronization failed: $name"
 	count=$((count + 1))
 done
 [ "$count" -gt 0 ] || fail "no canonical kernel patches found in $source_dir"
+
+if [ "$changed" -eq 1 ]; then
+	remove_openwrt_kernel_build_state "$openwrt_dir"
+fi
 
 echo "Synchronized $count canonical patches to OpenWrt patches-$kernel_patchver"

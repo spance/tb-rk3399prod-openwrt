@@ -166,6 +166,14 @@ make clean
 
 `make clean` 只删除可重建的 `out/` 和 `dist/`，绝不调用 Git，也不修改 `.work/`。自定义 `TB_OUT_DIR` 或 `TB_DIST_DIR` 时，仅允许删除已由本工程构建脚本写入隐藏标记的目录，并显式拒绝根目录、工程根目录、home 和 `TB_WORK_DIR`。
 
+直接调用 OpenWrt 顶层的 `make target/linux/clean` 可能在配置未完整生成时进入交互式 menuconfig，因此本工程不使用该入口。修改 canonical kernel patch 后，`make init` 会比较同步前后的内容并自动使 Rockchip 内核构建缓存失效。需要手动强制重建内核时使用：
+
+```sh
+make kernel-clean
+```
+
+该目标只删除 `.work/openwrt/build_dir/target-*/linux-rockchip_armv8` 和相应 `.target_compile` stamp，并逐个校验真实路径位于 `TB_WORK_DIR` 内；它保留正式 `.config`、源码下载包、host/target 工具链和其他 OpenWrt 构建缓存，全程不调用 menuconfig。
+
 如果 `.work/` 因中断的补丁、手工调试或更新后的旧补丁状态而无法再次初始化，执行：
 
 ```sh

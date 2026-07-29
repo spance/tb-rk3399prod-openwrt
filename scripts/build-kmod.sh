@@ -112,7 +112,7 @@ cleanup()
 	restore_config || status=1
 	if [ "$status" -ne 0 ] && [ "$kernel_build_started" -eq 1 ]; then
 		echo "Discarding candidate kernel state after unsuccessful kmod build..." >&2
-		( cd "$source" && make target/linux/clean >/dev/null 2>&1 ) || true
+		remove_openwrt_kernel_build_state "$source" || true
 		find "$source/bin" -type f -name 'kmod-*.apk' -delete \
 			2>/dev/null || true
 	fi

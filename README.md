@@ -130,6 +130,7 @@ make package
 | `make kmod KMODS="kmod-..."` | 使用同一工作树构建模块及其 kmod 依赖，ABI 完全匹配才输出 APK |
 | `make package` | 校验 `out/` 并生成 `dist/` 发布包 |
 | `make clean` | 只删除 `out/` 和 `dist/` |
+| `make kernel-clean` | 非交互清除可重建的 Rockchip 内核缓存，保留 `.config`、下载包和工具链 |
 | `make reset` | 校验 origin/固定 commit 后复位 `.work` 中的上游 Git 工作树 |
 | `make -j2 reinit` | 依次执行 `reset` 和 `init` |
 

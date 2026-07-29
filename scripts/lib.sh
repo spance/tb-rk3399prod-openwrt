@@ -58,6 +58,46 @@ verify_sha256()
 		fail "SHA256 mismatch for $file: expected $expected, got $actual"
 }
 
+remove_openwrt_kernel_build_state()
+{
+	local source path resolved removed
+	source=$(readlink -m "$1")
+	case "$source/" in
+		"$WORK_DIR/"*) ;;
+		*) fail "refusing to clean an OpenWrt tree outside TB_WORK_DIR: $source" ;;
+	esac
+	[ -d "$source/.git" ] || \
+		fail "OpenWrt worktree is not initialized: $source"
+	removed=0
+
+	for path in "$source"/build_dir/target-*/linux-rockchip_armv8; do
+		[ -e "$path" ] || continue
+		resolved=$(readlink -m "$path")
+		case "$resolved/" in
+			"$source/build_dir/"*/linux-rockchip_armv8/) ;;
+			*) fail "refusing to remove unexpected kernel build path: $resolved" ;;
+		esac
+		rm -rf -- "$resolved"
+		echo "Removed OpenWrt kernel build directory: $resolved"
+		removed=1
+	done
+
+	for path in "$source"/staging_dir/target-*/stamp/.target_compile; do
+		[ -e "$path" ] || continue
+		resolved=$(readlink -m "$path")
+		case "$resolved" in
+			"$source/staging_dir/"*/stamp/.target_compile) ;;
+			*) fail "refusing to remove unexpected target stamp: $resolved" ;;
+		esac
+		rm -f -- "$resolved"
+		echo "Removed OpenWrt target compile stamp: $resolved"
+		removed=1
+	done
+
+	[ "$removed" -eq 1 ] || \
+		echo "OpenWrt kernel build state is already clean: $source"
+}
+
 normalize_kmod_names()
 {
 	local raw package

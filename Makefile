@@ -1,4 +1,4 @@
-.PHONY: check init uboot openwrt all kmod package clean reset reinit
+.PHONY: check init uboot openwrt all kmod package clean kernel-clean reset reinit
 
 MAKE_JOBS = $(or $(patsubst -j%,%,$(filter -j%,$(MAKEFLAGS))),$(shell nproc))
 
@@ -25,6 +25,9 @@ package:
 
 clean:
 	bash scripts/clean.sh
+
+kernel-clean:
+	bash scripts/clean-openwrt-kernel.sh
 
 reset:
 	bash scripts/reset.sh
