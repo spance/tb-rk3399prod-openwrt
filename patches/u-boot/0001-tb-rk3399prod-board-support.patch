@@ -307,13 +307,18 @@ diff --git a/include/configs/rk3399_common.h b/include/configs/rk3399_common.h
 index c4bd586898..049959312c 100644
 --- a/include/configs/rk3399_common.h
 +++ b/include/configs/rk3399_common.h
-@@ -23,4 +23,4 @@
+@@ -25,16 +25,17 @@
  #define CONFIG_SPL_MAX_SIZE             0x40000
  #define CONFIG_SPL_BSS_START_ADDR	0x00400000
  #define CONFIG_SPL_BSS_MAX_SIZE         0x2000
 -#define CONFIG_SYS_BOOTM_LEN	(64 << 20)	/* 64M */
 +#define CONFIG_SYS_BOOTM_LEN	(128 << 20)	/* 128M */
-@@ -35,6 +35,7 @@
+ 
+ #define GICD_BASE			0xFEE00000
+ #define GICR_BASE			0xFEF00000
+ #define GICC_BASE			0xFFF00000
+ 
+ #define CONFIG_ROCKUSB_G_DNL_PID	0x330C
  
  /* MMC/SD IP block */
  #define CONFIG_BOUNCE_BUFFER
