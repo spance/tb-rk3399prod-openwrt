@@ -14,7 +14,7 @@
 | 硬件 watchdog | 已确认故障复位 | RK3399 DesignWare watchdog 由 `procd` 启用，30 秒超时、5 秒喂狗；停止喂狗后整机按期掉线并以新 boot ID 重启，overlay、网络、LuCI 和 Type-C UAS 均自动恢复 |
 | 板载 LED | 已确认 | `leds-gpio` 驱动蓝 GPIO2_A5、红 GPIO2_A4、绿 GPIO2_A3；三路逐一亮灭通过，OpenWrt aliases 分别表达启动、failsafe/升级和运行状态，正常状态为蓝灭、红灭、绿亮 |
 | TF | 已确认读写 | Linux 50 MHz/4-bit/IDMAC，实测约 5.9 MiB/s 写、18.8 MiB/s 读；U-Boot 25 MHz/PIO 可靠读取 FIT |
-| eMMC | 已确认启动，CQE 已禁用 | 29.1 GiB，HS400 Enhanced Strobe、ADMA；正式内核使用 `SDHCI_QUIRK_BROKEN_CQE`，实机确认 `cmdq_en=0`；256 MiB 写入、同步与校验后 CQE recovery、MMC I/O 和 ext4 错误均为 0 |
+| eMMC | 已确认启动，CQE 已禁用；PHY 电气对齐待复测 | 29.1 GiB，HS400 Enhanced Strobe、ADMA；正式内核使用 `SDHCI_QUIRK_BROKEN_CQE`，实机确认 `cmdq_en=0`；256 MiB 写入、同步与校验后 CQE recovery、MMC I/O 和 ext4 错误均为 0。DTS 已按 Toybrick 4.4 BSP 显式启用 strobe 内部下拉，待新镜像确认启动、链路和错误计数 |
 | eMMC 正常系统 | 已确认启动 | 224 MiB `openwrt.img` 已从 eMMC 正常启动；SquashFS + 约 28.4 GiB ext4 `/overlay` 正常挂载 |
 | 千兆网 | 已确认 | RTL8211E，1000/full；两个方向各 1800 秒均为 941 Mbit/s、197 GiB，硬件错误计数为 0 |
 | 网络调优 | GMAC 已确认；RTL8125 待验收 | GMAC IRQ 绑定 CPU4/A72，复测 942/941 Mbit/s、0 重传；新策略按 PCI ID 将 RTL8125 单 IRQ 绑定 CPU5；S99 与所有接口 `ifup` 幂等恢复，fw4 软件 flowtable 正常生成 |

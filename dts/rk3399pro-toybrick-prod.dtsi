@@ -160,6 +160,8 @@
 };
 
 &emmc_phy {
+	/* Match the Toybrick 4.4 BSP HS400 strobe electrical setup. */
+	rockchip,enable-strobe-pulldown;
 	status = "okay";
 };
 

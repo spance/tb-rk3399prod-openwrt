@@ -611,6 +611,7 @@ for dts_setting in \
 	'center-supply = <&vdd_log>;' \
 	'operating-points-v2 = <&dmc_opp_table>;' \
 	'opp-hz = /bits/ 64 <800000000>;' \
+	'rockchip,enable-strobe-pulldown;' \
 	'&{/watchdog@ff848000} {' \
 	'snps,watchdog-tops = <0x00010000 0x00020000 0x00040000 0x00080000' \
 	'&hdmi {' \

@@ -97,6 +97,7 @@ Linux 6.12 基线中，TCS4525/TCS4526 由兼容的 `fan53555` regulator 驱动�
 
 - 控制器别名 `mmc1 = &sdhci`，硬件节点 `sdhci@fe330000`，8-bit、不可移除。
 - HS400 1.8 V、Enhanced Strobe、eMMC PHY 均启用。
+- eMMC PHY 显式设置 `rockchip,enable-strobe-pulldown`，与 Toybrick 4.4 BSP 固定启用 strobe 内部下拉的电气配置一致；驱动阻抗和输出 tap delay 继续使用 Linux 6.12 的 50 Ω、`0x4` 默认值。该属性用于恢复厂商板级信号配置，不作为 eMMC 内部持续写入性能问题的修复声明。
 - 实机容量约 29.1 GiB；HS400 Enhanced Strobe 和 ADMA 已确认。CQE 曾正常识别为深度 16，但连续写入会反复触发无数据损坏的 recovery；正式配置通过 Linux 现有 `SDHCI_QUIRK_BROKEN_CQE` 将其关闭，以稳定性优先。该 quirk 不关闭 HS400、Enhanced Strobe 或 ADMA。
 - Linux 下可作为普通块设备读写，但管理命令应按容量、CID/名称或 GPT `PARTLABEL` 识别设备，不要依赖 `mmcblkN` 编号。
 - 当前部署 GPT 使用 512-byte sector：`uboot@0x2000` 为 4 MiB，`trust@0x4000` 为 4 MiB，`boot_linux@0x6000` 为 96 MiB，`rootfs@0x36000` 占用剩余空间。前两项属于厂商 miniloader 启动链约束；后两项是当前工程镜像和启动脚本共同采用的发布约定，并非 RK3399Pro 不可改变的硬件地址。边界和替代方案见 [启动链设计](BOOT-CHAIN.md)。
