@@ -30,7 +30,7 @@
 | DDR / BL31 | 双通道 LPDDR3；DDR bin v1.30、miniloader v1.26、BL31 v1.35、BL32 v2.12；固定 800 MHz | 固定官方 rkbin/merger；Linux DMC 仅执行 GET/ROUND，无 DFI/SET/调压 | 已验证冷启动、三次软重启、五组 ROUND 和 1.5 GiB 四图样内存测试 |
 | UART2 | `ttyS2`，1500000 8N1；earlycon `0xff1a0000` | DesignWare 8250 / `8250_dw` | 已验证启动与登录 |
 | TF 卡 | 4-bit；Linux 50 MHz；U-Boot 25 MHz/PIO | Linux `dw_mmc-rockchip`；U-Boot DWMMC 可靠性补丁 | 已验证 Linux 读写和 U-Boot FIT 加载 |
-| eMMC | 32 GB，8-bit，HS400 Enhanced Strobe、ADMA | `sdhci-of-arasan`、Rockchip eMMC PHY；标准 quirk 禁用不稳定 CQE | 已验证启动、读写和持久化 overlay |
+| eMMC | 32 GB，8-bit，HS400 Enhanced Strobe、ADMA、CQE depth 16 | `sdhci-of-arasan`、Rockchip eMMC PHY、Linux CQHCI；恢复厂商 strobe 下拉后重新启用上游 CQE | 非 CQE 基线已验证；CQE 实验待实机验收 |
 | 千兆以太网 | RK3399 GMAC + RTL8211E，RGMII，TX/RX delay `0x28/0x20` | `dwmac-rk` / stmmac + Realtek PHY；IRQ 绑定 CPU4 | 已验证 1000/full 和双向线速 |
 | USB2 | 两组 EHCI/OHCI、USB2 PHY、板载 Hub | `ehci-platform`、`ohci-platform`、Rockchip USB2 PHY | 已验证枚举 |
 | USB3 Type-A | DWC3_1 / xHCI / `tcphy1`，固定 host | DWC3、xHCI、`phy-rockchip-typec` | 已验证 UAS/`5000M` 高速读写 |
@@ -88,7 +88,7 @@ ARMv8 Crypto Extensions 已由 OpenSSL 3.5.7、16 KiB 数据块、固定单个 C
 | 层次 | 本工程承担的改造 | 权威来源 |
 |---|---|---|
 | U-Boot 启动链 | 固定 Rockchip `next-dev` vendor 2017.09 BL33；使用其 OP-TEE API 2.0 客户端和较新的 DWMMC 实现，增加本板 TF 可靠性参数，并显式选择 RK3399Pro loader/trust 配置 | `patches/u-boot/`、`scripts/` |
-| Linux 驱动 | 为 RK3399 Type-C PHY 接入标准 orientation switch；为 DWC3 实现真实 `NONE ↔ HOST`、xHCI 创建/销毁、父子 runtime PM 与 OTG reset 生命周期；增加不改变频率/电压的 DDR GET/ROUND 探测；用标准 SDHCI quirk 禁用本板不稳定的 eMMC CQE | `patches/kernel/` 与 OpenWrt 板级补丁中的 CQE backport |
+| Linux 驱动 | 为 RK3399 Type-C PHY 接入标准 orientation switch；为 DWC3 实现真实 `NONE ↔ HOST`、xHCI 创建/销毁、父子 runtime PM 与 OTG reset 生命周期；增加不改变频率/电压的 DDR GET/ROUND 探测；eMMC 保留 Linux 6.12 的 RK3399 CQHCI/CQE 路径并单独验收 | `patches/kernel/`、`patches/openwrt/` |
 | 板级描述与配置 | 固化 RK809/电源、CPU/温控、存储、GMAC、USB、HDMI、PCIe 等连线和参数；选择 Linux Kconfig、OpenWrt profile、软件包和镜像规则 | `dts/`、`patches/openwrt/`、`configs/` |
 | 运行策略 | 启用 ext4 overlay；按硬件身份把 GMAC/RTL8125 IRQ 分别幂等绑定到 CPU4/CPU5；启用软件 flow offload；提供 Type-C 与 RTL8125 一次性诊断工具 | `rootfs/` |
 | 构建与发布 | 固定 U-Boot、rkbin、工具链、OpenWrt 和 feeds；生成并校验 `uboot.img`、官方 loader、`trust.img`、`openwrt.img` 和发布包 | `scripts/`、`Makefile` |

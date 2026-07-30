@@ -21,7 +21,7 @@
 - RK3399 DesignWare 硬件 watchdog；`procd` 负责喂狗，板级 DTS 显式提供 16 项 timeout-period 计数表。
 - RK809、TCS4525/TCS4526、CPU/GPU/核心电源轨。
 - TF：4-bit、50 MHz、Rockchip IDMAC。
-- eMMC：HS400 Enhanced Strobe、ADMA；为避免写入负载下反复进入 CQE recovery，使用 Linux 已有的 `SDHCI_QUIRK_BROKEN_CQE` 默认关闭 CQE。
+- eMMC：HS400 Enhanced Strobe、ADMA；电气配置对齐 Toybrick 4.4 后，实验性恢复 Linux 6.12 原生 RK3399 CQHCI/CQE 路径。CQE 在完成专项实机压力测试前不视为稳定交付能力。
 - RTL8211E 千兆以太网：RGMII，TX/RX delay `0x28/0x20`。
 - 网络调优：GMAC IRQ 动态绑定 CPU4，RTL8125BG IRQ 按 PCI ID 动态绑定 CPU5；所有接口 `ifup` 后及 S99 阶段幂等恢复。fw4 软件 flow offload 默认开启，硬件 flow offload 保持关闭。
 - USB2 EHCI/OHCI、两组 USB3 控制器、板载 Hub 电源和复位；蓝色 Type-A 口已实测高速读写。Type-C 连接器对外固定为 5 V source/host，DWC3_0 内部使用 role-switch 管理断开时的 xHCI/core/PHY 关闭与重连恢复；TCPM 先给出方向，PHY 再在上电路径中配置对应 lanes。C 口首次插入、同向重插、翻转重插、UAS/`5000M` 和 exFAT 高速读写均已通过，详见 [USB Type-C SuperSpeed 主机](USB-TYPE-C.md)。

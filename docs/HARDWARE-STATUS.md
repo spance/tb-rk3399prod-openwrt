@@ -14,7 +14,7 @@
 | 硬件 watchdog | 已确认故障复位 | RK3399 DesignWare watchdog 由 `procd` 启用，30 秒超时、5 秒喂狗；停止喂狗后整机按期掉线并以新 boot ID 重启，overlay、网络、LuCI 和 Type-C UAS 均自动恢复 |
 | 板载 LED | 已确认 | `leds-gpio` 驱动蓝 GPIO2_A5、红 GPIO2_A4、绿 GPIO2_A3；三路逐一亮灭通过，OpenWrt aliases 分别表达启动、failsafe/升级和运行状态，正常状态为蓝灭、红灭、绿亮 |
 | TF | 已确认读写 | Linux 50 MHz/4-bit/IDMAC，实测约 5.9 MiB/s 写、18.8 MiB/s 读；U-Boot 25 MHz/PIO 可靠读取 FIT |
-| eMMC | 已确认启动，CQE 已禁用；PHY 电气对齐待复测 | 29.1 GiB，HS400 Enhanced Strobe、ADMA；正式内核使用 `SDHCI_QUIRK_BROKEN_CQE`，实机确认 `cmdq_en=0`；256 MiB 写入、同步与校验后 CQE recovery、MMC I/O 和 ext4 错误均为 0。DTS 已按 Toybrick 4.4 BSP 显式启用 strobe 内部下拉，待新镜像确认启动、链路和错误计数 |
+| eMMC | 非 CQE 基线已确认；CQE 实验待验收 | 29.1 GiB，HS400 Enhanced Strobe、ADMA；strobe 内部下拉生效后，软重启前后读取 291～305 MB/s，4 GiB 分段直写 88.6～98.5 MB/s，MMC/EXT4 错误为 0。当前构建恢复 Linux 6.12 原生 CQE depth 16，部署后必须确认 `cmdq_en=1` 并重新压力测试 |
 | eMMC 正常系统 | 已确认启动 | 224 MiB `openwrt.img` 已从 eMMC 正常启动；SquashFS + 约 28.4 GiB ext4 `/overlay` 正常挂载 |
 | 千兆网 | 已确认 | RTL8211E，1000/full；两个方向各 1800 秒均为 941 Mbit/s、197 GiB，硬件错误计数为 0 |
 | 网络调优 | GMAC 已确认；RTL8125 待验收 | GMAC IRQ 绑定 CPU4/A72，复测 942/941 Mbit/s、0 重传；新策略按 PCI ID 将 RTL8125 单 IRQ 绑定 CPU5；S99 与所有接口 `ifup` 幂等恢复，fw4 软件 flowtable 正常生成 |
@@ -35,6 +35,24 @@ watchdog 故障测试在同步文件系统后，通过 procd 控制接口停止 
 - RTL8125BG 软件路径已经就绪，但在实卡验证前仍不得把 2.5GbE 标为已确认。必须验证 `10ec:8125`、`r8169`、固件加载、`5.0 GT/s x1`、CPU5 IRQ、AER/错误计数、冷/热启动、双向吞吐和真实 LAN/WAN NAT；流程见 [PCIe RTL8125BG 2.5GbE](PCIE-RTL8125.md)。
 - eMMC 更长时间读写、HDMI 多次拔插/重启及 overlay 备份恢复流程仍可在量产验收中补充。
 - 无线/蓝牙、GPU 图形桌面、HDMI 音频和 NPU 是明确的非目标，不应作为当前固件缺陷。
+
+## eMMC CQE 实验验收
+
+本次实验只移除本项目原有的 `SDHCI_QUIRK_BROKEN_CQE` 覆盖，不改变 HS400、
+Enhanced Strobe、ADMA、PHY 参数或文件系统布局。部署后先确认：
+
+```sh
+cat /sys/block/mmcblk1/device/cmdq_en
+cat /sys/kernel/debug/mmc1/ios
+cat /sys/kernel/debug/mmc1/err_stats
+dmesg | grep -Ei 'mmc|sdhci|cqhci|cqe|timeout|crc|recovery|error'
+```
+
+`cmdq_en` 必须为 `1`。随后按 512 MiB 一段连续写入至少 4 GiB，记录每段速度，
+并在写入前后各直接读取 3.1 GiB；再执行一次软重启，检查 overlay 文件持久化和
+上述错误计数。任何 CQE recovery、请求超时、CRC/ADMA 错误、文件校验失败或
+持续性能衰减均判定实验失败，并恢复 broken-CQE quirk。只有零错误且相对非 CQE
+基线存在可重复收益，才能把 CQE 状态改为已确认。
 
 ## 允许的预期日志
 

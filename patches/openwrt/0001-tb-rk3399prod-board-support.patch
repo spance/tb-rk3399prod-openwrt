@@ -227,39 +227,3 @@ index 0000000..8f0fe3d
 ++          - const: rockchip,rk3399pro
 ++
 +       - description: Rockchip Toybrick TB-RK3588X board
-diff --git a/target/linux/rockchip/patches-6.12/143-mmc-sdhci-of-arasan-disable-rk3399-cqe.patch b/target/linux/rockchip/patches-6.12/143-mmc-sdhci-of-arasan-disable-rk3399-cqe.patch
-new file mode 100644
-index 0000000..a1231ad
---- /dev/null
-+++ b/target/linux/rockchip/patches-6.12/143-mmc-sdhci-of-arasan-disable-rk3399-cqe.patch
-@@ -0,0 +1,30 @@
-+From: OpenWrt TB-RK3399ProD port
-+Subject: [PATCH] mmc: sdhci-of-arasan: disable CQE on RK3399
-+
-+Repeated command queue recovery was observed during otherwise successful
-+eMMC writes on this RK3399 production platform.  Prefer storage reliability
-+for the router workload while retaining HS400 Enhanced Strobe and ADMA.
-+
-+Use the existing SDHCI broken-CQE quirk with RK3399-specific platform data.
-+
-+---
-+ drivers/mmc/host/sdhci-of-arasan.c | 10 +++++++++-
-+ 1 file changed, 9 insertions(+), 1 deletion(-)
-+
-+--- a/drivers/mmc/host/sdhci-of-arasan.c
-++++ b/drivers/mmc/host/sdhci-of-arasan.c
-+@@ -1433,5 +1433,13 @@
-++static const struct sdhci_pltfm_data sdhci_arasan_rk3399_pdata = {
-++	.ops = &sdhci_arasan_cqe_ops,
-++	.quirks = SDHCI_QUIRK_CAP_CLOCK_BASE_BROKEN |
-++		SDHCI_QUIRK_BROKEN_CQE,
-++	.quirks2 = SDHCI_QUIRK2_PRESET_VALUE_BROKEN |
-++		SDHCI_QUIRK2_CLOCK_DIV_ZERO_BROKEN,
-++};
-++
-+ static struct sdhci_arasan_of_data sdhci_arasan_rk3399_data = {
-+ 	.soc_ctl_map = &rk3399_soc_ctl_map,
-+-	.pdata = &sdhci_arasan_cqe_pdata,
-++	.pdata = &sdhci_arasan_rk3399_pdata,
-+ 	.clk_ops = &arasan_clk_ops,
-+ };

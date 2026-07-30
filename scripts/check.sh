@@ -387,11 +387,11 @@ grep -Eq '[[:space:]]-ip-tiny([[:space:]\\]|$)' "$openwrt_patch" || \
 	fail "ip-tiny is not removed when ip-full is selected"
 grep -Eq '[[:space:]]ss([[:space:]\\]|$)' "$openwrt_patch" || \
 	fail "socket diagnostics utility is missing: ss"
-grep -Fq '143-mmc-sdhci-of-arasan-disable-rk3399-cqe.patch' \
+if grep -Fq '143-mmc-sdhci-of-arasan-disable-rk3399-cqe.patch' \
 	"$openwrt_patch" || \
-	fail "RK3399 eMMC CQE reliability patch is missing"
-grep -Fq 'SDHCI_QUIRK_BROKEN_CQE' "$openwrt_patch" || \
-	fail "RK3399 eMMC CQE is not disabled with the standard SDHCI quirk"
+	grep -Fq 'SDHCI_QUIRK_BROKEN_CQE' "$openwrt_patch"; then
+	fail "RK3399 eMMC CQE experiment is overridden by a broken-CQE quirk"
+fi
 grep -Fq 'tcphy_set_orientation' "$typec_phy_patch" || \
 	fail "RK3399 Type-C orientation callback is missing"
 grep -Fq 'tcphy->new_mode = MODE_DISCONNECT;' "$typec_phy_patch" || \
