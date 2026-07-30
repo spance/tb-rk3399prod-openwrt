@@ -21,28 +21,53 @@ RTL8125BG 安装在板载标准 PCIe 插槽，通过 RK3399Pro 的 PCIe 2.1 Root
 
 PCIe 插槽不按热插拔设计。安装、拆卸或重新插紧网卡前必须正常关机并断电；不要带电插拔。
 
-## 首次上板验收
+## 已完成的实机验收
 
-刷入包含本次适配的镜像并冷启动后，先运行：
+当前 RTL8125BG 实卡的 PCI ID 为 `10ec:8125` rev 05，已完成以下闭环：
+
+- endpoint 与 RK3399 root port 都协商为 `5.0 GT/s, Width x1`，网口为 `2500Mb/s, Full`。
+- Linux 6.12.94 主线 `r8169` 正常绑定，加载 `rtl8125b-2_0.0.2` 固件，使用单个 MSI IRQ 和单个 RX queue。
+- checksum、scatter-gather、TSO、GSO 和 GRO 保持启用；测试期间没有 PCIe AER、驱动 timeout、异常复位或链路抖动。
+- 满载时 CPU/GPU 温度保持在约 46 °C 以下。
+
+测试时把第二网口放入独立 network namespace，使用静态地址且不加入 `br-lan`，避免两个物理口位于同一广播域时影响现有 DHCP、路由或形成回环。namespace 中的接口不会出现在默认环境的 `ip address` 输出；测试结束后接口被移回默认 namespace，并保持未配置和 `DOWN`。
+
+固件内置的一次性诊断入口为：
 
 ```sh
 tb-rtl8125-diag > /tmp/rtl8125-diag.txt 2>&1
 ```
 
-必须同时满足：
+升级内核、DTS、U-Boot 或 PCIe 参数后仍必须满足：
 
 1. `lspci -nnk` 能看到 `10ec:8125`，`Kernel driver in use` 为 `r8169`。
 2. `/lib/firmware/rtl_nic/rtl8125b-2.fw` 存在，日志没有 firmware load failure。
 3. endpoint 和 root port 的 `LnkSta` 均为 `Speed 5GT/s, Width x1`，sysfs 显示 `5.0 GT/s`、宽度 `1`。
 4. `ethtool` 在连接 2.5GbE 对端和合格线材时显示 `Speed: 2500Mb/s`、`Duplex: Full`。
-5. RTL8125 的 MSI IRQ affinity 为 CPU5；板载 GMAC 仍为 CPU4。
+5. 正式运行策略把 RTL8125 的 MSI IRQ affinity 设为 CPU5；板载 GMAC 仍为 CPU4。
 6. 日志没有 link training failure、AER、PCIe completion timeout、r8169 Tx timeout 或 firmware error。
 
 若只得到 Gen1，不应把它当作驱动成功后的正常降速。先检查卡是否完全插入、金手指与插槽、电源、线缆固定和冷启动复现，再保留完整 `tb-rtl8125-diag` 输出分析。不要通过替换 `r8125` 驱动掩盖 PCIe 物理层问题。
 
+主线 `r8169` 已满足本项目交付要求。OpenWrt 的 `kmod-r8125-rss` 可以通过本项目 kmod 构建器作为独立实验包生成，但不安装、不提交也不纳入发布物；当前没有证据证明切换外置驱动能改善本板的实际结果，因此不增加第二套生产驱动路径。
+
 ## 网络与压力测试
 
-先为测试接口配置不会与现网冲突的地址，然后记录测试前状态：
+当前短时性能验收使用 4 条 TCP 流，单向各 30～60 秒，双向并发 60 秒：
+
+| 场景 | 结果 | 判读 |
+|---|---:|---|
+| TB-RK3399ProD → 对端 | 2.35 Gbit/s | 0 TCP 重传 |
+| 对端 → TB-RK3399ProD | 2.35 Gbit/s | 0 TCP 重传 |
+| 4+4 流双向并发 | 约 2.35/2.33 Gbit/s，合计约 4.68 Gbit/s | 极限接收路径有少量 RX missed/TCP 重传，未出现链路或 PCIe 错误 |
+| UDP 单向 | 约 2.31 Gbit/s | 接收损失约 0.01% |
+| UDP 反向 | 约 2.30 Gbit/s | 调整 socket buffer 后接收损失约 0.036% |
+
+TCP 测试端一侧使用 iperf3 3.20，Linux x86_64 对端使用 iperf3 3.12。两者完成了控制协商和全部数据测试；对端 3.12 仍是单线程实现，因此后续正式基准建议统一版本。完整测试结束后出现的 `Size of data read does not correspond to offered length` 属于后续客户端连接被主动终止时控制 socket 未收全参数，不属于已经完成测试的数据错误。
+
+亲和性 A/B 表明，让 IRQ、RPS 和应用负载扩散到六个核心并没有提高吞吐，反而增加 RX missed 和重传。当前结论不是“核心越多越好”，而是把主要网络路径留在两颗 Cortex-A72；正式双口策略仍是 GMAC/RTL8125 分别使用 CPU4/CPU5。测试中的临时 namespace、IP、RPS 和 affinity 修改在结束后均已撤销。
+
+升级后复测时，先为测试接口配置不会与现网冲突的地址，然后记录测试前状态：
 
 ```sh
 DEV="$(for p in /sys/class/net/*; do [ "$(cat "$p/device/vendor" 2>/dev/null)" = 0x10ec ] && [ "$(cat "$p/device/device" 2>/dev/null)" = 0x8125 ] && basename "$p"; done)"
@@ -51,7 +76,7 @@ ethtool -S "$DEV" > /tmp/rtl8125-before.txt
 ip -s link show dev "$DEV"
 ```
 
-本机收发先各跑 30 分钟：
+发布前的短测已经完成；需要量产级或具体部署场景验收时，收发各跑 30 分钟：
 
 ```sh
 iperf3 -c <server-ip> -P 4 -t 1800

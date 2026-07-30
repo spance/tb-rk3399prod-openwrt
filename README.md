@@ -2,7 +2,7 @@
 
 面向 Toybrick TB-RK3399ProD 的可复现 OpenWrt 板级适配工程。
 
-**OpenWrt 25.12.5 · Linux 6.12.94 · AArch64 · LuCI HTTPS · eMMC 持久化系统 · 千兆网络与 USB 3.0 实机验收**
+**首个稳定版 · OpenWrt 25.12.5 · Linux 6.12.94 · AArch64 · LuCI HTTPS · eMMC 持久化系统 · 双以太网与 USB 3.0 实机验收**
 
 本项目把厂商 Linux 4.4 的板级行为迁移到现代 OpenWrt/Linux 架构，并提供经过实机验证的 U-Boot、设备树、内核驱动补丁、系统配置和镜像构建流程。仓库只保存适配所需的可维护增量；上游源码、工具链、设备信息、调试日志和构建产物均不提交。
 
@@ -11,7 +11,7 @@
 - **现代系统基线**：OpenWrt 25.12.5、Linux 6.12.94、musl 和 nftables/fw4。
 - **可用的 eMMC 系统**：HS400 Enhanced Strobe、ADMA、SquashFS + ext4 overlay，约 28.4 GiB 空间可持久保存软件和配置。
 - **稳定千兆网络**：RTL8211E 在双向 30 分钟压力测试中均达到 941 Mbit/s；GMAC IRQ 自动放置到 Cortex-A72，软件 flow offload 默认启用。
-- **2.5GbE 扩展就绪**：独立 PCIe 插槽启用 Gen2，镜像内置 Linux 主线 `r8169` 和 RTL8125B 固件，并按 PCI ID 将网卡 IRQ 放置到另一颗 Cortex-A72；实卡性能仍以部署验收为准。
+- **2.5GbE 实卡可用**：RTL8125BG 以 PCIe Gen2 x1、2500/full 运行，Linux 主线 `r8169` 单向 TCP 达到 2.35 Gbit/s，双向并发合计约 4.68 Gbit/s；IRQ 按 PCI ID 放置到另一颗 Cortex-A72。
 - **完整 USB 3.0 主机能力**：蓝色 Type-A 与 Type-C 均通过 UAS/`5000M` 高速存储测试；Type-C 支持正反插、热拔插和完整 runtime-PM 生命周期。
 - **双控制台与恢复路径**：UART2 1500000 baud、HDMI Linux console、USB 键盘登录，以及 TF/initramfs 恢复启动。
 - **内置 Web 管理**：LuCI、简体中文界面、uhttpd、Firewall 和 APK 软件包管理随镜像提供，默认使用 HTTPS。
@@ -30,7 +30,7 @@
 | DDR / BL31 | 双通道 LPDDR3；DDR bin v1.30、miniloader v1.26、BL31 v1.35、BL32 v2.12；固定 800 MHz | 固定官方 rkbin/merger；Linux DMC 仅执行 GET/ROUND，无 DFI/SET/调压 | 已验证冷启动、三次软重启、五组 ROUND 和 1.5 GiB 四图样内存测试 |
 | UART2 | `ttyS2`，1500000 8N1；earlycon `0xff1a0000` | DesignWare 8250 / `8250_dw` | 已验证启动与登录 |
 | TF 卡 | 4-bit；Linux 50 MHz；U-Boot 25 MHz/PIO | Linux `dw_mmc-rockchip`；U-Boot DWMMC 可靠性补丁 | 已验证 Linux 读写和 U-Boot FIT 加载 |
-| eMMC | 32 GB，8-bit，HS400 Enhanced Strobe、ADMA、CQE depth 16 | `sdhci-of-arasan`、Rockchip eMMC PHY、Linux CQHCI；恢复厂商 strobe 下拉后重新启用上游 CQE | 非 CQE 基线已验证；CQE 实验待实机验收 |
+| eMMC | 32 GB，8-bit，HS400 Enhanced Strobe、ADMA、CQE depth 16 | `sdhci-of-arasan`、Rockchip eMMC PHY、Linux CQHCI；恢复厂商 strobe 下拉后重新启用上游 CQE | 已验证读写、CQE、重启和 overlay 持久化 |
 | 千兆以太网 | RK3399 GMAC + RTL8211E，RGMII，TX/RX delay `0x28/0x20` | `dwmac-rk` / stmmac + Realtek PHY；IRQ 绑定 CPU4 | 已验证 1000/full 和双向线速 |
 | USB2 | 两组 EHCI/OHCI、USB2 PHY、板载 Hub | `ehci-platform`、`ohci-platform`、Rockchip USB2 PHY | 已验证枚举 |
 | USB3 Type-A | DWC3_1 / xHCI / `tcphy1`，固定 host | DWC3、xHCI、`phy-rockchip-typec` | 已验证 UAS/`5000M` 高速读写 |
@@ -38,7 +38,7 @@
 | HDMI console | VOPB + DW-HDMI，EDID 自动选模；保留串口 | Rockchip DRM/VOP、DW-HDMI、Innosilicon HDMI PHY、fbcon | 已验证文本 console 与 USB 键盘登录 |
 | Watchdog | RK3399 DesignWare WDT；30 秒超时、5 秒喂狗 | `dw_wdt` + OpenWrt `procd` | 已验证停止喂狗后硬件复位及系统自动恢复 |
 | 板载 LED | 蓝 GPIO2_A5、红 GPIO2_A4、绿 GPIO2_A3，高电平有效 | 标准 `gpio-leds`；OpenWrt 启动/failsafe/运行/升级状态别名 | 三路亮灭和运行状态已验证 |
-| PCIe / 2.5GbE | 标准 x4 机械槽、Gen2 x4 host；RTL8125BG 使用 Gen2 x1 | Rockchip PCIe host/PHY + 主线 `r8169` + `rtl8125b-2.fw`；IRQ 绑定 CPU5 | 软件适配完成，实卡枚举与性能待验收 |
+| PCIe / 2.5GbE | 标准 x4 机械槽、Gen2 x4 host；RTL8125BG 使用 Gen2 x1 | Rockchip PCIe host/PHY + 主线 `r8169` + `rtl8125b-2.fw`；IRQ 绑定 CPU5 | 已验证枚举、2500/full 和线速短测 |
 | Mini-PCIe 插座 | 只有 USB2 走线，面向 LTE 模块 | 复用 USB2 host 驱动；不存在 PCIe lane | USB2-only，不能使用 RTL8822CE 等 PCIe 网卡 |
 | Wi-Fi / 蓝牙 | 不属于目标范围 | 不打包无线驱动和固件 | 有意禁用 |
 | GPU / NPU | 电源与 thermal 描述保留 | 不集成图形桌面、GPU 计算或 RKNN/NPU 软件栈 | 不属于目标范围 |
@@ -54,6 +54,9 @@
 | 千兆网发送 | `iperf3 -P 4 -t 1800` | 941 Mbit/s，197 GiB，180 次 TCP 重传；GMAC/PHY 错误为 0 |
 | 千兆网接收 | `iperf3 -P 4 -t 1800 -R` | 941 Mbit/s，197 GiB，GMAC/PHY 错误为 0 |
 | IRQ 调优复测 | 4 流、30 秒；GMAC IRQ 位于 CPU4/A72 | 发送/接收 942/941 Mbit/s，0 重传 |
+| RTL8125BG 发送/接收 | PCIe Gen2 x1、2500/full、4 流 TCP、30～60 秒 | 两个方向均为 2.35 Gbit/s，单向测试 0 重传 |
+| RTL8125BG 双向并发 | 4+4 流 TCP、60 秒 | 约 2.35/2.33 Gbit/s，合计约 4.68 Gbit/s；极限接收路径有少量 missed/重传 |
+| eMMC 非 CQE 性能基线 | HS400 ES、ADMA、direct I/O | 顺序读约 291～305 MB/s，4 GiB 分段直写约 88.6～98.5 MB/s；CQE 回归另行确认零错误 |
 | USB3 Type-A | Lexar E300 2 TB M.2、UAS、`5000M` | 约 340～360 MB/s |
 | USB3 Type-C 写入 | 同一 M.2、exFAT、8 GiB `O_DIRECT` + `fsync` | 约 300～320 MiB/s |
 | USB3 Type-C 读取 | 同一 M.2、exFAT、8 GiB `O_DIRECT` | 约 340 MiB/s，完整数据比较通过 |
@@ -73,11 +76,11 @@ ARMv8 Crypto Extensions 已由 OpenSSL 3.5.7、16 KiB 数据块、固定单个 C
 
 ## 当前交付范围
 
-当前版本已经达到本板 OpenWrt 基础硬件使能的工程交付条件，包括启动、电源、CPU/调频/温控、eMMC overlay、TF、千兆网、USB2/USB3、Type-C 热插拔、HDMI console、板载状态灯和 watchdog 故障复位链。
+当前版本已经达到本板 OpenWrt 基础硬件使能的工程交付条件，包括启动、电源、CPU/调频/温控、eMMC overlay、TF、千兆网、PCIe 2.5GbE、USB2/USB3、Type-C 热插拔、HDMI console、板载状态灯和 watchdog 故障复位链。
 
 仍需明确区分以下边界：
 
-- RTL8125BG 的驱动、固件、Gen2 链路配置、IRQ 策略和诊断工具已经集成，但新卡尚未完成实机验收，因此暂不宣称 2.5GbE、双口 NAT 或 PCIe 长期稳定性已经通过。
+- RTL8125BG 的枚举、固件、Gen2 x1、2500/full、单向线速和双向并发短测已经通过；真实双口 NAT、数小时双向满载和多次冷启动仍属于部署场景验收，不由本机 `iperf3` 短测替代。
 - Type-C 已通过功能与高速 I/O 验收；量产前仍建议增加 20～50 次方向交替/快速重插，以及 1～4 小时或 100 GiB 连续 I/O。
 - Wi-Fi、蓝牙、HDMI 音频、图形桌面、GPU 计算和 NPU 是明确的非目标。
 
@@ -161,3 +164,5 @@ Rockchip `make.sh` 负责生成 U-Boot、loader 和 trust；工程固定 U-Boot�
 Type-C 的一次性诊断使用固件内置 `tb-typec-diag`；设计、日志判读和升级测试见 [USB Type-C SuperSpeed 主机](docs/USB-TYPE-C.md)。
 RTL8125BG 的选型、主线驱动、链路目标、网络角色边界和上板验收见 [PCIe RTL8125BG 2.5GbE](docs/PCIE-RTL8125.md)，诊断使用固件内置 `tb-rtl8125-diag`。
 OpenWrt 官方预编译 `.ko` 与本项目内核配置不兼容，不能靠修改包管理哈希安全加载。普通扩展驱动使用 [按需 kmod 构建器](docs/KMOD-BUILDER.md)；启动和挂载 overlay 之前必需的驱动仍应内置固件。
+
+首个稳定版本的交付内容和已知边界见 [CHANGELOG](CHANGELOG.md)。

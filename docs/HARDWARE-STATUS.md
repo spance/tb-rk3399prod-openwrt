@@ -2,7 +2,7 @@
 
 本表只记录可复现的实机结论；原始调试日志和设备唯一信息不纳入工程。固定连线、参数和升级不变量见 [硬件参考](HARDWARE-REFERENCE.md)，专项测试方法见相应设计文档。
 
-当前结论：本板的 OpenWrt 基础硬件使能已经达到工程交付条件。RTL8125BG 已完成软件集成，但第二网卡和真实双口 NAT 仍需新镜像与实卡闭环，不能由“控制器 probe 成功”替代验收；更长周期耐久测试仍属于量产前补充验证。
+当前结论：本板的 OpenWrt 基础硬件使能已经达到工程交付条件。RTL8125BG 已完成实卡枚举、Gen2 x1、2500/full 和本机吞吐验收；eMMC 的 HS400 Enhanced Strobe、ADMA 与 CQE depth 16 也已闭环。真实双口 NAT、数小时双向满载和多次冷启动仍属于具体部署或量产前的补充验证。
 
 | 项目 | 状态 | 关键结果 |
 |---|---|---|
@@ -14,15 +14,15 @@
 | 硬件 watchdog | 已确认故障复位 | RK3399 DesignWare watchdog 由 `procd` 启用，30 秒超时、5 秒喂狗；停止喂狗后整机按期掉线并以新 boot ID 重启，overlay、网络、LuCI 和 Type-C UAS 均自动恢复 |
 | 板载 LED | 已确认 | `leds-gpio` 驱动蓝 GPIO2_A5、红 GPIO2_A4、绿 GPIO2_A3；三路逐一亮灭通过，OpenWrt aliases 分别表达启动、failsafe/升级和运行状态，正常状态为蓝灭、红灭、绿亮 |
 | TF | 已确认读写 | Linux 50 MHz/4-bit/IDMAC，实测约 5.9 MiB/s 写、18.8 MiB/s 读；U-Boot 25 MHz/PIO 可靠读取 FIT |
-| eMMC | 非 CQE 基线已确认；CQE 实验待验收 | 29.1 GiB，HS400 Enhanced Strobe、ADMA；strobe 内部下拉生效后，软重启前后读取 291～305 MB/s，4 GiB 分段直写 88.6～98.5 MB/s，MMC/EXT4 错误为 0。当前构建恢复 Linux 6.12 原生 CQE depth 16，部署后必须确认 `cmdq_en=1` 并重新压力测试 |
+| eMMC | 已确认 | 29.1 GiB，HS400 Enhanced Strobe、ADMA、CQE depth 16；strobe 内部下拉生效后，非 CQE 基线读取 291～305 MB/s、4 GiB 分段直写 88.6～98.5 MB/s。重新启用 Linux 6.12 原生 CQE 后，`cmdq_en=1`、读写与重启回归通过，未出现 CQE recovery、CRC/ADMA、MMC 或 EXT4 错误 |
 | eMMC 正常系统 | 已确认启动 | 224 MiB `openwrt.img` 已从 eMMC 正常启动；SquashFS + 约 28.4 GiB ext4 `/overlay` 正常挂载 |
 | 千兆网 | 已确认 | RTL8211E，1000/full；两个方向各 1800 秒均为 941 Mbit/s、197 GiB，硬件错误计数为 0 |
-| 网络调优 | GMAC 已确认；RTL8125 待验收 | GMAC IRQ 绑定 CPU4/A72，复测 942/941 Mbit/s、0 重传；新策略按 PCI ID 将 RTL8125 单 IRQ 绑定 CPU5；S99 与所有接口 `ifup` 幂等恢复，fw4 软件 flowtable 正常生成 |
+| 网络调优 | 已确认 | GMAC IRQ 绑定 CPU4/A72，复测 942/941 Mbit/s、0 重传；RTL8125 单 MSI/NAPI 由 PCI ID 识别并绑定 CPU5。亲和性 A/B 表明把数据路径扩散到六个核心没有收益，正式策略继续让两个物理口分别使用两颗 A72；S99 与所有接口 `ifup` 幂等恢复，fw4 软件 flowtable 正常生成 |
 | USB2 | 已确认枚举 | 两组 EHCI/OHCI 和板载 Hub |
 | USB3 Type-A | 已确认高速读写 | 多种设备以 `5000M` 枚举；M.2/UAS 实测约 340–360 MB/s，测试后无新增 USB/UAS/SCSI 错误 |
 | USB3 Type-C | 已确认热插拔和高速读写 | 首次插入、同向重插和翻转重插均以 UAS/`5000M` 枚举；方向、角色、xHCI 创建/销毁、父子 runtime PM 和 PHY 收放顺序正确。exFAT 上 8 GiB direct 写约 300–320 MiB/s、direct 读约 340 MiB/s，完整数据比较通过；测试窗口无 `connect-debounce`、PHY timeout、xHCI/UAS/SCSI/I/O/exFAT 错误，SCSI I/O 错误计数未增长 |
 | HDMI console | 已确认 | DRM/VOPB/DW-HDMI、fbcon 和 Linux 文本 console 已在显示器输出；串口继续保留 |
-| PCIe / RTL8125BG | 软件适配完成，实卡待验收 | host 改为 Gen2 x4，RTL8125BG 目标协商 Gen2 x1；镜像内置主线 `r8169`、`rtl8125b-2.fw`、CPU5 IRQ 策略和 `tb-rtl8125-diag`；尚未记录实卡枚举/吞吐证据 |
+| PCIe / RTL8125BG | 已确认功能和线速短测 | RTL8125BG `10ec:8125` rev 05 使用主线 `r8169` 和 `rtl8125b-2.fw`，endpoint/root port 均为 `5.0 GT/s x1`，链路为 2500/full。4 流 TCP 单向两个方向均为 2.35 Gbit/s、0 重传；4+4 流双向并发约 2.35/2.33 Gbit/s。无 AER、驱动 timeout、异常复位或链路抖动，满载温度低于约 46 °C |
 | Mini-PCIe | USB2-only | 面向 LTE 模块，没有 PCIe lane；不作为 PCIe 端点插槽使用 |
 | NPU | 不要求 | 未纳入 OpenWrt 完成条件 |
 | Wi-Fi/蓝牙 | 不要求 | 保持禁用，不打包无线驱动或固件 |
@@ -32,14 +32,14 @@ watchdog 故障测试在同步文件系统后，通过 procd 控制接口停止 
 ## 已知边界
 
 - Type-C 在当前测试范围内已通过工程验收；量产前仍建议执行 20～50 次方向交替/快速重插，以及至少 1～4 小时或 100 GiB 连续 I/O。Loader 刷写本版镜像后仍正常，Linux 侧改造不触及 BootROM、miniloader 或 U-Boot 的刷机协议。
-- RTL8125BG 软件路径已经就绪，但在实卡验证前仍不得把 2.5GbE 标为已确认。必须验证 `10ec:8125`、`r8169`、固件加载、`5.0 GT/s x1`、CPU5 IRQ、AER/错误计数、冷/热启动、双向吞吐和真实 LAN/WAN NAT；流程见 [PCIe RTL8125BG 2.5GbE](PCIE-RTL8125.md)。
+- RTL8125BG 的功能和本机线速短测已经通过；双向极限满载时仍有少量 RX missed/TCP 重传，当前交付标准接受这一边界。真实 LAN/WAN NAT、软件 flow offload A/B、数小时持续负载和多次冷启动尚未执行，不能从本机短测外推；回归流程见 [PCIe RTL8125BG 2.5GbE](PCIE-RTL8125.md)。
 - eMMC 更长时间读写、HDMI 多次拔插/重启及 overlay 备份恢复流程仍可在量产验收中补充。
 - 无线/蓝牙、GPU 图形桌面、HDMI 音频和 NPU 是明确的非目标，不应作为当前固件缺陷。
 
-## eMMC CQE 实验验收
+## eMMC CQE 回归基线
 
-本次实验只移除本项目原有的 `SDHCI_QUIRK_BROKEN_CQE` 覆盖，不改变 HS400、
-Enhanced Strobe、ADMA、PHY 参数或文件系统布局。部署后先确认：
+当前配置只移除本项目原有的 `SDHCI_QUIRK_BROKEN_CQE` 覆盖，不改变 HS400、
+Enhanced Strobe、ADMA、PHY 参数或文件系统布局。实机已经在修正 strobe 电气配置后完成 CQE 读写和重启回归；以后升级内核或 DTS 时仍先确认：
 
 ```sh
 cat /sys/block/mmcblk1/device/cmdq_en
@@ -51,8 +51,8 @@ dmesg | grep -Ei 'mmc|sdhci|cqhci|cqe|timeout|crc|recovery|error'
 `cmdq_en` 必须为 `1`。随后按 512 MiB 一段连续写入至少 4 GiB，记录每段速度，
 并在写入前后各直接读取 3.1 GiB；再执行一次软重启，检查 overlay 文件持久化和
 上述错误计数。任何 CQE recovery、请求超时、CRC/ADMA 错误、文件校验失败或
-持续性能衰减均判定实验失败，并恢复 broken-CQE quirk。只有零错误且相对非 CQE
-基线存在可重复收益，才能把 CQE 状态改为已确认。
+持续性能衰减都属于回归；应先恢复 broken-CQE quirk 形成对照，而不是在文件系统
+继续承受错误的情况下反复压测。
 
 ## 允许的预期日志
 

@@ -15,7 +15,7 @@
 
 RK3399 的 CPU0–CPU3 是 Cortex-A53，CPU4–CPU5 是 Cortex-A72。板载 GMAC 当前只有一组 RX/TX queue，实机 IRQ 名称为 `eth0`；IRQ 编号可能随内核和设备 probe 顺序改变，不能固定写成 41。
 
-`rootfs/etc/init.d/tb-net-tuning` 先通过固定平台设备 `fe300000.ethernet` 找到板载 GMAC 的当前接口名，再从 `/proc/interrupts` 动态解析它的全部 IRQ，并将 `smp_affinity_list` 设为 CPU4，即第一颗 Cortex-A72。RTL8125BG 则按 PCI ID `10ec:8125` 识别，从 sysfs 的 MSI IRQ 目录取得编号并绑定 CPU5。两者都不依赖可能变化的 `eth0/eth1` 名称。运行时 A/B 验证表明 GMAC 硬中断从 CPU0 转移到 CPU4；随后 30 秒、4 流复测为 942/941 Mbit/s、0 重传，错误计数仍为 0。RTL8125 的 CPU5 策略尚待实卡复验。
+`rootfs/etc/init.d/tb-net-tuning` 先通过固定平台设备 `fe300000.ethernet` 找到板载 GMAC 的当前接口名，再从 `/proc/interrupts` 动态解析它的全部 IRQ，并将 `smp_affinity_list` 设为 CPU4，即第一颗 Cortex-A72。RTL8125BG 则按 PCI ID `10ec:8125` 识别，从 sysfs 的 MSI IRQ 目录取得编号并绑定 CPU5。两者都不依赖可能变化的 `eth0/eth1` 名称。运行时 A/B 验证表明 GMAC 硬中断从 CPU0 转移到 CPU4；随后 30 秒、4 流复测为 942/941 Mbit/s、0 重传，错误计数仍为 0。RTL8125 实卡也确认只有单个 MSI/NAPI；把其处理路径扩散到六个核心没有提高吞吐，反而增加 RX missed 和 TCP 重传，因此正式配置继续让两个物理口分别使用两颗 A72。
 
 GMAC IRQ 只有在 netifd 打开网卡后才会出现，因此不能在网络服务之前只执行一次。`rootfs/etc/hotplug.d/iface/90-tb-net-tuning` 在任一逻辑接口的 `ifup` 事件后调用上述服务，使 RTL8125 无论被配置成 WAN、LAN 或测试接口都能恢复 affinity；服务自身延后到 S99，再提供一次幂等兜底。重复调用不会重写已经正确的 affinity。
 
@@ -71,5 +71,9 @@ RK3399 的两个 Crypto v1 引擎确实存在，但 Linux 6.12 的 `rk3288_crypt
 ## PCIe RTL8125BG
 
 Linux 6.12 主线 `r8169` 对 RTL8125B 使用一个 IRQ 和一个 NAPI，不提供可分散到多个 CPU 的 RX/TX queue。默认策略因此让 GMAC 使用 CPU4、RTL8125 使用 CPU5，避免两个物理口的硬中断互相争用；不启用没有硬件队列支撑的 RPS/RSS。详细的链路、驱动和验收流程见 [PCIe RTL8125BG 2.5GbE](PCIE-RTL8125.md)。
+
+RTL8125BG 实卡以 PCIe `5.0 GT/s x1`、2500/full 工作。4 条 TCP 流的两个单向测试均达到 2.35 Gbit/s 且为 0 重传；4+4 流、60 秒双向并发约为 2.35/2.33 Gbit/s，总吞吐约 4.68 Gbit/s。双向极限场景有少量 RX missed 和 TCP 重传，但没有 PCIe AER、r8169 timeout、异常复位或链路抖动，测试温度低于约 46 °C。该结果满足当前功能和性能交付标准，不等同于数小时耐久或真实 NAT 验收。
+
+性能测试通过独立 network namespace 隔离第二网口，没有把它加入 `br-lan`，也没有启动第二套 DHCP。测试结束后接口移回默认 namespace 并保持未配置、`DOWN`。测试过程中使用过的 RPS、IRQ affinity、临时地址和 socket buffer 均已撤销，不构成固件默认策略。
 
 需要注意，两口直接路由时板载 RTL8211E 的 1GbE 链路仍是端到端上限；RTL8125 的 2.5GbE 能力主要体现在访问本机服务，或把多个 VLAN 都承载在 RTL8125 上的单臂路由场景。真实 NAT 测试仍应比较 flow offload 开/关、双向并发、MTU、错误计数和 CPU/温度，而不能只看 RTL8125 自身的本机 `iperf3`。

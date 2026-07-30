@@ -98,7 +98,7 @@ Linux 6.12 基线中，TCS4525/TCS4526 由兼容的 `fan53555` regulator 驱动�
 - 控制器别名 `mmc1 = &sdhci`，硬件节点 `sdhci@fe330000`，8-bit、不可移除。
 - HS400 1.8 V、Enhanced Strobe、eMMC PHY 均启用。
 - eMMC PHY 显式设置 `rockchip,enable-strobe-pulldown`，与 Toybrick 4.4 BSP 固定启用 strobe 内部下拉的电气配置一致；驱动阻抗和输出 tap delay 继续使用 Linux 6.12 的 50 Ω、`0x4` 默认值。非 CQE 基线在软重启后完成 4 GiB 分段直写，八段为 88.6～98.5 MB/s，写前/写后原始读取为 293/291 MB/s，MMC 错误计数为 0。
-- 实机容量约 29.1 GiB；HS400 Enhanced Strobe 和 ADMA 已确认。CQE 深度为 16，电气修正前曾在连续写入时触发 recovery；当前实验配置移除本项目的 `SDHCI_QUIRK_BROKEN_CQE` 覆盖，恢复 Linux 6.12 原生 RK3399 CQHCI 路径。该状态在实机完成同规格压力测试前不得标记为稳定交付。
+- 实机容量约 29.1 GiB；HS400 Enhanced Strobe、ADMA 和 CQE depth 16 已确认。电气修正前 CQE 曾在连续写入时触发 recovery；strobe 内部下拉对齐厂商配置后，移除本项目的 `SDHCI_QUIRK_BROKEN_CQE` 覆盖，恢复 Linux 6.12 原生 RK3399 CQHCI 路径。实机 `cmdq_en=1`，读写和重启回归没有 CQE recovery、CRC/ADMA、MMC 或 EXT4 错误。
 - Linux 下可作为普通块设备读写，但管理命令应按容量、CID/名称或 GPT `PARTLABEL` 识别设备，不要依赖 `mmcblkN` 编号。
 - 当前部署 GPT 使用 512-byte sector：`uboot@0x2000` 为 4 MiB，`trust@0x4000` 为 4 MiB，`boot_linux@0x6000` 为 96 MiB，`rootfs@0x36000` 占用剩余空间。前两项属于厂商 miniloader 启动链约束；后两项是当前工程镜像和启动脚本共同采用的发布约定，并非 RK3399Pro 不可改变的硬件地址。边界和替代方案见 [启动链设计](BOOT-CHAIN.md)。
 - 工程将内部的 64 MiB 启动容器和 128 MiB rootfs 载体组合为 224 MiB `openwrt.img`，从 LBA `0x6000` 连续写入后，rootfs 自动落在 LBA `0x36000`。启动参数使用 `root=PARTLABEL=rootfs` 和 `fstools_overlay_fstype=ext4`；SquashFS 后面的全部剩余空间由 OpenWrt `fstools` 在首次启动时格式化为 ext4 `/overlay`。该设计不调整 GPT，也不依赖 eMMC 的动态设备编号。完整映射、持久化和重装边界见 `EMMC-INSTALL.md`。
@@ -163,7 +163,7 @@ HDMI 只承担 Linux 文本 console；U-Boot 显示、HDMI 音频、桌面和 GP
 
 本板有两个容易混淆的插座：上述 SoC PCIe host 连接到标准 PCIe x4 机械槽；板载 Mini-PCIe 插座只接 USB2，面向 LTE 模块，没有 PCIe lane。标准 PCIe 端点插入 Mini-PCIe 后不会出现在 `lspci`，DTS 或驱动无法弥补缺失的电气连线；`pcie@f8000000` 的 link training timeout 表示标准 PCIe 槽没有建立端点链路，与 Mini-PCIe 中是否插卡无关。
 
-RTL8125BG 以一条 lane 工作，正确目标是 `5.0 GT/s, Width x1`。Gen1 x1 的有效单向带宽只有约 2 Gbit/s，无法承载 2.5GbE 线速，因此本工程显式使用 Gen2；这也与 Toybrick stable 4.4 DTS 未设置 Gen1 限制、Linux 6.12 RK3399 host 默认选择 Gen2 的行为一致。主线 host 先建立 Gen1 再请求 Gen2 重训练，失败会自动回退而不是丢弃已经建立的 Gen1 链路。
+RTL8125BG 以一条 lane 工作，实机已确认 `5.0 GT/s, Width x1`。Gen1 x1 的有效单向带宽只有约 2 Gbit/s，无法承载 2.5GbE 线速，因此本工程显式使用 Gen2；这也与 Toybrick stable 4.4 DTS 未设置 Gen1 限制、Linux 6.12 RK3399 host 默认选择 Gen2 的行为一致。主线 host 先建立 Gen1 再请求 Gen2 重训练，失败会自动回退而不是丢弃已经建立的 Gen1 链路。
 
 生产镜像使用 Linux 主线 `r8169`，不引入 Realtek 外置 `r8125`。Linux 6.12 已包含 `10ec:8125` ID、RTL8125B 初始化路径和 `rtl8125b-2.fw` 声明；OpenWrt 的 `kmod-r8169` 对相应 firmware 包是强依赖。板级脚本按 PCI ID 识别它并把单 IRQ/NAPI 放到 CPU5，板载 GMAC 则继续位于 CPU4。固件不按可能变化的 `ethN` 名称自动分配 WAN/LAN，首次部署需在 LuCI/UCI 中明确选择。详细设计和验收见 [PCIe RTL8125BG 2.5GbE](PCIE-RTL8125.md)。
 

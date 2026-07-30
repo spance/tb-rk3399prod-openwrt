@@ -39,6 +39,7 @@
 ## 阅读路由
 
 - 项目能力和目录概览：`README.md`、`docs/README.md`
+- 正式版本和发布边界：`CHANGELOG.md`
 - 主机构建、初始化、缓存和产物：`docs/BUILD.md`
 - OpenWrt profile、rootfs、overlay 和软件包：`docs/OPENWRT.md`
 - eMMC 布局、刷写边界、恢复和验收：`docs/EMMC-INSTALL.md`
