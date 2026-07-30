@@ -53,7 +53,9 @@ console=tty0 console=ttyS2,1500000n8 earlycon=uart8250,mmio32,0xff1a0000
 TEE/BL32 保留区:   0x08400000 - 0x0a200000
 可用 DRAM bank 1:  0x0a200000 - 0xf8000000
 FIT 加载地址:       0x10000000
-Linux load/entry:  0x03200000
+Linux load/entry:  0x00280000
+FDT 工作地址:       0x08300000
+bootm 内核上限:     128 MiB（结束于 0x08280000）
 ```
 
 不得再把约 30 MiB 的 FIT 加载到 `0x08000000`：它会跨入 TEE/BL32 保留区，并可能令 U-Boot 在解析 FIT 时触发 `Synchronous Abort`。

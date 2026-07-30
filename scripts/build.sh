@@ -165,6 +165,29 @@ build_openwrt()
 
 	mkimage="$source/staging_dir/host/bin/mkimage"
 	[ -x "$mkimage" ] || fail "OpenWrt host mkimage not found: $mkimage"
+	initramfs_count=0
+	initramfs_image=
+	while IFS= read -r -d '' file; do
+		initramfs_image=$file
+		initramfs_count=$((initramfs_count + 1))
+	done < <(find "$dest" -maxdepth 1 -type f \
+		-name '*toybrick_tb-rk3399prod-initramfs-kernel.bin' -print0)
+	[ "$initramfs_count" -eq 1 ] || \
+		fail "expected exactly one TB-RK3399ProD initramfs FIT, found $initramfs_count"
+	for image in "$fit_image" "$initramfs_image"; do
+		fit_info=$("$mkimage" -l "$image")
+		fit_load=$(awk '/Load Address:/ { print $3; exit }' <<<"$fit_info")
+		fit_size=$(awk '/Data Size:/ { print $3; exit }' <<<"$fit_info")
+		[ "$fit_load" = 0x00280000 ] || \
+			fail "FIT has unsafe Linux load address $fit_load: $image"
+		case "$fit_size" in
+			''|*[!0-9]*) fail "could not read FIT kernel size: $image" ;;
+		esac
+		[ "$fit_size" -le $((128 * 1024 * 1024)) ] || \
+			fail "FIT kernel exceeds the 128 MiB U-Boot bootm limit: $image"
+		[ $((0x00280000 + fit_size)) -le $((0x08280000)) ] || \
+			fail "FIT kernel exceeds the verified low-memory load window: $image"
+	done
 	bash "$SCRIPT_DIR/make-boot-linux.sh" \
 		"$fit_image" "$mkimage" "$dest/boot_linux.img"
 	bash "$SCRIPT_DIR/make-openwrt-image.sh" \

@@ -29,6 +29,11 @@ directly instead of first probing Android, Rockchip private FIT and RK image
 paths.  Distro boot still scans removable SD before eMMC and retains its later
 USB/network recovery targets.
 
+Raise the standard bootm image limit to 128 MiB.  The board-specific OpenWrt
+profile loads Linux at 0x00280000, so the complete 128 MiB window remains below
+the BL32/OP-TEE hole starting at 0x08400000.  This accommodates the recovery
+initramfs without weakening the actual DRAM-bank boundary.
+
 ---
  arch/arm/dts/rk3399-evb.dts      |  6 ++++++
  arch/arm/mach-rockchip/board.c   |  6 +++---
@@ -38,8 +43,8 @@ USB/network recovery targets.
  configs/rk3399pro_defconfig      |  3 +++
  drivers/mmc/dw_mmc.c             | 28 ++++++++++++++++++++--------
  include/configs/evb_rk3399.h     |  4 ++++
- include/configs/rk3399_common.h  |  1 +
- 9 files changed, 83 insertions(+), 23 deletions(-)
+ include/configs/rk3399_common.h  |  3 ++-
+ 9 files changed, 84 insertions(+), 24 deletions(-)
 
 diff --git a/arch/arm/dts/rk3399-evb.dts b/arch/arm/dts/rk3399-evb.dts
 index 7bb06881e9..940db6e4e8 100644
@@ -299,9 +304,15 @@ index 99e6c35d8e..39b97d07bf 100644
 +#endif
  #endif
 diff --git a/include/configs/rk3399_common.h b/include/configs/rk3399_common.h
-index c4bd586898..2d46b41365 100644
+index c4bd586898..049959312c 100644
 --- a/include/configs/rk3399_common.h
 +++ b/include/configs/rk3399_common.h
+@@ -23,4 +23,4 @@
+ #define CONFIG_SPL_MAX_SIZE             0x40000
+ #define CONFIG_SPL_BSS_START_ADDR	0x00400000
+ #define CONFIG_SPL_BSS_MAX_SIZE         0x2000
+-#define CONFIG_SYS_BOOTM_LEN	(64 << 20)	/* 64M */
++#define CONFIG_SYS_BOOTM_LEN	(128 << 20)	/* 128M */
 @@ -35,6 +35,7 @@
  
  /* MMC/SD IP block */

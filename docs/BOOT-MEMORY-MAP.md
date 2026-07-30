@@ -13,9 +13,17 @@ U-Boot `dump_bidram`/启动输出给出的可用 DRAM bank：
 
 ```text
 FIT load address:    0x10000000
-Linux load address:  0x03200000
-Linux entry:         0x03200000
+Linux load address:  0x00280000
+Linux entry:         0x00280000
+FDT work address:    0x08300000
+U-Boot bootm limit:  0x08000000 (128 MiB)
 UART earlycon:       0xff1a0000
 ```
 
-升级后应按实际 FIT 大小重新检查加载范围，确保其不进入安全内存，也不与内核目标地址重叠。
+`0x00280000 + 128 MiB = 0x08280000`，因此允许的最大内核仍完整位于第一个
+DRAM bank，并在 `fdt_addr_r=0x08300000` 前保留 512 KiB；FDT 本身则必须结束于
+`0x08400000` 前。构建脚本会检查正常 FIT 和 initramfs FIT 的 load address、
+内核数据长度及结束地址，不能仅靠扩大 `CONFIG_SYS_BOOTM_LEN` 掩盖内存重叠。
+
+升级后仍应按实际 FIT 大小重新检查其在 `0x10000000` 的载入范围，确保 FIT
+源数据不与目标内核或可信内存重叠。

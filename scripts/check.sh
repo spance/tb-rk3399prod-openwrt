@@ -212,6 +212,9 @@ grep -Fq 'if (*fit_uname_config_copy)' "$uboot_patch" || \
 grep -Fq '#define CONFIG_BOOTCOMMAND "run distro_bootcmd"' \
 	"$uboot_patch" || \
 	fail "RK3399Pro U-Boot does not enter standard distro boot directly"
+grep -Eq '^\+#define CONFIG_SYS_BOOTM_LEN[[:space:]]+\(128 << 20\)' \
+	"$uboot_patch" || \
+	fail "RK3399Pro U-Boot does not allow the 128 MiB recovery kernel window"
 if grep -Fq 'diff --git a/make.sh b/make.sh' "$uboot_patch"; then
 	fail "current Rockchip U-Boot must use its native rkbin packaging scripts"
 fi
@@ -348,6 +351,8 @@ grep -Eq '^src-git luci ' "$PROJECT_DIR/configs/feeds.conf" || \
 
 grep -Fq 'setenv fitaddr 0x10000000' "$PROJECT_DIR/boot/boot.cmd" || \
 	fail "boot script FIT address is missing or unexpected"
+grep -Fq '+  KERNEL_LOADADDR := 0x00280000' "$openwrt_patch" || \
+	fail "TB-RK3399ProD FIT does not use the verified low-memory kernel address"
 grep -Fq 'console=tty0 console=ttyS2,1500000n8' "$PROJECT_DIR/boot/boot.cmd" || \
 	fail "boot script HDMI/serial dual console arguments are missing"
 grep -Fq 'root=PARTLABEL=rootfs' "$PROJECT_DIR/boot/boot.cmd" || \

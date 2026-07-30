@@ -28,6 +28,7 @@
 - 只有在构建配置实际启用 `CONFIG_ROCKCHIP_FIT_IMAGE` 时，才把 FIT 交给 Rockchip 私有 `boot_fit` 路径；普通 `CONFIG_FIT` 镜像继续使用标准 `bootm`。这两种选项在厂商代码中含义不同，不能仅凭镜像格式无条件切换。
 - 保持标准 FIT 的 FDT `load` 属性可选；错误路径不会再向调用者返回未初始化的地址，也不会返回已释放的临时配置名。`bootm-no-reloc` 只有显式设为 `yes` 时才生效，变量不存在不再被误判为启用。
 - RK3399Pro 默认命令直接执行 `distro_bootcmd`，不再先尝试本板不存在的 Android `boot`、Rockchip 私有 FIT 和 RK image。distro 顺序仍是可拔 TF 优先、eMMC 回退，后续 USB/网络恢复目标也保留。
+- 把标准 `bootm` 内核数据上限由 64 MiB 提高为 128 MiB，并与本板 OpenWrt profile 的 `0x00280000` Linux load/entry 配对。128 MiB 窗口结束于 `0x08280000`，仍低于 `0x08300000` FDT 工作地址和 `0x08400000` BL32/OP-TEE 保留区；构建阶段会拒绝地址或大小越界的正常/恢复 FIT。
 
 旧基线需要的 host 构建和大块 IDMAC 修补不再携带：新 Rockchip 基线已经包含后续 host/DWMMC 修复，继续叠加旧实现会扩大补丁面并增加冲突风险。项目也不修改 `make.sh` 或复制 merger。
 
@@ -41,7 +42,7 @@
 
 ## 启动地址
 
-OpenWrt FIT 统一加载到 `0x10000000`。不要使用 `0x08000000`，否则约 30 MiB FIT 会覆盖 `0x08400000-0x0a200000` 的 BL32/TEE 保留区并导致 `bootm` 异常。
+OpenWrt FIT 源文件统一加载到 `0x10000000`；FIT 中 Linux 的 load/entry 为 `0x00280000`，FDT 工作地址为 `0x08300000`。不要把 FIT 源文件放在 `0x08000000`，否则较大的 FIT 会覆盖 `0x08400000-0x0a200000` 的 BL32/TEE 保留区并导致 `bootm` 异常。旧的 `0x03200000` Linux load address 到安全内存只有 82 MiB，不能与 128 MiB `bootm` 上限安全配对，因此不再使用。
 
 ## 从 TF 卡更新 boot_linux
 
