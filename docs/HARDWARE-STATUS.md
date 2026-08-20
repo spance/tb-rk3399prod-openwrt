@@ -23,6 +23,7 @@
 | USB3 Type-C | 已确认热插拔和高速读写 | 首次插入、同向重插和翻转重插均以 UAS/`5000M` 枚举；方向、角色、xHCI 创建/销毁、父子 runtime PM 和 PHY 收放顺序正确。exFAT 上 8 GiB direct 写约 300–320 MiB/s、direct 读约 340 MiB/s，完整数据比较通过；测试窗口无 `connect-debounce`、PHY timeout、xHCI/UAS/SCSI/I/O/exFAT 错误，SCSI I/O 错误计数未增长 |
 | HDMI console | 已确认 | DRM/VOPB/DW-HDMI、fbcon 和 Linux 文本 console 已在显示器输出；串口继续保留 |
 | PCIe / RTL8125BG | 已确认功能和线速短测 | RTL8125BG `10ec:8125` rev 05 使用主线 `r8169` 和 `rtl8125b-2.fw`，endpoint/root port 均为 `5.0 GT/s x1`，链路为 2500/full。4 流 TCP 单向两个方向均为 2.35 Gbit/s、0 重传；4+4 流双向并发约 2.35/2.33 Gbit/s。无 AER、驱动 timeout、异常复位或链路抖动，满载温度低于约 46 °C |
+| PI7C9X2G304SV PCIe 交换板 | x86 硬件拓扑已确认，RK3399待验收 | x86 空板能枚举 `12d8:b304` 上游口及 Device 1/2 两个下游桥；安装 RTL8125 后能形成完整下行拓扑。RK3399 原驱动读取交换总线中不存在的 Device 0 时触发同步外部总线异常；已增加只匹配该交换芯片的安全扫描补丁，尚待空板、单端点、双端点和重启/压力测试闭环 |
 | Mini-PCIe | USB2-only | 面向 LTE 模块，没有 PCIe lane；不作为 PCIe 端点插槽使用 |
 | NPU | 不要求 | 未纳入 OpenWrt 完成条件 |
 | Wi-Fi/蓝牙 | 不要求 | 保持禁用，不打包无线驱动或固件 |
@@ -33,6 +34,7 @@ watchdog 故障测试在同步文件系统后，通过 procd 控制接口停止 
 
 - Type-C 在当前测试范围内已通过工程验收；量产前仍建议执行 20～50 次方向交替/快速重插，以及至少 1～4 小时或 100 GiB 连续 I/O。Loader 刷写本版镜像后仍正常，Linux 侧改造不触及 BootROM、miniloader 或 U-Boot 的刷机协议。
 - RTL8125BG 的功能和本机线速短测已经通过；双向极限满载时仍有少量 RX missed/TCP 重传，当前交付标准接受这一边界。真实 LAN/WAN NAT、软件 flow offload A/B、数小时持续负载和多次冷启动尚未执行，不能从本机短测外推；回归流程见 [PCIe RTL8125BG 2.5GbE](PCIE-RTL8125.md)。
+- PI7C9X2G304SV 交换扩展板尚未在 RK3399 上通过修复后验收。x86 枚举成功只证明硬件拓扑，不证明 RK3399 Host 的空 BDF 规避、两个下行端口、并发带宽或长期稳定性；验收顺序和阻断条件见 [PCIe RTL8125BG 2.5GbE](PCIE-RTL8125.md)。
 - eMMC 更长时间读写、HDMI 多次拔插/重启及 overlay 备份恢复流程仍可在量产验收中补充。
 - 无线/蓝牙、GPU 图形桌面、HDMI 音频和 NPU 是明确的非目标，不应作为当前固件缺陷。
 

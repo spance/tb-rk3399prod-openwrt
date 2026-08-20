@@ -1,0 +1,104 @@
+From: TB-RK3399ProD OpenWrt project
+Subject: [PATCH] PCI: rockchip: safely scan PI7C9X2G304 switch buses
+
+The RK3399 AXI PCIe controller can raise a synchronous external abort when
+software reads configuration space for a BDF that has no completer.  The
+existing valid-device filter avoids those reads only on the root bus and the
+bus directly below it.
+
+A PI7C9X2G304SV switch exposes its upstream port at device 0 and its two
+downstream ports at devices 1 and 2 on the next bus.  Device 0 on that second
+bus is intentionally absent.  Generic PCI enumeration probes it before the
+two downstream ports, causing RK3399 to abort before the switch can be
+enumerated.  An empty bus below either downstream port has the same problem.
+
+Recognize the exact switch observed on this board.  Scan only devices 1 and 2
+behind its upstream port.  Behind either downstream port, permit only device
+0 and only while the port reports an active data link.  This preserves the
+existing behavior for direct endpoints and all unrelated bridges while
+avoiding unsafe ECAM accesses for the switch's legal sparse topology.
+Poll the known downstream port for up to 180 ms before declaring it empty so
+an endpoint that is still completing post-reset link training is not skipped.
+
+---
+ drivers/pci/controller/pcie-rockchip-host.c | 55 ++++++++++++++++++++++++++++-
+ 1 file changed, 54 insertions(+), 1 deletion(-)
+
+--- a/drivers/pci/controller/pcie-rockchip-host.c
++++ b/drivers/pci/controller/pcie-rockchip-host.c
+@@ -37,6 +37,9 @@
+ #include "../pci.h"
+ #include "pcie-rockchip.h"
+ 
++#define PCI_VENDOR_ID_PERICOM			0x12d8
++#define PCI_DEVICE_ID_PERICOM_PI7C9X2G304SV	0xb304
++
+ static void rockchip_pcie_enable_bw_int(struct rockchip_pcie *rockchip)
+ {
+ 	u32 status;
+@@ -69,14 +72,64 @@ static void rockchip_pcie_update_txcredit_mui(struct rockchip_pcie *rockchip)
+ static int rockchip_pcie_valid_device(struct rockchip_pcie *rockchip,
+ 				      struct pci_bus *bus, int dev)
+ {
++	struct pci_dev *bridge = bus->self;
++	u16 link_status = 0;
++	int ret, retries;
++
+ 	/*
+-	 * Access only one slot on each root port.
++	 * Access only one slot on the root port and its direct child bus.
+ 	 * Do not read more than one device on the bus directly attached
+ 	 * to RC's downstream side.
+ 	 */
+ 	if (pci_is_root_bus(bus) || pci_is_root_bus(bus->parent))
+ 		return dev == 0;
+ 
++	if (!bridge || bridge->vendor != PCI_VENDOR_ID_PERICOM ||
++	    bridge->device != PCI_DEVICE_ID_PERICOM_PI7C9X2G304SV)
++		return 1;
++
++	/*
++	 * PI7C9X2G304SV has a sparse internal switch bus.  Its upstream
++	 * port is device 0 on the parent bus, while its two downstream
++	 * ports are devices 1 and 2 on the child bus.  Probing the absent
++	 * device 0 on that child bus aborts the RK3399 AXI transaction.
++	 */
++	if (pci_pcie_type(bridge) == PCI_EXP_TYPE_UPSTREAM) {
++		if (dev == 0)
++			pci_info(bridge,
++				 "restricting secondary bus scan to switch ports 1 and 2\n");
++		return dev == 1 || dev == 2;
++	}
++
++	/*
++	 * A PCIe downstream port has one point-to-point device at slot 0.
++	 * Avoid the slot-0 ECAM read as well when this switch reports no
++	 * active data link.  Link Status bit 29 is implemented by the
++	 * PI7C9X2G304SV even when its optional Active Reporting Capable bit
++	 * is left at the reset value.
++	 */
++	if (pci_pcie_type(bridge) == PCI_EXP_TYPE_DOWNSTREAM) {
++		if (dev != 0)
++			return 0;
++
++		for (retries = 0; retries < 10; retries++) {
++			ret = pcie_capability_read_word(bridge, PCI_EXP_LNKSTA,
++							&link_status);
++			if (ret != PCIBIOS_SUCCESSFUL ||
++			    PCI_POSSIBLE_ERROR(link_status))
++				break;
++			if (link_status & PCI_EXP_LNKSTA_DLLLA)
++				return 1;
++			if (retries != 9)
++				msleep(20);
++		}
++
++		pci_info(bridge,
++			 "downstream link inactive (LnkSta %#06x); skipping config-space scan\n",
++			 link_status);
++		return 0;
++	}
++
+ 	return 1;
+ }
+ 

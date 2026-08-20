@@ -64,11 +64,13 @@ kernel_patch_dir="$PROJECT_DIR/patches/kernel"
 typec_phy_patch="$kernel_patch_dir/144-phy-rockchip-typec-orientation-switch.patch"
 typec_dwc_patch="$kernel_patch_dir/145-usb-dwc3-rk3399-typec-runtime-pm.patch"
 ddr_probe_patch="$kernel_patch_dir/146-devfreq-rk3399-round-rate-probe-only.patch"
+pcie_switch_patch="$kernel_patch_dir/147-pcie-rockchip-pi7c9x2g304-safe-scan.patch"
 uboot_patch="$PROJECT_DIR/patches/u-boot/0001-tb-rk3399prod-board-support.patch"
 assert_file "$openwrt_patch"
 assert_file "$typec_phy_patch"
 assert_file "$typec_dwc_patch"
 assert_file "$ddr_probe_patch"
+assert_file "$pcie_switch_patch"
 assert_file "$uboot_patch"
 assert_file "$PROJECT_DIR/dts/rk3399pro-toybrick-prod.dts"
 assert_file "$PROJECT_DIR/dts/rk3399pro-toybrick-prod.dtsi"
@@ -303,11 +305,15 @@ done
 
 [ "$(find "$kernel_patch_dir" -mindepth 1 -maxdepth 1 -type d | wc -l)" -eq 0 ] || \
 	fail "kernel patch directory must not contain subdirectories"
-[ "$(find "$kernel_patch_dir" -maxdepth 1 -type f -name '*.patch' | wc -l)" -eq 3 ] || \
-	fail "exactly three canonical kernel patches are required"
+[ "$(find "$kernel_patch_dir" -maxdepth 1 -type f -name '*.patch' | wc -l)" -eq 4 ] || \
+	fail "exactly four canonical kernel patches are required"
 for patch in "$kernel_patch_dir"/*.patch; do
 	git apply --numstat "$patch" >/dev/null
 done
+grep -Fq 'PCI_DEVICE_ID_PERICOM_PI7C9X2G304SV' "$pcie_switch_patch" || \
+	fail "PI7C9X2G304SV switch topology quirk is missing"
+grep -Fq 'PCI_EXP_LNKSTA_DLLLA' "$pcie_switch_patch" || \
+	fail "PI7C9X2G304SV empty-link guard is missing"
 
 [ "$(find "$PROJECT_DIR/patches/u-boot" -mindepth 1 -maxdepth 1 \
 	-type d | wc -l)" -eq 0 ] || \
