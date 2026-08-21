@@ -21,22 +21,21 @@ Poll the known downstream port for up to 180 ms before declaring it empty so
 an endpoint that is still completing post-reset link training is not skipped.
 
 ---
- drivers/pci/controller/pcie-rockchip-host.c | 55 ++++++++++++++++++++++++++++-
- 1 file changed, 54 insertions(+), 1 deletion(-)
+ drivers/pci/controller/pcie-rockchip-host.c | 54 ++++++++++++++++++++++++++++-
+ 1 file changed, 53 insertions(+), 1 deletion(-)
 
 --- a/drivers/pci/controller/pcie-rockchip-host.c
 +++ b/drivers/pci/controller/pcie-rockchip-host.c
-@@ -37,6 +37,9 @@
+@@ -37,6 +37,8 @@
  #include "../pci.h"
  #include "pcie-rockchip.h"
  
-+#define PCI_VENDOR_ID_PERICOM			0x12d8
 +#define PCI_DEVICE_ID_PERICOM_PI7C9X2G304SV	0xb304
 +
  static void rockchip_pcie_enable_bw_int(struct rockchip_pcie *rockchip)
  {
  	u32 status;
-@@ -69,14 +72,64 @@ static void rockchip_pcie_update_txcredit_mui(struct rockchip_pcie *rockchip)
+@@ -69,14 +71,64 @@ static void rockchip_pcie_update_txcredit_mui(struct rockchip_pcie *rockchip)
  static int rockchip_pcie_valid_device(struct rockchip_pcie *rockchip,
  				      struct pci_bus *bus, int dev)
  {
