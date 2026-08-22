@@ -31,8 +31,18 @@ Root Port 及其直属总线；继续扫描交换芯片内部总线时会先访�
 - 上游交换端口的子总线只允许 Device 1、2，其他 Device 直接报告不存在；
 - 下游端口的子总线只允许点到点的 Device 0；
 - Device 0 仅在下游 Link Status 的 Data Link Layer Link Active 置位时访问；
-  首次扫描最多等待约 180 ms，兼顾端点复位后的链路收敛；
+- Link Status 通过 Rockchip 驱动内部 Type-1 原始访问读取；该判断位于 PCI
+  config callback 内，不能再次调用会递归获取 `pci_lock` 的
+  `pci_read_config_*()`/`pcie_capability_read_*()`，也不能在持锁期间休眠；
+- TB-RK3399ProD 第一次总线扫描前等待 1.1 秒，覆盖交换芯片和下游端点可能返回
+  RRS/CRS 的完整复位后就绪窗口，避免 RK3399 把 Retry 响应升级为 external abort；
 - 直连 RTL8125 和其他非 PI7C9X2G304SV 桥保持原有扫描逻辑。
+
+1.1 秒延迟位于 `pci_host_probe()` 之前，只在机器 compatible 为
+`rockchip,rk3399pro-toybrick-prod` 时生效，不处于 PCI 配置锁内；代价是本板启动
+固定增加约 1.1 秒。这里不能先读取 Vendor ID 再决定是否等待，因为有问题的正是
+第一次 Vendor ID 配置读取。相关 RK3399 RRS/外部中止讨论见
+[Linux PCI 邮件列表](https://lore.kernel.org/r/20230509153912.515218-1-vincenzopalazzodev@gmail.com)。
 
 这是控制器访问安全修复，不是用软件掩盖链路错误。扩展板在 RK3399 上仍按以下
 顺序验收，任何阶段出现 external abort、AER、completion timeout 或异常复位都

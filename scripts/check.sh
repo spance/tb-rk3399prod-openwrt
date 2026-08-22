@@ -314,6 +314,17 @@ grep -Fq 'PCI_DEVICE_ID_PERICOM_PI7C9X2G304SV' "$pcie_switch_patch" || \
 	fail "PI7C9X2G304SV switch topology quirk is missing"
 grep -Fq 'PCI_EXP_LNKSTA_DLLLA' "$pcie_switch_patch" || \
 	fail "PI7C9X2G304SV empty-link guard is missing"
+grep -Fq 'rockchip_pcie_rd_other_conf(rockchip, bridge->bus' \
+	"$pcie_switch_patch" || \
+	fail "PI7C9X2G304SV link guard must use the lock-safe raw accessor"
+if grep -Fq 'pcie_capability_read_word(bridge' "$pcie_switch_patch"; then
+	fail "PI7C9X2G304SV link guard must not recursively enter PCI config access"
+fi
+if grep -Fq 'msleep(20)' "$pcie_switch_patch"; then
+	fail "PI7C9X2G304SV link guard must not sleep while pci_lock is held"
+fi
+grep -Fq 'TB_RK3399PROD_PCIE_SCAN_DELAY_MS' "$pcie_switch_patch" || \
+	fail "TB-RK3399ProD PCIe RRS readiness delay is missing"
 
 [ "$(find "$PROJECT_DIR/patches/u-boot" -mindepth 1 -maxdepth 1 \
 	-type d | wc -l)" -eq 0 ] || \

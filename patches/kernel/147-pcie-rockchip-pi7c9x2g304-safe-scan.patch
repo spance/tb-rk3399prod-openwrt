@@ -2,56 +2,106 @@ From: TB-RK3399ProD OpenWrt project
 Subject: [PATCH] PCI: rockchip: safely scan PI7C9X2G304 switch buses
 
 The RK3399 AXI PCIe controller can raise a synchronous external abort when
-software reads configuration space for a BDF that has no completer.  The
-existing valid-device filter avoids those reads only on the root bus and the
-bus directly below it.
+software reads configuration space for a BDF that has no completer.  It can
+also turn Configuration Request Retry Status from a device that is not
+ready after reset into the same fatal abort.
 
 A PI7C9X2G304SV switch exposes its upstream port at device 0 and its two
-downstream ports at devices 1 and 2 on the next bus.  Device 0 on that second
-bus is intentionally absent.  Generic PCI enumeration probes it before the
-two downstream ports, causing RK3399 to abort before the switch can be
-enumerated.  An empty bus below either downstream port has the same problem.
+downstream ports at devices 1 and 2 on the next bus.  Device 0 on that
+second bus is intentionally absent.  Generic PCI enumeration probes it
+before the two downstream ports, causing RK3399 to abort before the switch
+can be enumerated.  An empty bus below either downstream port has the same
+problem.
 
-Recognize the exact switch observed on this board.  Scan only devices 1 and 2
-behind its upstream port.  Behind either downstream port, permit only device
-0 and only while the port reports an active data link.  This preserves the
-existing behavior for direct endpoints and all unrelated bridges while
-avoiding unsafe ECAM accesses for the switch's legal sparse topology.
-Poll the known downstream port for up to 180 ms before declaring it empty so
-an endpoint that is still completing post-reset link training is not skipped.
+Recognize the exact switch observed on this board.  Scan only devices 1 and
+2 behind its upstream port.  Behind either downstream port, permit only
+device 0 and only while the port reports an active data link.  Read the
+already enumerated switch port through the Rockchip raw Type-1 accessor
+because this check runs with the PCI configuration lock held; calling a PCI
+core accessor here would recursively acquire that lock.
 
+The switch may also return RRS while its downstream topology initializes.
+RK3399 does not safely expose that response to software, so wait 1.1
+seconds before the first bus scan on TB-RK3399ProD.  This covers the full
+post-reset retry interval without delaying other Rockchip systems.
+
+Link: https://lore.kernel.org/r/20230509153912.515218-1-vincenzopalazzodev@gmail.com
 ---
- drivers/pci/controller/pcie-rockchip-host.c | 54 ++++++++++++++++++++++++++++-
- 1 file changed, 53 insertions(+), 1 deletion(-)
+ drivers/pci/controller/pcie-rockchip-host.c | 107 ++++++++++++++++++--
+ 1 file changed, 93 insertions(+), 14 deletions(-)
 
 --- a/drivers/pci/controller/pcie-rockchip-host.c
 +++ b/drivers/pci/controller/pcie-rockchip-host.c
-@@ -37,6 +37,8 @@
+@@ -37,6 +37,9 @@
  #include "../pci.h"
  #include "pcie-rockchip.h"
  
 +#define PCI_DEVICE_ID_PERICOM_PI7C9X2G304SV	0xb304
++#define TB_RK3399PROD_PCIE_SCAN_DELAY_MS		1100
 +
  static void rockchip_pcie_enable_bw_int(struct rockchip_pcie *rockchip)
  {
  	u32 status;
-@@ -69,14 +71,64 @@ static void rockchip_pcie_update_txcredit_mui(struct rockchip_pcie *rockchip)
- static int rockchip_pcie_valid_device(struct rockchip_pcie *rockchip,
- 				      struct pci_bus *bus, int dev)
+@@ -66,20 +69,6 @@ static void rockchip_pcie_update_txcredit_mui(struct rockchip_pcie *rockchip)
+ 	rockchip_pcie_write(rockchip, val, PCIE_CORE_TXCREDIT_CFG1);
+ }
+ 
+-static int rockchip_pcie_valid_device(struct rockchip_pcie *rockchip,
+-				      struct pci_bus *bus, int dev)
+-{
+-	/*
+-	 * Access only one slot on each root port.
+-	 * Do not read more than one device on the bus directly attached
+-	 * to RC's downstream side.
+-	 */
+-	if (pci_is_root_bus(bus) || pci_is_root_bus(bus->parent))
+-		return dev == 0;
+-
+-	return 1;
+-}
+-
+ static u8 rockchip_pcie_lane_map(struct rockchip_pcie *rockchip)
  {
+ 	u32 val;
+@@ -184,6 +173,83 @@ static int rockchip_pcie_rd_other_conf(struct rockchip_pcie *rockchip,
+ 	return PCIBIOS_SUCCESSFUL;
+ }
+ 
++static int rockchip_pcie_read_link_status(struct rockchip_pcie *rockchip,
++					  struct pci_dev *bridge,
++					  u16 *link_status)
++{
++	u32 value = 0;
++	int ret;
++
++	/*
++	 * This helper is called from the host's config-space callback while the
++	 * PCI core holds pci_lock.  Use the driver's raw accessor instead of a
++	 * pci_read_config_*() helper, which would recursively acquire pci_lock.
++	 */
++	ret = rockchip_pcie_rd_other_conf(rockchip, bridge->bus, bridge->devfn,
++					  pci_pcie_cap(bridge) + PCI_EXP_LNKSTA,
++					  sizeof(*link_status), &value);
++	*link_status = value;
++
++	return ret;
++}
++
++static int rockchip_pcie_valid_device(struct rockchip_pcie *rockchip,
++				      struct pci_bus *bus, int dev)
++{
 +	struct pci_dev *bridge = bus->self;
 +	u16 link_status = 0;
-+	int ret, retries;
++	int ret;
 +
- 	/*
--	 * Access only one slot on each root port.
++	/*
 +	 * Access only one slot on the root port and its direct child bus.
- 	 * Do not read more than one device on the bus directly attached
- 	 * to RC's downstream side.
- 	 */
- 	if (pci_is_root_bus(bus) || pci_is_root_bus(bus->parent))
- 		return dev == 0;
- 
++	 * Do not read more than one device on the bus directly attached
++	 * to RC's downstream side.
++	 */
++	if (pci_is_root_bus(bus) || pci_is_root_bus(bus->parent))
++		return dev == 0;
++
 +	if (!bridge || bridge->vendor != PCI_VENDOR_ID_PERICOM ||
 +	    bridge->device != PCI_DEVICE_ID_PERICOM_PI7C9X2G304SV)
 +		return 1;
@@ -71,33 +121,49 @@ an endpoint that is still completing post-reset link training is not skipped.
 +
 +	/*
 +	 * A PCIe downstream port has one point-to-point device at slot 0.
-+	 * Avoid the slot-0 ECAM read as well when this switch reports no
-+	 * active data link.  Link Status bit 29 is implemented by the
-+	 * PI7C9X2G304SV even when its optional Active Reporting Capable bit
-+	 * is left at the reset value.
++	 * Avoid its ECAM access when the switch reports no active data link.
++	 * Link Status bit 29 is implemented by the PI7C9X2G304SV.
 +	 */
 +	if (pci_pcie_type(bridge) == PCI_EXP_TYPE_DOWNSTREAM) {
 +		if (dev != 0)
 +			return 0;
 +
-+		for (retries = 0; retries < 10; retries++) {
-+			ret = pcie_capability_read_word(bridge, PCI_EXP_LNKSTA,
-+							&link_status);
-+			if (ret != PCIBIOS_SUCCESSFUL ||
-+			    PCI_POSSIBLE_ERROR(link_status))
-+				break;
-+			if (link_status & PCI_EXP_LNKSTA_DLLLA)
-+				return 1;
-+			if (retries != 9)
-+				msleep(20);
-+		}
++		ret = rockchip_pcie_read_link_status(rockchip, bridge,
++						     &link_status);
++		if (ret == PCIBIOS_SUCCESSFUL &&
++		    !PCI_POSSIBLE_ERROR(link_status) &&
++		    (link_status & PCI_EXP_LNKSTA_DLLLA))
++			return 1;
 +
 +		pci_info(bridge,
-+			 "downstream link inactive (LnkSta %#06x); skipping config-space scan\n",
++			 "downstream link inactive (LnkSta %#06x); skipping config-space access\n",
 +			 link_status);
 +		return 0;
 +	}
 +
- 	return 1;
- }
++	return 1;
++}
++
+ static int rockchip_pcie_wr_other_conf(struct rockchip_pcie *rockchip,
+ 				       struct pci_bus *bus, u32 devfn,
+ 				       int where, int size, u32 val)
+@@ -993,6 +1059,19 @@ static int rockchip_pcie_probe(struct platform_device *pdev)
  
+ 	rockchip_pcie_enable_interrupts(rockchip);
+ 
++	/*
++	 * RK3399 cannot safely surface Configuration Request Retry Status from
++	 * every endpoint.  The attached PI7C9X2G304SV switch can keep returning
++	 * RRS while its downstream topology initializes, which turns the first
++	 * Vendor ID read into an external abort.  Allow the full retry window on
++	 * this board before the PCI core starts issuing configuration reads.
++	 */
++	if (of_machine_is_compatible("rockchip,rk3399pro-toybrick-prod")) {
++		dev_info(dev, "waiting %u ms before PCIe bus scan\n",
++			 TB_RK3399PROD_PCIE_SCAN_DELAY_MS);
++		msleep(TB_RK3399PROD_PCIE_SCAN_DELAY_MS);
++	}
++
+ 	err = pci_host_probe(bridge);
+ 	if (err < 0)
+ 		goto err_remove_irq_domain;
