@@ -38,7 +38,7 @@
 | HDMI console | VOPB + DW-HDMI，EDID 自动选模；保留串口 | Rockchip DRM/VOP、DW-HDMI、Innosilicon HDMI PHY、fbcon | 已验证文本 console 与 USB 键盘登录 |
 | Watchdog | RK3399 DesignWare WDT；30 秒超时、5 秒喂狗 | `dw_wdt` + OpenWrt `procd` | 已验证停止喂狗后硬件复位及系统自动恢复 |
 | 板载 LED | 蓝 GPIO2_A5、红 GPIO2_A4、绿 GPIO2_A3，高电平有效 | 标准 `gpio-leds`；OpenWrt 启动/failsafe/运行/升级状态别名 | 三路亮灭和运行状态已验证 |
-| PCIe / 2.5GbE | 标准 x4 机械槽、Gen2 x4 host；RTL8125BG 使用 Gen2 x1 | Rockchip PCIe host/PHY + 主线 `r8169` + `rtl8125b-2.fw`；IRQ 绑定 CPU5 | 已验证枚举、2500/full 和线速短测 |
+| PCIe / 2.5GbE | 标准 x4 机械槽、Gen2 x4 host；RTL8125BG 使用 Gen2 x1；PI7C9X2G304SV 双下行交换扩展 | Rockchip PCIe host/PHY + 主线 `r8169` + `rtl8125b-2.fw`；交换芯片稀疏拓扑安全扫描；IRQ 绑定 CPU5 | 直连及交换板单卡均已验证枚举、2500/full 和双向线速短测 |
 | Mini-PCIe 插座 | 只有 USB2 走线，面向 LTE 模块 | 复用 USB2 host 驱动；不存在 PCIe lane | USB2-only，不能使用 RTL8822CE 等 PCIe 网卡 |
 | Wi-Fi / 蓝牙 | 不属于目标范围 | 不打包无线驱动和固件 | 有意禁用 |
 | GPU / NPU | 电源与 thermal 描述保留 | 不集成图形桌面、GPU 计算或 RKNN/NPU 软件栈 | 不属于目标范围 |
@@ -81,6 +81,7 @@ ARMv8 Crypto Extensions 已由 OpenSSL 3.5.7、16 KiB 数据块、固定单个 C
 仍需明确区分以下边界：
 
 - RTL8125BG 的枚举、固件、Gen2 x1、2500/full、单向线速和双向并发短测已经通过；真实双口 NAT、数小时双向满载和多次冷启动仍属于部署场景验收，不由本机 `iperf3` 短测替代。
+- PI7C9X2G304SV 交换扩展板已通过 RK3399 空板和单 RTL8125 冷启动枚举，以及双向各 300 秒 2.35 Gbit/s 测试；满速接收约 0.0024% `rx_missed`/TCP 重传作为当前性能边界接受。第二下行端点、重复启动和长期压力仍未验证。
 - Type-C 已通过功能与高速 I/O 验收；量产前仍建议增加 20～50 次方向交替/快速重插，以及 1～4 小时或 100 GiB 连续 I/O。
 - Wi-Fi、蓝牙、HDMI 音频、图形桌面、GPU 计算和 NPU 是明确的非目标。
 
